@@ -1,20 +1,15 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-27** (kontrolní audit po vlně report/export: BE-05, FE-04, FE-05)  
+Datum auditu: **2026-05-27** (stabilizační audit po Admin restore UI)  
 Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`.
 
 ### Ověření testů (2026-05-27)
 
 | Příkaz | Výsledek |
 |--------|----------|
-| `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
-| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** |
-| `npm test` (backend) | **52 passed** (vč. `seals.trash.integration.test.js`) |
-| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
-| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07) |
-| `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** (offline detail) |
-| `flutter test test/sync_retry_test.dart` | **7/7 passed** (FE-06) |
-| `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
+| `cd backend && npm test` | **8 suites, 52 passed** (`ucpavky_test`, vč. `seals.trash.integration.test.js`) |
+| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash 200, management trash 403) |
+| `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 Související dokumenty: [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
@@ -30,6 +25,10 @@ Git historie (hlavní milníky):
 | `16eac10` | BE-05 reports/export integrační testy |
 | `ebb5fe9` | FE-04 CSV download v ReportsScreen |
 | `7804bb6` | FE-05 PDF download v ReportsScreen |
+| `1e141e9` | Docs audit po report/export |
+| `04532b8` | FE-07 widget smoke login → home |
+| `b1cd198` | FE-06 sync retry timer + Drift v3 |
+| `5a3e453` | Admin restore UI + `GET /api/seals/trash` |
 
 ---
 
@@ -44,7 +43,7 @@ Git historie (hlavní milníky):
 | Auth login | OK | `worker1/1234` → token + role |
 | Prisma schema ↔ DB | OK | „Database schema is up to date“ |
 | Flutter Windows debug | OK | `flutter run -d windows --debug` |
-| Flutter integrační testy API | OK | 10/10 v `runtime_verification_test.dart` (+ 6 offline/sync unit testů) |
+| Flutter integrační testy API | OK | 12/12 v `runtime_verification_test.dart` (+ 18 offline/sync/widget unit testů) |
 
 ### Backend API (implementováno + ověřitelné přes HTTP)
 
@@ -71,6 +70,9 @@ Git historie (hlavní milníky):
 | Nová / detail ucpávky | `SealFormScreen`, `SealDetailScreen` | ano |
 | Sync obrazovka | `SyncScreen` | ano (push/pull volání) |
 | Management | `ManagementHomeScreen`, `JobsAdminScreen`, `ReportsScreen`, `LogsScreen` | ano |
+| Admin koš | `AdminTrashScreen` (`/trash`) | ano (`GET /api/seals/trash`, restore) |
+
+Router: worker/management → redirect z `/reports` i `/trash`; menu koš jen `admin`.
 
 ### Lokální data (Drift)
 
@@ -90,14 +92,11 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
-| **Offline-first čtení** | Seznamy (FE-01/02) i **detail ucpávky** (offline Drift fallback) hotové |
-| **Sync konflikty** | Zobrazení a skrytí v UI hotové (FE-03); automatické slučení záměrně není |
-| **Admin obnova** | hotové – `AdminTrashScreen` + `GET /api/seals/trash` (admin only) |
-| **Retry sync** | FE-06 hotové – `SyncRetryScheduler`, intervaly dle SYNC.md |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
 | **CI/CD** | Žádný pipeline v repu |
-| **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
-| **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam) chybí |
+| **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports, trash (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
+| **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam ucpávek) chybí |
+| **Koš mimo ucpávky** | Patra/stavby – chybí list API + UI |
 
 ---
 
@@ -164,7 +163,7 @@ flowchart LR
 | Backend – reports / export | `backend/__tests__/reports.integration.test.js` | work-summary filtry, CSV/PDF, role 403/200 (BE-05) |
 | Backend – admin trash | `backend/__tests__/seals.trash.integration.test.js` | list trash, restore, role 403 |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
-| Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
+| Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, trash admin/management, Drift+outbox (12 testů) |
 | Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart`, `seal_detail_offline_test.dart` | Drift read, detail cache, konflikty (9 testů) |
 | Frontend – sync retry | `frontend/test/sync_retry_test.dart` | intervaly, pending/failed/conflict/success (FE-06, 7 testů) |
 | Frontend – widget smoke | `frontend/test/login_home_smoke_test.dart` | login UI + E2E home (FE-07) |
@@ -193,16 +192,10 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 7. Technické dluhy
 
-### Vysoká priorita (data / integrita)
-
-1. **Sync konflikty – UI** – zobrazení a skrytí upozornění hotové (FE-03); automatické slučení záměrně není.
-2. **Offline read path** – seznamy (FE-01/02) i detail ucpávky (offline Drift fallback) hotové.
-
 ### Střední priorita (kvalita / provoz)
 
-4. **Backend testy** – BE-01 až BE-05 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul.
-6. **Sync retry intervaly** – FE-06 hotové (timer + `retryCount`/`lastError`).
-7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
+1. **Backend testy** – BE-01 až BE-05 + DB-01 + admin trash hotové; `seal.service.test.js` stále netestuje importovaný service modul.
+2. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
 8. **Web target** – Drift/SQLite FFI na Chrome nefunguje (očekávané).
 
 ### Nízká priorita
@@ -249,24 +242,24 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Stav |
 |--------|------|
-| Auth + role (worker / management / admin) | API + UI menu + router guard na `/reports` |
+| Auth + role (worker / management / admin) | API + UI menu + router guard na `/reports` a `/trash` |
 | Worker flow: stavba → patro → seznam → formulář | API + Drift cache |
 | Offline read: seznam ucpávek, patra a detail | FE-01, FE-02, offline detail |
 | Sync push/pull, outbox, konflikty, **automatický retry** | BE-04, FE-03, FE-06 |
 | Seals: duplicita, statusy, worker edit lock | BE-03, DB-01 |
 | Management: stavby, soupis, **CSV/PDF export** | FE-04, FE-05, BE-05 |
-| Backend regrese | BE-01–05, DB-01 (48 Jest testů) |
+| Admin koš + obnova ucpávek | `AdminTrashScreen`, `GET /api/seals/trash`, `PATCH restore` |
+| Backend regrese | BE-01–05, DB-01, admin trash (52 Jest testů) |
 | Widget smoke login → home | FE-07 |
 
 ### Zbývá pro MVP / provoz
 
 | Oblast | Poznámka |
 |--------|----------|
-| Offline read: **detail ucpávky** | hotové (offline detail) |
-| Sync retry timer | FE-06 hotové |
-| Admin restore v UI | hotové (`AdminTrashScreen`) |
-| Widget/E2E smoke | FE-07 hotové |
-| Sync pull HTTP testy | BE-04 jen push |
+| Sync pull HTTP testy | BE-04 pokrývá jen push |
+| Photos upload integrační testy | worker vs management |
+| Širší widget E2E | login → seznam ucpávek (FE-07 jen login→home) |
+| Koš patra/stavby | chybí backend list + UI |
 | CI/CD, Windows Release, Android re-verify | DOC-01, PLAT-01, PLAT-02 |
 
 Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
@@ -281,12 +274,10 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 | 2 | **PLAT-01** – Windows Release build | volitelné ověření release |
 | 3 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
 
-**Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
-
 ---
 
 ## Shrnutí jednou větou
 
-**MVP jádro včetně admin koše je hotové; další krok DOC-01 nebo PLAT-01.**
+**MVP jádro včetně admin koše a obnovy ucpávek je hotové a ověřené testy; další krok DOC-01 nebo PLAT-01.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

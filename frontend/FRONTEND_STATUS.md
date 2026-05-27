@@ -1,17 +1,13 @@
 # FRONTEND_STATUS.md – stav Flutter integrace (2026-05-27)
 
-Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na `http://localhost:3000`.
+Stabilizační audit po Admin restore UI. Backend musí běžet na `http://localhost:3000`.
 
 ### Ověření testů (2026-05-27)
 
 | Příkaz | Výsledek |
 |--------|----------|
-| `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** |
-| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
-| `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
-| `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** |
-| `flutter test test/sync_retry_test.dart` | **7/7 passed** (FE-06) |
-| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash) |
+| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash 200, management trash 403) |
+| `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 ---
@@ -21,7 +17,8 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | Oblast | Stav | Poznámka |
 |--------|------|----------|
 | `flutter analyze` | OK | 2× info (`deprecated_member_use` v reports dropdownech) |
-| Integrační testy API | OK | health, login, job, floors, seals, reports CSV/PDF, worker 403 |
+| Integrační testy API | OK | health, login, job, floors, seals, reports CSV/PDF, trash admin/management, worker reports 403 |
+| Router guard `/trash` | OK | worker/management → redirect `/`; menu koš jen `admin` |
 | Offline/sync unit testy | OK | seal list, floor list, sync conflict (6 testů) |
 | Widget smoke login → home (FE-07) | OK | UI bez sítě + E2E s backendem (`login_home_smoke_test.dart`) |
 | Admin koš / obnova | OK | `AdminTrashScreen`, trash list + restore (admin only) |
@@ -151,7 +148,9 @@ flutter run -d windows --debug
 
 ### 9) Admin restore UI – Koš
 - **Obrazovka:** `AdminTrashScreen` (`/trash`), menu jen pro `admin`.
-- **Backend mezera doplněna:** `GET /api/seals/trash` (restore endpoint už existoval).
+- **Router:** `router.dart` redirect worker/management z `/trash` (stejně jako `/reports`).
+- **Backend:** `GET /api/seals/trash`, `PATCH /api/seals/:id/restore` (admin only).
+- **Ověření:** runtime test admin 200 / management 403; backend `seals.trash.integration.test.js` (worker 403).
 
 ## Další krok
 
