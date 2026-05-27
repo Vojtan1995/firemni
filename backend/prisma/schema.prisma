@@ -1,0 +1,243 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  worker
+  management
+  admin
+}
+
+enum SealStatus {
+  draft
+  checked
+  invoiced
+}
+
+model User {
+  id           String    @id @default(uuid())
+  username     String    @unique
+  displayName  String    @map("display_name")
+  pinHash      String    @map("pin_hash")
+  role         UserRole
+  isActive     Boolean   @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  sessions     UserSession[]
+  createdJobs  Job[]     @relation("JobCreator")
+  sealsCreated Seal[]    @relation("SealCreator")
+  sealsUpdated Seal[]    @relation("SealUpdater")
+  photos       SealPhoto[]
+  activityLogs ActivityLog[]
+  changeLogs   ChangeLog[]
+  loginLogs    LoginLog[]
+
+  @@map("users")
+}
+
+model UserSession {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("user_sessions")
+}
+
+model Job {
+  id            String    @id @default(uuid())
+  projectNumber String    @unique @map("project_number") @db.VarChar(8)
+  name          String
+  address       String?
+  note          String?
+  isArchived    Boolean   @default(false) @map("is_archived")
+  createdById   String    @map("created_by_id")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+  deletedAt     DateTime? @map("deleted_at")
+  deletedById   String?   @map("deleted_by_id")
+  deleteReason  String?   @map("delete_reason")
+
+  createdBy User       @relation("JobCreator", fields: [createdById], references: [id])
+  floors    JobFloor[]
+  seals     Seal[]
+
+  @@map("jobs")
+}
+
+model JobFloor {
+  id          String    @id @default(uuid())
+  jobId       String    @map("job_id")
+  name        String
+  sortOrder   Int       @default(0) @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+  deletedById String?   @map("deleted_by_id")
+  deleteReason String?  @map("delete_reason")
+
+  job   Job    @relation(fields: [jobId], references: [id])
+  seals Seal[]
+
+  @@map("job_floors")
+}
+
+model Seal {
+  id            String     @id @default(uuid())
+  jobId         String     @map("job_id")
+  floorId       String     @map("floor_id")
+  sealNumber    String     @map("seal_number")
+  system        String
+  construction  String
+  location      String
+  fireRating    String     @map("fire_rating")
+  note          String?
+  status        SealStatus @default(draft)
+  version       Int        @default(1)
+  createdById   String     @map("created_by_id")
+  updatedById   String?    @map("updated_by_id")
+  createdAt     DateTime   @default(now()) @map("created_at")
+  updatedAt     DateTime   @updatedAt @map("updated_at")
+  deletedAt     DateTime?  @map("deleted_at")
+  deletedById   String?    @map("deleted_by_id")
+  deleteReason  String?    @map("delete_reason")
+
+  job       Job          @relation(fields: [jobId], references: [id])
+  floor     JobFloor     @relation(fields: [floorId], references: [id])
+  createdBy User         @relation("SealCreator", fields: [createdById], references: [id])
+  updatedBy User?        @relation("SealUpdater", fields: [updatedById], references: [id])
+  entries   SealEntry[]
+  photos    SealPhoto[]
+
+  @@index([floorId])
+  @@index([jobId, floorId, sealNumber])
+  @@index([status])
+  @@map("seals")
+}
+
+model SealEntry {
+  id         String    @id @default(uuid())
+  sealId     String    @map("seal_id")
+  entryType  String    @map("entry_type")
+  dimension  String
+  quantity   Int       @default(1)
+  insulation String
+  sortOrder  Int       @default(0) @map("sort_order")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  seal      Seal                 @relation(fields: [sealId], references: [id], onDelete: Cascade)
+  materials SealEntryMaterial[]
+
+  @@map("seal_entries")
+}
+
+model SealEntryMaterial {
+  id        String   @id @default(uuid())
+  entryId   String   @map("entry_id")
+  material  String
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  entry SealEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+
+  @@map("seal_entry_materials")
+}
+
+model SealPhoto {
+  id         String   @id @default(uuid())
+  sealId     String   @map("seal_id")
+  filePath   String   @map("file_path")
+  mimeType   String   @map("mime_type")
+  fileSize   Int      @map("file_size")
+  uploadedById String @map("uploaded_by_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  seal       Seal @relation(fields: [sealId], references: [id], onDelete: Cascade)
+  uploadedBy User @relation(fields: [uploadedById], references: [id])
+
+  @@map("seal_photos")
+}
+
+model SyncMutation {
+  id          String    @id @default(uuid())
+  mutationId  String    @unique @map("mutation_id")
+  deviceId    String    @map("device_id")
+  userId      String    @map("user_id")
+  entityType  String    @map("entity_type")
+  operation   String
+  payload     Json
+  result      Json?
+  processedAt DateTime? @map("processed_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("sync_mutations")
+}
+
+model ActivityLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  action     String
+  entityType String?  @map("entity_type")
+  entityId   String?  @map("entity_id")
+  metadata   Json?
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@map("activity_log")
+}
+
+model ChangeLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  entityType String   @map("entity_type")
+  entityId   String   @map("entity_id")
+  fieldName  String?  @map("field_name")
+  oldValue   String?  @map("old_value")
+  newValue   String?  @map("new_value")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([entityType, entityId])
+  @@map("change_log")
+}
+
+model LoginLog {
+  id        String   @id @default(uuid())
+  userId    String?  @map("user_id")
+  username  String?
+  success   Boolean
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("login_log")
+}
+
+model ErrorLog {
+  id        String   @id @default(uuid())
+  message   String
+  stack     String?
+  path      String?
+  method    String?
+  userId    String?  @map("user_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("error_log")
+}

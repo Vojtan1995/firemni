@@ -1,0 +1,417 @@
+
+# Kompletní projektová dokumentace - aplikace pro evidenci požárních ucpávek
+
+## 1. Shrnutí projektu
+Cílem je vytvořit interní firemní aplikaci pro evidenci požárních ucpávek a prostupů. Aplikace bude používaná přibližně 15 pracovníky v terénu a 4 lidmi z vedení nebo účetního oddělení. Má běžet primárně na Androidu a Windows.
+
+Nejdůležitější požadavek není počet funkcí, ale rychlé zadávání v terénu. Současný problém je pomalá aplikace, mnoho kroků, posouvání mezi stránkami a ruční vypisování. Nová aplikace musí používat rychlé tlačítkové volby, minimum textového zadávání a spolehlivý offline režim.
+
+## 2. Hlavní principy
+- Data se nikdy nesmí ztratit.
+- Všechno se nejdříve ukládá lokálně a teprve potom synchronizuje.
+- Worker může editovat pouze rozpracované ucpávky.
+- Vedení a účetní kontrolují data, fotky a statusy.
+- Admin je nouzový superuživatel.
+- Žádné tvrdé mazání dat v první verzi.
+- Všechny důležité akce se logují.
+- Cursor nesmí dostat pokyn typu "udělej celou aplikaci najednou".
+
+## 3. Role
+| Role | Popis | Práva |
+|---|---|---|
+| Worker | Pracovník v terénu | zapisuje ucpávky, fotí, edituje rozpracované |
+| Management | Vedení / účetní | zakládá stavby a patra, kontroluje, exportuje, archivuje |
+| Admin | Nouzová role | vše jako management + obnova, uživatelé, zálohy |
+
+## 4. Workflow workerů
+1. Přihlášení jménem a PINem.
+2. Automatická synchronizace po přihlášení.
+3. Hlavní menu: Stavba, Synchronizace, Profil, Nápověda.
+4. Zadání 8místného čísla stavby.
+5. Výběr patra vytvořeného vedením.
+6. Seznam ucpávek na patře - primárně pouze čísla s malými barevnými indikátory.
+7. Přidání nové ucpávky nebo otevření existující.
+8. Vyplnění formuláře.
+9. Vyfocení nebo nahrání fotky.
+10. Lokální uložení.
+11. Automatická nebo ruční synchronizace.
+
+## 5. Stavby a patra
+Stavba má unikátní 8místné číslo. Toto číslo pracovníkům sděluje vedení. Worker stavbu nezakládá. Pokud číslo stavby neexistuje, aplikace zobrazí chybu.
+
+Patra zakládá pouze vedení nebo admin, aby v datech nevznikal nepořádek. Worker si patro pouze vybírá.
+
+Pole stavby:
+- 8místné číslo stavby
+- název
+- adresa nebo poznámka
+- seznam pater
+- aktivní / archivovaná
+
+## 6. Seznam ucpávek
+Na patře má být seznam čísel ucpávek. Kvůli rychlosti nemá být seznam zahlcen detaily. Doporučení je přidat malé barevné indikátory:
+
+| Indikátor | Význam |
+|---|---|
+| žlutá | Rozpracováno |
+| zelená | Zkontrolováno |
+| modrá | Fakturováno |
+| červená / varování | Konflikt nebo sync problém |
+
+## 7. Formulář ucpávky
+Jedna ucpávka má jedno číslo, jeden systém, společnou konstrukci, umístění, požární odolnost a společné fotky. Uvnitř může mít více prostupů.
+
+Hlavní data ucpávky:
+- číslo ucpávky, formát jen číslo
+- systém
+- konstrukce: Beton/Cihla nebo SDK/PUR
+- umístění: Stěna, Strop, Podlaha, Šachta
+- požární odolnost: 60 min, 90 min, 120 min
+- poznámka
+- fotky
+
+Prostup:
+- typ prostupu: EL.V., PVC, VZT, PROSTUP, OCEL
+- rozměr: předvolby + vlastní textové pole
+- počet kusů: celé číslo
+- izolace: žádná, hořlavá, nehořlavá
+- materiály: více materiálů
+
+## 8. UX formuláře
+Nepoužívat klasické dropdowny jako hlavní ovládání. Lepší jsou chipy nebo tlačítka přímo na obrazovce.
+
+Příklad systému:
+- Intuseal
+- Hilti
+- Fischer
+- Protecta
+- Dunamenti
+
+Po výběru systému se zobrazí materiály daného systému. Každá věc, která se vybírá, má mít 4 až 5 nejpoužívanějších hodnot a možnost vlastní hodnoty.
+
+Po uložení se nemá automaticky otevírat další ucpávka. Lepší je zobrazit potvrzení s volbou Přidat další nebo Zpět na seznam.
+
+## 9. Fotky
+Fotky jsou kritické, protože vedení kontroluje každou ucpávku a fotky slouží i jako důkaz pro zákazníka.
+
+Pravidla:
+- minimálně jedna hlavní fotka
+- možnost více fotek
+- fotky patří k celé ucpávce, ne k jednotlivým prostupům
+- worker nemůže již nahrané fotky mazat ani měnit
+- worker může kdykoliv přidat další fotku k rozpracované ucpávce
+- ukládat metadata: kdo a kdy fotku přidal
+- fotky zobrazovat až v detailu ucpávky
+
+Doporučení:
+- komprimovat fotky na rozumnou velikost
+- zachovat kvalitu pro kontrolu
+- podporovat JPG, JPEG, PNG, WEBP a podle možností HEIC
+- na serveru ukládat sjednoceně jako JPG nebo WEBP
+- do databáze neukládat binární data ani base64, pouze metadata a cestu
+
+## 10. Statusy
+Finální statusový tok:
+Rozpracováno -> Zkontrolováno -> Fakturováno
+
+Pravidla:
+- Worker po uložení vytváří rozpracovanou ucpávku.
+- Ucpávka je hotová až po kontrole vedením.
+- Vedení může nechat ucpávku rozpracovanou, pokud je potřeba něco dořešit.
+- Vedení může zkontrolovanou ucpávku vrátit zpět do rozpracováno.
+- Worker nedostává žádné notifikace ani diskuzní vlákno.
+- Každá změna statusu se loguje.
+
+## 11. Offline režim a synchronizace
+Offline režim je povinná funkce, protože pracovníci často pracují bez signálu.
+
+Princip:
+- lokální DB je zdroj pravdy pro zařízení
+- server je zdroj pravdy pro firmu
+- data se nejdříve ukládají lokálně
+- poté vznikne outbox mutace
+- aplikace zkusí automatický sync
+- pokud není signál, data zůstávají lokálně
+- po návratu online se data odešlou
+
+UI musí ukazovat:
+- online/offline stav
+- počet čekajících záznamů
+- počet čekajících fotek
+- velké tlačítko Synchronizovat
+
+## 12. Konflikty
+Konflikty se nesmí automaticky přepisovat.
+
+Řešit ve V1:
+- duplicitní číslo ucpávky na stejném patře a stavbě
+- offline editace entity, kterou mezitím změnil někdo jiný
+- pokus o editaci zamčené ucpávky
+- smazaná nebo archivovaná stavba
+
+Chování:
+- online duplicita se blokuje hned
+- offline duplicita se uloží lokálně, ale při syncu vznikne konflikt
+- konflikt vidí worker i vedení
+- vedení/admin ručně rozhodne
+
+## 13. Exporty a soupis prací
+Účetní potřebuje soupisy prací. Každá položka/prostup se může později oceňovat podle ceníku, ale v první verzi ceník ještě nebude.
+
+V1 obsahuje:
+- detailní soupis bez cen
+- export PDF
+- export CSV/Excel
+- možnost filtrování
+- možnost zvolit sloupce exportu
+
+Filtry:
+- zakázka
+- pracovník
+- období
+- status
+- patro
+- typ prostupu
+- materiál
+
+Později:
+- správa ceníku vedením/adminem
+- cena za kus
+- cena celkem
+
+## 14. Vyhledávání a statistiky
+Worker:
+- vyhledává pouze v otevřené zakázce
+- filtry: patro, číslo ucpávky
+
+Management/Admin:
+- globální vyhledávání přes stavby, patra, ucpávky, pracovníky, materiály a statusy
+
+Statistiky:
+- počet ucpávek za den
+- počet čekajících na kontrolu
+- počet zkontrolovaných
+- počet fakturovaných
+- výkon pracovníků
+- nejčastější typy prostupů
+
+## 15. Logování
+Logování je povinné.
+
+Logy:
+- login log
+- activity log
+- change log
+- status log
+- sync log
+- error log
+- admin log
+
+Auditní logy ukládat do databáze, technické chyby i do serverových logů.
+
+Logovat:
+- kdo provedl akci
+- kdy
+- na jaké entitě
+- původní hodnotu
+- novou hodnotu
+- metadata
+
+## 16. Archivace a mazání
+Nikdy nemazat tvrdě v první verzi.
+
+Zakázka se do archivu nepřesouvá sama. Archivaci provádí ručně vedení nebo admin.
+
+Smazané položky se pouze označí jako smazané:
+- deleted_at
+- deleted_by
+- delete_reason volitelně
+
+Admin má možnost obnovy.
+
+## 17. Doporučený technický stack
+Frontend:
+- Flutter
+- Riverpod
+- go_router
+- Drift SQLite
+- Dio
+- flutter_image_compress
+
+Backend:
+- Node.js
+- Express
+- PostgreSQL
+- Prisma
+- Zod validace
+- JWT/session tokeny
+- Multer nebo ekvivalent pro upload fotek
+- Pino logger
+
+Důvod pro PostgreSQL místo serverového SQLite:
+- více uživatelů
+- lepší indexy
+- lepší reporty
+- robustnější sync
+- lepší budoucí škálování
+
+## 18. Databázový model
+Hlavní tabulky:
+- users
+- user_sessions
+- jobs
+- job_floors
+- seals
+- seal_entries
+- seal_entry_materials
+- seal_photos
+- sync_mutations
+- activity_log
+- change_log
+- login_log
+- error_log
+
+Kritický unikátní index:
+job_id + floor_id + seal_number musí být unikátní mezi nesmazanými ucpávkami.
+
+## 19. API bloky
+Auth:
+- POST /api/auth/login
+- POST /api/auth/logout
+- GET /api/auth/me
+
+Jobs:
+- GET /api/jobs
+- GET /api/jobs/by-number/:projectNumber
+- POST /api/jobs
+- PATCH /api/jobs/:id/archive
+
+Floors:
+- GET /api/jobs/:jobId/floors
+- POST /api/jobs/:jobId/floors
+
+Seals:
+- GET /api/floors/:floorId/seals
+- GET /api/seals/:id
+- POST /api/seals
+- PATCH /api/seals/:id
+- PATCH /api/seals/:id/status
+- DELETE /api/seals/:id
+
+Sync:
+- POST /api/sync/push
+- GET /api/sync/pull
+
+Reports:
+- GET /api/reports/work-summary
+- GET /api/reports/export/pdf
+- GET /api/reports/export/csv
+
+## 20. MVP rozsah
+MVP V1 musí mít:
+- login jméno + PIN
+- role worker/management/admin
+- stavby přes 8místné číslo
+- patra
+- seznam čísel ucpávek
+- formulář ucpávky
+- více prostupů v ucpávce
+- více materiálů na prostup
+- fotky
+- offline ukládání
+- sync
+- konflikt čísla
+- statusy
+- soupis prací
+- CSV export
+- základní logy
+
+Nechat na později:
+- ceník
+- push notifikace
+- diskuze
+- QR kódy
+- tisk štítků
+- pokročilá statistika
+- editovatelný katalog
+- automatická fakturace
+
+## 21. Roadmapa implementace
+1. Repozitář a skeleton projektu
+2. PostgreSQL + Prisma schema
+3. Express backend setup
+4. Auth a role middleware
+5. Jobs API
+6. Floors API
+7. Seals CRUD
+8. Photos upload
+9. Basic logs
+10. Flutter skeleton
+11. Login UI
+12. Worker navigation
+13. Job number screen
+14. Floor list
+15. Seal list
+16. Seal form UI
+17. Lokální SQLite přes Drift
+18. Outbox queue
+19. Sync push/pull
+20. Conflict handling
+21. Reports
+22. Exports
+23. Management screens
+24. Admin recovery tools
+25. Testování a stabilizace
+
+## 22. Struktura tasků pro Cursor
+Cursoru nedávat jeden obří task. Používat malé přesné tasky.
+
+Správný formát tasku:
+- cíl
+- kontext
+- přesný rozsah
+- čeho se nesmí dotýkat
+- očekávaný výstup
+- testovací kroky
+
+Příklad:
+"Implementuj pouze Auth API v backendu. Nesahej na Flutter. Nepřidávej sync. Použij Prisma model User a UserSession. Přidej validaci přes Zod a testovací endpoint /api/auth/me."
+
+## 23. Rizika projektu
+Největší rizika:
+- offline sync
+- konflikty
+- fotky
+- špatný state management
+- příliš velké tasky v Cursoru
+- masivní refactory
+- chybějící testování
+
+Doporučení:
+- commit po každé malé změně
+- main branch držet stabilní
+- dev branch pro rozdělané věci
+- sync implementovat až po stabilním CRUD
+
+## 24. Testovací checklist
+Povinně otestovat:
+- worker online vytvoří ucpávku
+- worker offline vytvoří ucpávku
+- data přežijí restart aplikace
+- po návratu online proběhne sync
+- fotka se nahraje později po selhání
+- duplicitní číslo online je blokováno
+- duplicitní číslo offline vytvoří konflikt
+- zkontrolovanou ucpávku worker neupraví
+- vedení vrátí ucpávku na rozpracováno
+- fakturovaný záznam je zamčený
+- worker nevidí admin/export funkce
+- admin obnoví smazaný záznam
+- archivovaná stavba se workerovi nezobrazuje jako aktivní
+
+## 25. Doporučený první prompt do Cursoru
+Nezačínej implementací celé aplikace.
+
+První prompt má být pouze analytický:
+
+Analyzuj přiloženou projektovou dokumentaci. Nevytvářej zatím žádný kód. Navrhni detailní implementační plán po malých blocích pro backend, frontend, databázi, offline sync, fotky, reporty a testování. U každého bloku napiš závislosti, rizika a ověřovací kroky. Výstupem má být pouze plán, ne implementace.
