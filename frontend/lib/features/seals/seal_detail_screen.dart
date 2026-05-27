@@ -1,9 +1,110 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
+import '../../database/database.dart';
+import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
+
+/// Zda detail pochází z API nebo z lokální cache (offline detail).
+enum SealDetailDataSource { online, offline }
+
+/// Uloží detail ucpávky z API do Drift (sloupce + jsonPayload + metadata fotek).
+Future<void> cacheSealDetailFromApi(AppDatabase db, Map<String, dynamic> seal) async {
+  final id = seal['id'] as String;
+  final existing = await (db.select(db.localSeals)..where((s) => s.id.equals(id))).getSingleOrNull();
+
+  await db.into(db.localSeals).insertOnConflictUpdate(
+        LocalSealsCompanion.insert(
+          id: id,
+          jobId: seal['jobId'] as String,
+          floorId: seal['floorId'] as String,
+          sealNumber: seal['sealNumber'] as String,
+          system: seal['system'] as String,
+          construction: seal['construction'] as String,
+          location: seal['location'] as String,
+          fireRating: seal['fireRating'] as String,
+          note: Value(seal['note'] as String?),
+          status: Value(seal['status'] as String? ?? 'draft'),
+          version: Value(seal['version'] as int? ?? 1),
+          isSynced: Value(existing?.isSynced == false ? false : true),
+          syncConflict: Value(existing?.syncConflict ?? false),
+          jsonPayload: Value(jsonEncode(seal)),
+          updatedAt: DateTime.tryParse(seal['updatedAt'] as String? ?? '') ?? DateTime.now(),
+        ),
+      );
+
+  for (final p in (seal['photos'] as List? ?? [])) {
+    final m = p as Map<String, dynamic>;
+    final photoId = m['id'] as String;
+    final filePath = m['filePath'] as String;
+    await db.into(db.localPhotos).insertOnConflictUpdate(
+          LocalPhotosCompanion.insert(
+            id: photoId,
+            sealId: id,
+            localPath: filePath,
+            serverPath: Value(filePath),
+            status: const Value('done'),
+            createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ?? DateTime.now(),
+          ),
+        );
+  }
+}
+
+/// Sestaví mapu detailu pro UI z lokálního řádku a fotek (bez síťových volání).
+Map<String, dynamic>? sealDetailFromLocal(LocalSeal row, List<LocalPhoto> photos) {
+  Map<String, dynamic> seal;
+  if (row.jsonPayload != null && row.jsonPayload!.isNotEmpty) {
+    seal = Map<String, dynamic>.from(jsonDecode(row.jsonPayload!) as Map);
+  } else {
+    seal = {
+      'entries': <dynamic>[],
+      'photos': <dynamic>[],
+    };
+  }
+
+  seal['id'] = row.id;
+  seal['jobId'] = row.jobId;
+  seal['floorId'] = row.floorId;
+  seal['sealNumber'] = row.sealNumber;
+  seal['system'] = row.system;
+  seal['construction'] = row.construction;
+  seal['location'] = row.location;
+  seal['fireRating'] = row.fireRating;
+  seal['note'] = row.note;
+  seal['status'] = row.status;
+  seal['version'] = row.version;
+
+  final photoMaps = <Map<String, dynamic>>[];
+
+  for (final p in photos) {
+    if (p.status == 'pending' && p.localPath.isNotEmpty) {
+      photoMaps.add({
+        'id': p.id,
+        'localPath': p.localPath,
+        'filePath': p.serverPath,
+      });
+    } else if (p.serverPath != null && p.serverPath!.isNotEmpty) {
+      photoMaps.add({
+        'id': p.id,
+        'filePath': p.serverPath,
+        'localPath': p.localPath,
+      });
+    }
+  }
+
+  if (photoMaps.isNotEmpty) {
+    seal['photos'] = photoMaps;
+  }
+
+  return seal;
+}
 
 class SealDetailScreen extends ConsumerStatefulWidget {
   const SealDetailScreen({super.key, required this.sealId});
@@ -16,6 +117,8 @@ class SealDetailScreen extends ConsumerStatefulWidget {
 class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   Map<String, dynamic>? _seal;
   bool _loading = true;
+  SealDetailDataSource? _dataSource;
+  String? _offlineHint;
 
   @override
   void initState() {
@@ -24,33 +127,161 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   }
 
   Future<void> _load() async {
-    final res = await ref.read(dioProvider).get('/api/seals/${widget.sealId}');
     setState(() {
-      _seal = res.data as Map<String, dynamic>;
+      _loading = true;
+      _offlineHint = null;
+    });
+
+    final db = ref.read(databaseProvider);
+    final dio = ref.read(dioProvider);
+
+    try {
+      final res = await dio.get('/api/seals/${widget.sealId}');
+      final seal = Map<String, dynamic>.from(res.data as Map);
+      await cacheSealDetailFromApi(db, seal);
+      if (!mounted) return;
+      setState(() {
+        _seal = seal;
+        _dataSource = SealDetailDataSource.online;
+        _loading = false;
+      });
+    } on DioException catch (_) {
+      await _loadFromDrift(db);
+    } catch (_) {
+      await _loadFromDrift(db);
+    }
+  }
+
+  Future<void> _loadFromDrift(AppDatabase db) async {
+    final row = await (db.select(db.localSeals)..where((s) => s.id.equals(widget.sealId)))
+        .getSingleOrNull();
+
+    if (row == null) {
+      if (!mounted) return;
+      setState(() {
+        _seal = null;
+        _dataSource = SealDetailDataSource.offline;
+        _offlineHint =
+            'Server nedostupný a detail této ucpávky není v lokální cache. Nejprve otevřete ucpávku při připojení k síti.';
+        _loading = false;
+      });
+      return;
+    }
+
+    final photos = await (db.select(db.localPhotos)..where((p) => p.sealId.equals(widget.sealId))).get();
+    final seal = sealDetailFromLocal(row, photos);
+    final hasDetail = row.jsonPayload != null && row.jsonPayload!.isNotEmpty;
+
+    if (!mounted) return;
+    setState(() {
+      _seal = seal;
+      _dataSource = SealDetailDataSource.offline;
+      _offlineHint = hasDetail
+          ? null
+          : 'V cache je jen základ údajů; prostupy a fotky z API zde nejsou. Po připojení obnovte detail.';
       _loading = false;
     });
   }
 
   Future<void> _changeStatus(String status) async {
+    if (_dataSource == SealDetailDataSource.offline) return;
     await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {'status': status});
     await _load();
   }
 
+  Widget _photoTile(Map<String, dynamic> m) {
+    final localPath = m['localPath'] as String?;
+    if (localPath != null && localPath.isNotEmpty && File(localPath).existsSync()) {
+      return Image.file(File(localPath), height: 200, fit: BoxFit.cover);
+    }
+
+    final filePath = m['filePath'] as String?;
+    if (_dataSource == SealDetailDataSource.online && filePath != null) {
+      final url = '${AppConfig.apiBaseUrl}/uploads/$filePath';
+      return Image.network(
+        url,
+        height: 200,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 100),
+      );
+    }
+
+    return Container(
+      height: 120,
+      color: Colors.grey.shade200,
+      child: Center(
+        child: Text(
+          filePath != null ? 'Foto: $filePath\n(načtení vyžaduje síť)' : 'Lokální foto',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    if (_loading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
+    if (_seal == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Detail ucpávky')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              _offlineHint ?? 'Ucpávka nenalezena.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
+
     final seal = _seal!;
     final status = seal['status'] as String;
     final auth = ref.read(authServiceProvider);
+    final offline = _dataSource == SealDetailDataSource.offline;
 
     return Scaffold(
-      appBar: AppBar(title: Text('Ucpávka #${seal['sealNumber']}')),
+      appBar: AppBar(
+        title: Text('Ucpávka #${seal['sealNumber']}'),
+        actions: [
+          if (offline)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Chip(
+                avatar: Icon(Icons.cloud_off, size: 18),
+                label: Text('Offline data'),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (offline)
+            MaterialBanner(
+              content: Text(
+                _offlineHint ??
+                    'Zobrazena poslední uložená data z zařízení. Po připojení k serveru obnovte detail.',
+              ),
+              leading: const Icon(Icons.cloud_off),
+              actions: [
+                TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+              ],
+            ),
           Row(
             children: [
-              Container(width: 16, height: 16, decoration: BoxDecoration(color: AppTheme.statusColor(status), shape: BoxShape.circle)),
+              Container(
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(color: AppTheme.statusColor(status), shape: BoxShape.circle),
+              ),
               const SizedBox(width: 8),
               Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
             ],
@@ -63,25 +294,40 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
           const Divider(),
           const Text('Prostupy', style: TextStyle(fontWeight: FontWeight.bold)),
-          ...(seal['entries'] as List? ?? []).map((e) {
-            final m = e as Map<String, dynamic>;
-            return ListTile(
-              title: Text('${m['entryType']} – ${m['dimension']}'),
-              subtitle: Text('${m['quantity']} ks, ${m['insulation']}'),
-              trailing: Text((m['materials'] as List?)?.map((x) => (x as Map)['material']).join(', ') ?? ''),
-            );
-          }),
+          if ((seal['entries'] as List? ?? []).isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Žádné prostupy v cache.'),
+            )
+          else
+            ...(seal['entries'] as List).map((e) {
+              final m = e as Map<String, dynamic>;
+              final materials = m['materials'] as List?;
+              final matText = materials == null
+                  ? ''
+                  : materials.map((x) => x is Map ? x['material'] : x.toString()).join(', ');
+              return ListTile(
+                title: Text('${m['entryType']} – ${m['dimension']}'),
+                subtitle: Text('${m['quantity']} ks, ${m['insulation']}'),
+                trailing: Text(matText),
+              );
+            }),
           const Divider(),
           const Text('Fotky', style: TextStyle(fontWeight: FontWeight.bold)),
-          ...(seal['photos'] as List? ?? []).map((p) {
-            final m = p as Map<String, dynamic>;
-            final url = '${AppConfig.apiBaseUrl}/uploads/${m['filePath']}';
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Image.network(url, height: 200, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 100)),
-            );
-          }),
-          if (auth.isManagement) ...[
+          if ((seal['photos'] as List? ?? []).isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Žádné fotky v cache.'),
+            )
+          else
+            ...(seal['photos'] as List).map((p) {
+              final m = p as Map<String, dynamic>;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _photoTile(m),
+              );
+            }),
+          if (auth.isManagement && !offline) ...[
             const SizedBox(height: 16),
             if (status == 'draft')
               ElevatedButton(onPressed: () => _changeStatus('checked'), child: const Text('Zkontrolovat')),

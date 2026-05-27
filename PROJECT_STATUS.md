@@ -10,6 +10,7 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
 | `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** (vč. CSV/PDF export, role 403) |
 | `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
+| `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** (offline detail) |
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
@@ -85,7 +86,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
-| **Offline-first čtení** | Seznamy ucpávek/pater (FE-01, FE-02) mají Drift fallback; **detail ucpávky** stále jen API |
+| **Offline-first čtení** | Seznamy (FE-01/02) i **detail ucpávky** (offline Drift fallback) hotové |
 | **Sync konflikty** | Zobrazení a skrytí v UI hotové (FE-03); automatické slučení záměrně není |
 | **Admin obnova** | API `PATCH /seals/:id/restore` existuje; **ve Flutter UI není** |
 | **Retry sync** | V `SyncService` je `nextRetryAt`, ale **bez periodického scheduleru** dle docs (30s/2min/5min) |
@@ -159,7 +160,7 @@ flowchart LR
 | Backend – reports / export | `backend/__tests__/reports.integration.test.js` | work-summary filtry, CSV/PDF, role 403/200 (BE-05) |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
-| Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart` | Drift read, konflikty (6 testů) |
+| Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart`, `seal_detail_offline_test.dart` | Drift read, detail cache, konflikty (9 testů) |
 | Frontend – widget smoke | `frontend/test/login_home_smoke_test.dart` | login UI + E2E home (FE-07) |
 | Manuální checklist | `docs/04_TESTOVACI_CHECKLIST.md`, `docs/TESTING.md` | scénáře k ručnímu běhu |
 
@@ -189,7 +190,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Vysoká priorita (data / integrita)
 
 1. **Sync konflikty – UI** – zobrazení a skrytí upozornění hotové (FE-03); automatické slučení záměrně není.
-2. **Offline read path** – seznam ucpávek (FE-01) a patra (FE-02) hotové; detail ucpávky stále primárně API.
+2. **Offline read path** – seznamy (FE-01/02) i detail ucpávky (offline Drift fallback) hotové.
 
 ### Střední priorita (kvalita / provoz)
 
@@ -209,7 +210,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** offline detail ucpávky (`SealDetailScreen`) nebo **FE-06** (sync retry timer).
+**Doporučení:** **Admin restore UI** nebo **FE-06** (sync retry timer).
 
 **Hotovo od posledního auditu:**
 
@@ -225,10 +226,11 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **FE-04** – CSV download v `ReportsScreen` (filtry, uložení souboru, role guard)
 - **FE-05** – PDF download v `ReportsScreen` (stejné filtry a UX jako CSV)
 - **FE-07** – widget smoke login → home (`login_home_smoke_test.dart`)
+- **Offline detail** – `SealDetailScreen` Drift fallback + `seal_detail_offline_test.dart`
 
 **Až poté (vyšší dopad):**
 
-1. Offline detail ucpávky.
+1. Admin restore UI.
 2. FE-06 sync retry timer.
 
 ---
@@ -241,7 +243,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 |--------|------|
 | Auth + role (worker / management / admin) | API + UI menu + router guard na `/reports` |
 | Worker flow: stavba → patro → seznam → formulář | API + Drift cache |
-| Offline read: seznam ucpávek a patra | FE-01, FE-02 |
+| Offline read: seznam ucpávek, patra a detail | FE-01, FE-02, offline detail |
 | Sync push/pull, outbox, konflikty (zobrazení) | BE-04, FE-03 |
 | Seals: duplicita, statusy, worker edit lock | BE-03, DB-01 |
 | Management: stavby, soupis, **CSV/PDF export** | FE-04, FE-05, BE-05 |
@@ -252,8 +254,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Poznámka |
 |--------|----------|
-| Offline read: **detail ucpávky** | `SealDetailScreen` bez Drift fallbacku |
-| Sync retry timer | FE-06 – periodický push dle SYNC.md |
+| Offline read: **detail ucpávky** | hotové (offline detail) |
+| Sync retry timer | FE-06 |
 | Admin restore v UI | API existuje, obrazovka ne |
 | Widget/E2E smoke | FE-07 hotové |
 | Sync pull HTTP testy | BE-04 jen push |
@@ -267,9 +269,9 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **Offline detail** – `SealDetailScreen` Drift fallback | dokončí offline read path (vzor FE-01), bez změny API |
-| 2 | **Admin restore UI** | malý scope, existující `PATCH /seals/:id/restore` |
-| 3 | **FE-06** – sync retry timer | střední riziko; nesekvenčně s většími sync úpravami |
+| 1 | **Admin restore UI** | malý scope, existující `PATCH /seals/:id/restore` |
+| 2 | **FE-06** – sync retry timer | střední riziko; nesekvenčně s většími sync úpravami |
+| 3 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
 
 **Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
 
@@ -277,6 +279,6 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ## Shrnutí jednou větou
 
-**Report/export vlna a FE-07 widget smoke jsou hotové; další krok offline detail ucpávky nebo admin restore UI.**
+**Offline read path je kompletní (seznamy + detail); další krok admin restore UI nebo FE-06.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

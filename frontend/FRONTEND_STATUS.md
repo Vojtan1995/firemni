@@ -27,6 +27,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | Reports CSV/PDF export (FE-04, FE-05) | OK | management: Dio bytes → Downloads; filtry stavba/status; `soupis_praci_YYYY-MM-DD.{csv,pdf}` |
 | Zakázky / patra (API + offline) | OK | patra: API + Drift cache (FE-02); stavba přes číslo |
 | Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
+| Detail ucpávky (API + offline) | OK | cache `jsonPayload` + fotky; Drift fallback + banner/chip (offline detail) |
 | Spuštění Windows (debug) | OK | `flutter run -d windows --debug` |
 | Worker flow (kód + API) | OK | login → číslo stavby → patro → seznam ucpávek (vše přes Dio) |
 
@@ -47,7 +48,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 
 | Oblast | Stav |
 |--------|------|
-| Offline-first read path | částečně – seznam ucpávek (FE-01) a patra (FE-02); detail ucpávky stále API |
+| Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
 | Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
 | Fotky | upload při online save, retry fronta v `SyncService` |
@@ -80,7 +81,6 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 
 ## Co ještě není implementované / neověřené v UI
 
-- Offline read pro detail ucpávky (`SealDetailScreen`)
 - Automatické řešení konfliktů (záměrně mimo scope – pouze zobrazení)
 - Kompletní management workflow (kontrola statusů v terénním UX)
 - Push notifikace, diskuze, ceník (mimo V1 scope)
@@ -97,6 +97,7 @@ cd c:\Users\vojte\Desktop\unifast\frontend
 flutter pub get
 flutter test test/integration/runtime_verification_test.dart
 flutter test test/login_home_smoke_test.dart
+flutter test test/seal_detail_offline_test.dart
 flutter test test/seal_list_offline_test.dart
 flutter test test/floor_list_offline_test.dart
 flutter test test/sync_conflict_test.dart
@@ -133,8 +134,12 @@ flutter run -d windows --debug
 - **Strategie:** izolovaný `LoginScreen` bez sítě; E2E přes router + reálné `POST /api/auth/login` (backend `:3000`), sync v testu no-op override.
 - **Keys:** `login_username`, `login_pin`, `login_submit` – stabilní `find.byKey` v pump testu.
 
+### 7) Offline detail ucpávky – `SealDetailScreen`
+- **Oprava:** API first + `cacheSealDetailFromApi` (`jsonPayload`, entries, materiály, metadata fotek); offline čtení z Drift, chip/banner „Offline data“, hláška bez cache.
+- **Test:** `test/seal_detail_offline_test.dart` (3 testy).
+
 ## Další krok
 
-1. **Offline detail** – `SealDetailScreen` Drift fallback.  
-2. **Admin restore UI** – existující restore endpoint.  
-3. **FE-06** – sync retry timer.
+1. **Admin restore UI** – existující restore endpoint.  
+2. **FE-06** – sync retry timer.  
+3. **DOC-01** – CI pipeline.
