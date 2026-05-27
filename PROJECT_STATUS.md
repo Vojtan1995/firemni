@@ -143,6 +143,7 @@ flowchart LR
 | Backend – smoke API | `backend/__tests__/api.smoke.integration.test.js` | health, login, jobs, floors (BE-01) |
 | Backend – auth/role | `backend/__tests__/auth.roles.integration.test.js` | 401/403, management/admin, deaktivace (BE-02) |
 | Backend – DB duplicita | `backend/__tests__/seals.duplicate.integration.test.js` | partial unique index (DB-01) |
+| Backend – seals HTTP | `backend/__tests__/seals.http.integration.test.js` | duplicita 409, statusy, editace worker (BE-03) |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, Drift+outbox |
 | Frontend – placeholder | `frontend/test/widget_test.dart` | trivial pass |
@@ -161,8 +162,6 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Riziko |
 |--------|--------|
-| Seals duplicita přes HTTP (409 z API) | BE-03 |
-| Seals status přechody přes API | BE-03 |
 | Sync push idempotence + konflikt verze | největší technické riziko projektu |
 | Photos upload + permissions | worker vs management |
 | Reports PDF/CSV | exporty |
@@ -181,7 +180,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ### Střední priorita (kvalita / provoz)
 
-4. **Backend testy** – BE-01/BE-02/DB-01 integrace hotové; `seal.service.test.js` stále netestuje importovaný service modul; BE-03+ chybí.
+4. **Backend testy** – BE-01 až BE-03 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul; BE-04+ chybí.
 5. **Reports CSV** – nestažitelné z UI (jen URL v SnackBar).
 6. **Sync retry intervaly** – dokumentováno v SYNC.md, v kódu chybí centrální timer (jen manuální sync + login sync).
 7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
@@ -198,12 +197,13 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **FE-01** (offline read seznamu ucpávek z Drift) nebo **BE-03** (seals 409/status přes HTTP).
+**Doporučení:** **FE-01** (offline read seznamu ucpávek z Drift) nebo **BE-04** (sync push testy).
 
 **Hotovo od posledního auditu:**
 
 - **BE-01** – smoke supertest (`ucpavky_test`)
 - **BE-02** – auth/role integrační testy (401, 403, `isActive`)
+- **BE-03** – seals HTTP (409 duplicita, statusy, worker edit lock)
 - **DB-01** – partial unique index `seals_active_number_unique` + integrační test duplicity
 
 **Až poté (vyšší dopad):**
@@ -253,4 +253,4 @@ Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.in
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend + PostgreSQL runtime, smoke testy API, auth/role testy a DB constraint pro číslo ucpávky; chybí hlavně plný offline read a UI pro sync konflikty – další krok FE-01 nebo BE-03.**
+**Projekt má funkční backend + PostgreSQL runtime a pokrytí testy (smoke, auth, seals HTTP, DB index); chybí hlavně plný offline read a UI pro sync konflikty – další krok FE-01 nebo BE-04.**
