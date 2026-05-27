@@ -1,7 +1,16 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-27**  
-Kontext: po ověření **lokálního PostgreSQL (bez Dockeru)** + **backend runtime** + **Flutter integrace proti `http://localhost:3000`**.
+Datum auditu: **2026-05-27** (kontrolní audit po vlně report/export: BE-05, FE-04, FE-05)  
+Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`.
+
+### Ověření testů (2026-05-27)
+
+| Příkaz | Výsledek |
+|--------|----------|
+| `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
+| `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** (vč. CSV/PDF export, role 403) |
+| `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
+| `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 Související dokumenty: [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
 
@@ -13,6 +22,9 @@ Git historie (hlavní milníky):
 | `cb0cd69` | RUNNING + KNOWN_ISSUES |
 | `4d98816` | Lokální PostgreSQL runtime docs + SQL setup |
 | `73fe5a7` | Frontend integrace, Windows debug, integrační testy |
+| `16eac10` | BE-05 reports/export integrační testy |
+| `ebb5fe9` | FE-04 CSV download v ReportsScreen |
+| `7804bb6` | FE-05 PDF download v ReportsScreen |
 
 ---
 
@@ -27,7 +39,7 @@ Git historie (hlavní milníky):
 | Auth login | OK | `worker1/1234` → token + role |
 | Prisma schema ↔ DB | OK | „Database schema is up to date“ |
 | Flutter Windows debug | OK | `flutter run -d windows --debug` |
-| Flutter integrační testy API | OK | 6/6 v `runtime_verification_test.dart` |
+| Flutter integrační testy API | OK | 10/10 v `runtime_verification_test.dart` (+ 6 offline/sync unit testů) |
 
 ### Backend API (implementováno + ověřitelné přes HTTP)
 
@@ -72,8 +84,8 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
-| **Offline-first čtení** | Seznamy ucpávek/pater čtou primárně z API; při výpadku sítě UI nepadá na Drift |
-| **Sync konflikty** | Backend + outbox `conflict` stav; **chybí obrazovka řešení** pro worker/management |
+| **Offline-first čtení** | Seznamy ucpávek/pater (FE-01, FE-02) mají Drift fallback; **detail ucpávky** stále jen API |
+| **Sync konflikty** | Zobrazení a skrytí v UI hotové (FE-03); automatické slučení záměrně není |
 | **Admin obnova** | API `PATCH /seals/:id/restore` existuje; **ve Flutter UI není** |
 | **Retry sync** | V `SyncService` je `nextRetryAt`, ale **bez periodického scheduleru** dle docs (30s/2min/5min) |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
@@ -145,7 +157,8 @@ flowchart LR
 | Backend – sync push | `backend/__tests__/sync.push.integration.test.js` | idempotence, create, konflikty (BE-04) |
 | Backend – reports / export | `backend/__tests__/reports.integration.test.js` | work-summary filtry, CSV/PDF, role 403/200 (BE-05) |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
-| Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, Drift+outbox |
+| Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
+| Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart` | Drift read, konflikty (6 testů) |
 | Frontend – placeholder | `frontend/test/widget_test.dart` | trivial pass |
 | Manuální checklist | `docs/04_TESTOVACI_CHECKLIST.md`, `docs/TESTING.md` | scénáře k ručnímu běhu |
 
@@ -162,9 +175,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Riziko |
 |--------|--------|
-| Sync pull E2E + verze konflikt přes HTTP | BE-04 push hotové; pull bez dedikovaných testů |
+| Sync pull E2E + verze konflikt přes HTTP | BE-04 push hotové; pull bez dedikovaných HTTP testů |
 | Photos upload + permissions | worker vs management |
-| Reports PDF/CSV | exporty |
 | Flutter widget testy (login → seznam) | UI regrese |
 | Offline scénář E2E | hlavní hodnota V1 |
 | Android build v aktuálním auditu | dříve APK prošlo, nyní neověřeno |
@@ -188,7 +200,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Nízká priorita
 
 9. Prisma `package.json#prisma` seed deprecation warning.
-10. `flutter analyze` – 1× info `prefer_const_constructors`.
+10. `flutter analyze` – 2× info `deprecated_member_use` (`DropdownButtonFormField.value` v `reports_screen.dart`).
 11. Docker volitelný – na dev PC nepoužívaný (OK dle rozhodnutí).
 12. Chybí `.env` v gitignore ok – je; `backend/.env` lokálně necommitovat.
 
@@ -219,46 +231,49 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ---
 
-## 9. Tři navržené malé tasky (pořadí podle rizika)
+## 9. MVP – hotové vs. zbývá
 
-Kompletní fronta, paralelizace a pravidla pro agenty: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)** (task ID **BE-01**, **DB-01**, **FE-01** …).
+### Hotové (V1 jádro)
 
-### Task A – Backend smoke testy → **BE-01** (hotovo)
+| Oblast | Stav |
+|--------|------|
+| Auth + role (worker / management / admin) | API + UI menu + router guard na `/reports` |
+| Worker flow: stavba → patro → seznam → formulář | API + Drift cache |
+| Offline read: seznam ucpávek a patra | FE-01, FE-02 |
+| Sync push/pull, outbox, konflikty (zobrazení) | BE-04, FE-03 |
+| Seals: duplicita, statusy, worker edit lock | BE-03, DB-01 |
+| Management: stavby, soupis, **CSV/PDF export** | FE-04, FE-05, BE-05 |
+| Backend regrese | BE-01–05, DB-01 (48 Jest testů) |
 
-**Cíl:** `supertest` proti `createApp()` s test DB: health, login, job by-number, floors, seals list.
+### Zbývá pro MVP / provoz
 
-**Rozsah:** pouze `backend/__tests__/`, případně `jest.setup` s test `DATABASE_URL`.
+| Oblast | Poznámka |
+|--------|----------|
+| Offline read: **detail ucpávky** | `SealDetailScreen` bez Drift fallbacku |
+| Sync retry timer | FE-06 – periodický push dle SYNC.md |
+| Admin restore v UI | API existuje, obrazovka ne |
+| Widget/E2E smoke | FE-07 |
+| Sync pull HTTP testy | BE-04 jen push |
+| CI/CD, Windows Release, Android re-verify | DOC-01, PLAT-01, PLAT-02 |
 
-**Nesahej na:** Flutter, sync algoritmus, schema změny.
-
-**Ověření:** `npm test` zelené; selhání login bez seed → jasný fail.
-
-**Riziko:** nízké | **Přínos:** vysoký (regrese)
+Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ---
 
-### Task B – Partial unique index → **DB-01** (hotovo)
+## 10. Tři nejbezpečnější další tasky
 
-Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.integration.test.js`.
+| # | Task | Proč |
+|---|------|------|
+| 1 | **FE-07** – widget smoke (login → home) | nejnižší riziko, jen `frontend/test/`, žádná business logika |
+| 2 | **Offline detail** – `SealDetailScreen` Drift fallback | dokončí offline read path (vzor FE-01), bez změny API |
+| 3 | **Admin restore UI** (orchestrace: FE-05 v docs = restore; v gitu PDF = `7804bb6`) | malý scope, existující `PATCH /seals/:id/restore` |
 
----
-
-### Task C – Offline fallback seznamu ucpávek (střední riziko) → **FE-01**
-
-**Cíl:** `SealListScreen` (případně `FloorListScreen`) – při síťové chybě načíst data z Drift místo prázdné chyby.
-
-**Rozsah:** 1–2 soubory ve `frontend/lib/features/`, bez refaktoru sync service.
-
-**Nesahej na:** nové API, konfliktní UI, reports.
-
-**Ověření:** vypnout síť → otevřít dříve načtenou stavbu → seznam čísel viditelný; online stále API first.
-
-**Riziko:** střední (UX edge cases) | **Přínos:** přímá hodnota pro workery v terénu
+**Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
 
 ---
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend i management CSV/PDF export v UI (FE-04, FE-05); další krok offline detail ucpávky nebo FE-06.**
+**Report/export vlna je hotová (BE-05 + FE-04 + FE-05); testy zelené; další nejbezpečnější krok je FE-07 nebo offline detail ucpávky.**
 
-**Poznámka BE-05 (reports role):** `/api/reports/*` vyžaduje roli management/admin (`403` pro worker). Worker-scoped report není v API – odpovídá aktuální implementaci, ne mezera k opravě.
+**Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

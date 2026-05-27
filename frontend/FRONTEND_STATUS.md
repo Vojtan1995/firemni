@@ -1,8 +1,14 @@
 # FRONTEND_STATUS.md – stav Flutter integrace (2026-05-27)
 
-Ověřeno proti běžícímu backendu na `http://localhost:3000` (lokální PostgreSQL bez Dockeru).
+Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na `http://localhost:3000`.
 
-Automatický test: `flutter test test/integration/runtime_verification_test.dart` → **10/10 passed**.
+### Ověření testů (2026-05-27)
+
+| Příkaz | Výsledek |
+|--------|----------|
+| `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** |
+| `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
+| `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 ---
 
@@ -10,8 +16,9 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Stav | Poznámka |
 |--------|------|----------|
-| `flutter analyze` | OK | 1× info (`prefer_const_constructors`) |
-| Integrační testy API | OK | health, login, job by-number, floors, seals |
+| `flutter analyze` | OK | 2× info (`deprecated_member_use` v reports dropdownech) |
+| Integrační testy API | OK | health, login, job, floors, seals, reports CSV/PDF, worker 403 |
+| Offline/sync unit testy | OK | seal list, floor list, sync conflict (6 testů) |
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
@@ -115,3 +122,11 @@ flutter run -d windows --debug
 ### 5) Login obrazovka overflow na Windows
 - **Problém:** `Column` + `Spacer` přetékala layout (`RenderFlex overflow`).
 - **Oprava:** `SingleChildScrollView`, odstraněn `Spacer`, upřesněný text tlačítka.
+
+---
+
+## Další krok (po report/export)
+
+1. **FE-07** – widget smoke login → home (nejnižší riziko).  
+2. **Offline detail** – `SealDetailScreen` Drift fallback (dokončení offline read).  
+3. **Admin restore UI** – volání existujícího restore endpointu.
