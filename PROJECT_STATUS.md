@@ -79,7 +79,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 | **Retry sync** | V `SyncService` je `nextRetryAt`, ale **bez periodického scheduleru** dle docs (30s/2min/5min) |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
 | **CI/CD** | Žádný pipeline v repu |
-| **Backend integrační testy** | Jen 2 unit „logiky“ v Jest, žádný supertest proti Express |
+| **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
 | **Widget / E2E testy** | Placeholder testy, žádný pump_widget flow |
 
 ---
@@ -145,6 +145,7 @@ flowchart LR
 | Backend – DB duplicita | `backend/__tests__/seals.duplicate.integration.test.js` | partial unique index (DB-01) |
 | Backend – seals HTTP | `backend/__tests__/seals.http.integration.test.js` | duplicita 409, statusy, editace worker (BE-03) |
 | Backend – sync push | `backend/__tests__/sync.push.integration.test.js` | idempotence, create, konflikty (BE-04) |
+| Backend – reports / export | `backend/__tests__/reports.integration.test.js` | work-summary filtry, CSV/PDF, role 403/200 (BE-05) |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, Drift+outbox |
 | Frontend – placeholder | `frontend/test/widget_test.dart` | trivial pass |
@@ -181,7 +182,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ### Střední priorita (kvalita / provoz)
 
-4. **Backend testy** – BE-01 až BE-04 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul; BE-05+ chybí.
+4. **Backend testy** – BE-01 až BE-05 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul.
 5. **Reports CSV** – nestažitelné z UI (jen URL v SnackBar).
 6. **Sync retry intervaly** – dokumentováno v SYNC.md, v kódu chybí centrální timer (jen manuální sync + login sync).
 7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
@@ -198,7 +199,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **BE-05** (reports smoke) nebo **FE-04** (CSV download).
+**Doporučení:** **FE-04** (CSV download v management UI).
 
 **Hotovo od posledního auditu:**
 
@@ -210,6 +211,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **FE-02** – `FloorListScreen` offline fallback z Drift + indikátor
 - **BE-04** – `POST /api/sync/push` integrační testy
 - **FE-03** – SyncScreen konflikty + indikátor v seznamu ucpávek
+- **BE-05** – integrační testy `GET /api/reports/work-summary`, export CSV/PDF, filtry a role
 
 **Až poté (vyšší dopad):**
 
@@ -258,4 +260,6 @@ Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.in
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend včetně sync push testů a Flutter worker flow s offline cache a zobrazením sync konfliktů; další krok BE-05 nebo FE-04.**
+**Projekt má funkční backend včetně sync push a reports export testů (48 Jest testů); další krok FE-04 (CSV download v UI).**
+
+**Poznámka BE-05 (reports role):** `/api/reports/*` vyžaduje roli management/admin (`403` pro worker). Worker-scoped report není v API – odpovídá aktuální implementaci, ne mezera k opravě.
