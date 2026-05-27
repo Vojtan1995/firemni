@@ -2,7 +2,7 @@
 
 Ověřeno proti běžícímu backendu na `http://localhost:3000` (lokální PostgreSQL bez Dockeru).
 
-Automatický test: `flutter test test/integration/runtime_verification_test.dart` → **6/6 passed**.
+Automatický test: `flutter test test/integration/runtime_verification_test.dart` → **8/8 passed**.
 
 ---
 
@@ -15,6 +15,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
+| Reports CSV export (FE-04) | OK | management: stažení přes Dio + uložení do Downloads; filtry stavba/status |
 | Zakázky / patra (API + offline) | OK | patra: API + Drift cache (FE-02); stavba přes číslo |
 | Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
 | Spuštění Windows (debug) | OK | `flutter run -d windows --debug` |
@@ -41,7 +42,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
 | Fotky | upload při online save, retry fronta v `SyncService` |
-| Management export CSV | tlačítko ukazuje URL, bez plného download flow v UI |
+| PDF export z UI | backend endpoint existuje, v mobilním UI zatím není |
 | Windows release build | `flutter build windows` (Release) může selhat na INSTALL kroku |
 
 ---
@@ -65,7 +66,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 - Seals: `/api/seals/floors/:floorId/seals`, `/api/seals/:id`, `POST /api/seals`
 - Photos: `POST /api/seals/:id/photos`
 - Sync: `/api/sync/push`, `/api/sync/pull`
-- Management: `/api/jobs`, `/api/reports/work-summary`, `/api/logs/activity`
+- Management: `/api/jobs`, `/api/reports/work-summary`, `/api/reports/export/csv`, `/api/logs/activity`
 
 ---
 
@@ -74,7 +75,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 - Offline read pro detail ucpávky (`SealDetailScreen`)
 - Automatické řešení konfliktů (záměrně mimo scope – pouze zobrazení)
 - Kompletní management workflow (kontrola statusů v terénním UX)
-- PDF export z mobilního UI
+- PDF export z UI (CSV hotové v FE-04)
 - Push notifikace, diskuze, ceník (mimo V1 scope)
 - Android build v tomto kole neověřován (dříve APK build prošel)
 - Web/Chrome target – **nefunguje** kvůli `drift`/SQLite FFI (očekávané)
@@ -106,6 +107,10 @@ flutter run -d windows --debug
 - **Problém:** `flutter test` s default bindingem blokuje reálnou síť.
 - **Oprava:** `IntegrationTestWidgetsFlutterBinding` + `dart:io` HttpClient v testu.
 
-### 3) Login obrazovka overflow na Windows
+### 3) FE-04 – CSV export v ReportsScreen
+- **Problém:** tlačítko Export CSV jen zobrazovalo URL bez auth.
+- **Oprava:** `GET /api/reports/export/csv` přes Dio (bytes), uložení `soupis_praci_YYYY-MM-DD.csv` do Downloads, filtry stavba/status, SnackBar úspěch/chyba, router redirect worker → `/`.
+
+### 4) Login obrazovka overflow na Windows
 - **Problém:** `Column` + `Spacer` přetékala layout (`RenderFlex overflow`).
 - **Oprava:** `SingleChildScrollView`, odstraněn `Spacer`, upřesněný text tlačítka.

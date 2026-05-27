@@ -24,6 +24,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       final onLogin = state.matchedLocation == '/login';
       if (!loggedIn && !onLogin) return '/login';
       if (loggedIn && onLogin) return '/';
+      if (loggedIn) {
+        final role = authUser['role'] as String?;
+        final isManagement = role == 'management' || role == 'admin';
+        if (!isManagement && state.matchedLocation == '/reports') {
+          return '/';
+        }
+      }
       return null;
     },
     routes: [

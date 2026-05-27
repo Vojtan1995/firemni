@@ -74,7 +74,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 |--------|---------------------|
 | **Offline-first čtení** | Seznamy ucpávek/pater čtou primárně z API; při výpadku sítě UI nepadá na Drift |
 | **Sync konflikty** | Backend + outbox `conflict` stav; **chybí obrazovka řešení** pro worker/management |
-| **Export CSV v UI** | `ReportsScreen` jen SnackBar s URL, bez stažení souboru s auth headerem |
+| **Export PDF v UI** | backend endpoint existuje; Flutter UI zatím nemá PDF download |
 | **Admin obnova** | API `PATCH /seals/:id/restore` existuje; **ve Flutter UI není** |
 | **Retry sync** | V `SyncService` je `nextRetryAt`, ale **bez periodického scheduleru** dle docs (30s/2min/5min) |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
@@ -93,7 +93,6 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 | `frontend/test/widget_test.dart` | Placeholder | stejné |
 | `AppDatabase.forTesting()` | Test-only | in-memory Drift pro testy |
 | Hint na loginu „Seed: worker1 / 1234“ | Dev UX | `LoginScreen` |
-| `ReportsScreen` „Export CSV“ | Placeholder UX | ukáže URL, nestáhne soubor |
 | `docker-compose.yml` | Volitelná alternativa | na tomto PC se nepoužívá |
 
 ---
@@ -183,7 +182,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Střední priorita (kvalita / provoz)
 
 4. **Backend testy** – BE-01 až BE-05 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul.
-5. **Reports CSV** – nestažitelné z UI (jen URL v SnackBar).
+5. **Reports PDF** – nestažitelné z Flutter UI (CSV hotové – FE-04).
 6. **Sync retry intervaly** – dokumentováno v SYNC.md, v kódu chybí centrální timer (jen manuální sync + login sync).
 7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
 8. **Web target** – Drift/SQLite FFI na Chrome nefunguje (očekávané).
@@ -199,7 +198,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **FE-04** (CSV download v management UI).
+**Doporučení:** **FE-05** (PDF download v management UI) nebo offline detail ucpávky.
 
 **Hotovo od posledního auditu:**
 
@@ -212,11 +211,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **BE-04** – `POST /api/sync/push` integrační testy
 - **FE-03** – SyncScreen konflikty + indikátor v seznamu ucpávek
 - **BE-05** – integrační testy `GET /api/reports/work-summary`, export CSV/PDF, filtry a role
+- **FE-04** – CSV download v `ReportsScreen` (filtry, uložení souboru, role guard)
 
 **Až poté (vyšší dopad):**
 
 1. Offline detail ucpávky.
-2. FE-04 CSV download v management UI.
+2. FE-05 PDF download v management UI.
 
 ---
 
@@ -260,6 +260,6 @@ Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.in
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend včetně sync push a reports export testů (48 Jest testů); další krok FE-04 (CSV download v UI).**
+**Projekt má funkční backend i management CSV export v UI (FE-04); další krok FE-05 (PDF) nebo offline detail ucpávky.**
 
 **Poznámka BE-05 (reports role):** `/api/reports/*` vyžaduje roli management/admin (`403` pro worker). Worker-scoped report není v API – odpovídá aktuální implementaci, ne mezera k opravě.

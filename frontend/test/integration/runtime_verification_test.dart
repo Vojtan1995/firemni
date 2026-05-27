@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:drift/drift.dart' hide isNotNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:ucpavky/database/database.dart';
@@ -105,6 +104,59 @@ void main() {
         'Authorization': 'Bearer $token',
       });
       expect(seals, isA<List>());
+    });
+
+    test('management can download reports CSV export', () async {
+      final data = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'vedeni',
+        'pin': '1234',
+      });
+      final mgmtToken = data['token'] as String;
+      expect((data['user'] as Map)['role'], 'management');
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/reports/export/csv');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $mgmtToken');
+        final res = await req.close();
+        final bytes = await res.fold<List<int>>(
+          <int>[],
+          (prev, chunk) => prev..addAll(chunk),
+        );
+        expect(res.statusCode, 200);
+        expect(bytes, isNotEmpty);
+        final hasUtf8Bom = bytes.length >= 3 &&
+            bytes[0] == 0xEF &&
+            bytes[1] == 0xBB &&
+            bytes[2] == 0xBF;
+        expect(hasUtf8Bom, isTrue);
+        final text = utf8.decode(bytes);
+        expect(text, contains('Stavba'));
+      } finally {
+        client.close();
+      }
+    });
+
+    test('worker cannot access reports CSV export', () async {
+      final login = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'worker1',
+        'pin': '1234',
+      });
+      final workerToken = login['token'] as String;
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/reports/export/csv');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $workerToken');
+        final res = await req.close();
+        final text = await res.transform(utf8.decoder).join();
+        expect(res.statusCode, 403);
+        expect(text, contains('FORBIDDEN'));
+      } finally {
+        client.close();
+      }
     });
 
     test('Drift SQLite initializes and outbox queue works', () async {
