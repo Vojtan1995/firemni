@@ -34,7 +34,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -64,9 +64,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               const SizedBox(height: 24),
               ElevatedButton(
                 onPressed: _loading ? null : _login,
-                child: _loading ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Přihlásit'),
+                child: _loading
+                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Přihlásit', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
               ),
-              const Spacer(),
+              const SizedBox(height: 32),
               Text('Seed: worker1 / 1234', style: Theme.of(context).textTheme.bodySmall),
             ],
           ),

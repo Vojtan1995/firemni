@@ -84,6 +84,9 @@ class SyncCursor extends Table {
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
+  /// In-memory DB pro testy / ověření bez path_provider.
+  AppDatabase.forTesting() : super(NativeDatabase.memory());
+
   @override
   int get schemaVersion => 1;
 }
