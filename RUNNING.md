@@ -1,183 +1,198 @@
 # RUNNING.md – Lokální spuštění Ucpávky V1
 
-Tento návod předpokládá, že máte:
-- nainstalovaný **Node.js** (18+),
-- nainstalovaný **Flutter** (ověřeno `flutter --version`),
-- nainstalovaný **PostgreSQL** (lokálně nebo přes Docker Desktop).
+Tento návod předpokládá:
+- **Node.js** 18+,
+- **PostgreSQL nainstalovaný přímo ve Windows** (doporučená varianta),
+- volitelně Flutter pro klienta.
 
-## 1. Databáze PostgreSQL
+> **Docker není potřeba.** `docker-compose.yml` zůstává v repozitáři jen jako volitelná alternativa.
 
-### 1.1 Varianta A – ruční PostgreSQL (bez Dockeru)
+---
 
-1. Spusťte PostgreSQL lokálně na `localhost:5432`.
-2. Vytvořte databázi:
+## 1. PostgreSQL ve Windows (bez Dockeru)
 
-```sql
-CREATE DATABASE ucpavky;
+### 1.1 Instalace PostgreSQL
+
+1. Stáhněte instalátor z [https://www.postgresql.org/download/windows/](https://www.postgresql.org/download/windows/) (EDB installer).
+2. Při instalaci:
+   - port: **5432** (výchozí),
+   - zapněte **pgAdmin 4** (volitelné, ale užitečné),
+   - zapamatujte si heslo superuživatele `postgres`.
+3. Po instalaci ověřte službu ve Windows:
+   - `Win + R` → `services.msc`
+   - služba typu `postgresql-x64-16` (číslo verze se může lišit) musí být **Running**.
+
+### 1.2 Vytvoření uživatele a databáze `ucpavky`
+
+#### Varianta A – SQL skript (doporučeno)
+
+Soubor: [`docs/setup-local-postgres.sql`](docs/setup-local-postgres.sql)
+
+**pgAdmin:**
+1. Otevřete pgAdmin → připojení k lokálnímu serveru.
+2. Query Tool → vložte obsah `docs/setup-local-postgres.sql` → Execute.
+
+**psql (PowerShell):**
+
+```powershell
+# Upravte cestu podle vaší verze PostgreSQL, např. 16:
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U postgres -f "c:\Users\vojte\Desktop\unifast\docs\setup-local-postgres.sql"
 ```
 
-3. Ujistěte se, že přihlašovací údaje odpovídají `backend/.env`:
+#### Varianta B – ruční SQL příkazy
 
-```bash
+Připojte se jako `postgres` a spusťte:
+
+```sql
+CREATE ROLE ucpavky WITH LOGIN PASSWORD 'ucpavky_dev';
+CREATE DATABASE ucpavky OWNER ucpavky;
+GRANT ALL PRIVILEGES ON DATABASE ucpavky TO ucpavky;
+```
+
+#### Varianta C – vlastní postgres účet
+
+Pokud nechcete vytvářet roli `ucpavky`, stačí databáze a upravit `DATABASE_URL`, např.:
+
+```env
+DATABASE_URL=postgresql://postgres:VASE_HESLO@localhost:5432/ucpavky
+```
+
+### 1.3 Ověření, že DB běží
+
+```powershell
+Test-NetConnection -ComputerName localhost -Port 5432
+```
+
+`TcpTestSucceeded` musí být `True`.
+
+Volitelně:
+
+```powershell
+& "C:\Program Files\PostgreSQL\16\bin\psql.exe" -U ucpavky -d ucpavky -h localhost -p 5432 -c "SELECT 1;"
+```
+
+---
+
+## 2. Backend konfigurace (`.env`)
+
+### 2.1 Vytvoření `backend/.env`
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast\backend
+copy ..\.env.example .env
+```
+
+### 2.2 Kontrola `DATABASE_URL`
+
+Výchozí hodnota v `.env.example`:
+
+```env
 DATABASE_URL=postgresql://ucpavky:ucpavky_dev@localhost:5432/ucpavky
 ```
 
-Buď vytvořte uživatele `ucpavky` s heslem `ucpavky_dev`, nebo upravte `DATABASE_URL` na vaše vlastní jméno a heslo.
+Musí odpovídat vašemu lokálnímu PostgreSQL (uživatel, heslo, host, port, název DB).
 
-### 1.2 Varianta B – Docker Compose (pokud máte Docker)
+---
 
-> Na tomto stroji zatím Docker není v PATH (`docker` příkaz selhal). Pokud Docker používáte, stačí:
-
-```bash
-cd c:\Users\vojte\Desktop\unifast
-docker compose up -d
-```
-
-To spustí PostgreSQL s uživatelem `ucpavky/ucpavky_dev` a DB `ucpavky` podle `docker-compose.yml`.
-
-## 2. Backend (Node.js / Express)
+## 3. Backend – migrace, seed, runtime
 
 Adresář: `c:\Users\vojte\Desktop\unifast\backend`
 
-### 2.1 Instalace závislostí
+### 3.1 Instalace závislostí
 
-```bash
+```powershell
 cd c:\Users\vojte\Desktop\unifast\backend
 npm install
 ```
 
-### 2.2 Migrace databáze (Prisma)
+### 3.2 Prisma migrace
 
-> Vyžaduje běžící PostgreSQL dle kroku 1.
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\backend
+```powershell
 npx prisma migrate deploy
 ```
 
-### 2.3 Seed databáze
+Očekávaný výstup: migrace `20250527000000_init` aplikována bez chyby.
 
-> Vyžaduje úspěšné migrace.
+### 3.3 Seed dat
 
-```bash
-cd c:\Users\vojte\Desktop\unifast\backend
+```powershell
 npx prisma db seed
 ```
 
+Očekávaný výstup: `Seed OK` s testovací stavbou.
+
 Seed vytvoří:
-- uživatele: `admin`, `vedeni`, `worker1`, `worker2` (PIN `1234`),
-- testovací stavbu `12345678` se dvěma patry.
+| Uživatel | PIN | Role |
+|----------|-----|------|
+| admin | 1234 | admin |
+| vedeni | 1234 | management |
+| worker1 | 1234 | worker |
+| worker2 | 1234 | worker |
 
-### 2.4 Spuštění backendu
+Testovací stavba: **12345678** (2 patra).
 
-```bash
-cd c:\Users\vojte\Desktop\unifast\backend
+### 3.4 Spuštění backendu
+
+```powershell
 npm run dev
 ```
 
-Server běží na:
+Server: `http://localhost:3000`
 
-```text
-http://localhost:3000
+### 3.5 Ověření `/health`
+
+```powershell
+Invoke-WebRequest -UseBasicParsing http://localhost:3000/health
 ```
 
-Zdravotní endpoint:
+Očekáváno: HTTP 200, tělo obsahuje `"status":"ok"`.
 
-```bash
-curl http://localhost:3000/health
+### 3.6 Ověření login endpointu
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Method POST `
+  -Uri http://localhost:3000/api/auth/login `
+  -ContentType "application/json" `
+  -Body '{"username":"worker1","pin":"1234"}'
 ```
 
-Očekávaná odpověď: `{"status":"ok", ... }`.
+Očekáváno: HTTP 200, JSON s `token` a `user.role = worker`.  
+**Nesmí** se objevit Prisma `P1001`.
 
-### 2.5 Rychlý test loginu
+---
 
-```bash
-curl -X POST http://localhost:3000/api/auth/login ^
-  -H "Content-Type: application/json" ^
-  -d "{\"username\":\"worker1\",\"pin\":\"1234\"}"
+## 4. Volitelně: Docker Compose
+
+Pouze pokud máte funkční Docker Desktop. Na tomto stroji Docker aktuálně není spolehlivý.
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast
+docker compose up -d
 ```
 
-Očekávaná odpověď: JSON s `token` a `user` (role `worker`).
+`DATABASE_URL` zůstává stejné (`localhost:5432`).
 
-## 3. Flutter aplikace (Android + Windows)
+---
+
+## 5. Flutter (stručně)
 
 Adresář: `c:\Users\vojte\Desktop\unifast\frontend`
 
-### 3.1 Instalace závislostí
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\frontend
+```powershell
 flutter pub get
-```
-
-### 3.2 Běh na Windows
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\frontend
 flutter run -d windows
 ```
 
-Aplikace se připojuje na backend:
+API URL: `lib/core/config.dart` → `http://localhost:3000`
 
-```dart
-// lib/core/config.dart
-static const String apiBaseUrl = 'http://localhost:3000';
-```
+---
 
-### 3.3 Build pro Windows
+## 6. Rychlý checklist backend runtime
 
-> Vyžaduje nainstalovaný Windows desktop toolchain (CMake, MSVC / Visual Studio Build Tools).
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\frontend
-flutter build windows
-```
-
-Výstup: `build\windows\x64\runner\Release\`.
-
-### 3.4 Build pro Android (APK)
-
-> Vyžaduje nainstalovaný Android SDK, platform tools a alespoň jeden Android target.
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\frontend
-flutter build apk
-```
-
-Výstup: `build\app\outputs\flutter-apk\app-release.apk`.
-
-## 4. Login flow v UI
-
-Předpoklady:
-- běží backend (`npm run dev`),
-- databáze je migrovaná a seednutá.
-
-Postup:
-1. Spusťte Flutter app na Windows: `flutter run -d windows`.
-2. Na přihlašovací obrazovce zadejte:
-   - uživatel: `worker1`
-   - PIN: `1234`
-3. Po přihlášení se zobrazí hlavní menu (Stavba, Synchronizace, Profil, Nápověda).
-
-Pro roli management:
-- uživatel: `vedeni`
-- PIN: `1234`
-- v menu přibudou položky Správa/Export/Logy.
-
-## 5. Testovací skripty / kontroly
-
-### 5.1 Backend – testy + TypeScript
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\backend
-npm test
-npx tsc --noEmit
-```
-
-### 5.2 Flutter – statická analýza
-
-```bash
-cd c:\Users\vojte\Desktop\unifast\frontend
-flutter analyze
-```
-
+- [ ] PostgreSQL služba běží (`localhost:5432`)
+- [ ] existuje DB `ucpavky` a uživatel odpovídá `DATABASE_URL`
+- [ ] `npx prisma migrate deploy` OK
+- [ ] `npx prisma db seed` OK
+- [ ] `npm run dev` běží
+- [ ] `GET /health` → 200
+- [ ] `POST /api/auth/login` → 200 + token
