@@ -16,7 +16,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
 | Zakázky / patra (API) | OK | `12345678` + `/api/jobs/:id/floors` |
-| Seznam ucpávek (API) | OK | `/api/seals/floors/:floorId/seals` |
+| Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
 | Spuštění Windows (debug) | OK | `flutter run -d windows --debug` |
 | Worker flow (kód + API) | OK | login → číslo stavby → patro → seznam ucpávek (vše přes Dio) |
 
@@ -28,7 +28,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Menu | `HomeScreen` | role-based menu |
 | Číslo stavby | `JobNumberScreen` | `GET /api/jobs/by-number/:num` + cache do Drift |
 | Patro | `FloorListScreen` | `GET /api/jobs/:jobId/floors` |
-| Seznam ucpávek | `SealListScreen` | `GET /api/seals/floors/:floorId/seals` |
+| Seznam ucpávek | `SealListScreen` | API + Drift cache; offline banner + chip |
 | Nová ucpávka | `SealFormScreen` | `POST /api/seals` + lokální Drift + outbox |
 
 ---
@@ -37,7 +37,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Stav |
 |--------|------|
-| Offline-first read path | částečně – zápis do Drift při otevření stavby, ale seznamy primárně čtou z API |
+| Offline-first read path | částečně – **seznam ucpávek** má offline fallback (FE-01); patra (`FloorListScreen`) stále jen API |
 | Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
 | Konflikty sync | backend + outbox existují, UI pro řešení konfliktů je minimální |
 | Fotky | upload při online save, retry fronta v `SyncService` |
@@ -71,7 +71,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 
 ## Co ještě není implementované / neověřené v UI
 
-- Plný offline režim pro všechny seznamy (read z Drift místo API)
+- Offline read pro seznam pater (`FloorListScreen`, FE-02)
 - UI pro ruční řešení sync konfliktů
 - Kompletní management workflow (kontrola statusů v terénním UX)
 - PDF export z mobilního UI
@@ -88,6 +88,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 cd c:\Users\vojte\Desktop\unifast\frontend
 flutter pub get
 flutter test test/integration/runtime_verification_test.dart
+flutter test test/seal_list_offline_test.dart
 flutter run -d windows --debug
 ```
 
