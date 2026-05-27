@@ -175,13 +175,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ### Vysoká priorita (data / integrita)
 
-1. **Chybí partial UNIQUE index** na `(job_id, floor_id, seal_number)` pro `deleted_at IS NULL` – v [docs/DATABASE.md](docs/DATABASE.md) požadováno, v migraci je jen běžný INDEX ([`migration.sql`](backend/prisma/migrations/20250527000000_init/migration.sql)). Duplicita se řeší jen v aplikační vrstvě.
-2. **Sync konflikty** – backend vrací `conflict`, frontend nemá UI pro rozhodnutí; auto-merge se neděje (správně dle spec), ale worker nevidí jasný postup.
-3. **Offline read path** – worker v terénu bez signálu neuvidí seznam ucpávek z cache (jen zápis při otevření stavby).
+1. **Sync konflikty** – backend vrací `conflict`, frontend nemá UI pro rozhodnutí; auto-merge se neděje (správně dle spec), ale worker nevidí jasný postup.
+2. **Offline read path** – worker v terénu bez signálu neuvidí seznam ucpávek z cache (jen zápis při otevření stavby).
 
 ### Střední priorita (kvalita / provoz)
 
-4. **Backend testy** – téměř bez reálného HTTP; `seal.service.test.js` netestuje skutečný modul.
+4. **Backend testy** – smoke integrace (BE-01) hotové; `seal.service.test.js` stále netestuje importovaný service modul; BE-02+ chybí.
 5. **Reports CSV** – nestažitelné z UI (jen URL v SnackBar).
 6. **Sync retry intervaly** – dokumentováno v SYNC.md, v kódu chybí centrální timer (jen manuální sync + login sync).
 7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
@@ -198,20 +197,17 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** Přidat **backend smoke integrační testy** (supertest + testovací PostgreSQL nebo transakční DB) pro auth + jobs + seals happy path.
+**Doporučení:** **BE-02** (auth + role 403 testy) nebo **FE-01** (offline read seznamu ucpávek z Drift).
 
-**Proč je to nejbezpečnější:**
+**Hotovo od posledního auditu:**
 
-- Nemění architekturu ani UX.
-- Zachytí regrese po každém malém commitu (login, role, duplicita, status přechody).
-- Staví přímo na tom, co už runtime ověření potvrdilo ručně.
-- Snižuje riziko před většími úpravami offline/sync UI.
+- **BE-01** – smoke supertest (`ucpavky_test`)
+- **DB-01** – partial unique index `seals_active_number_unique` + integrační test duplicity
 
-**Až poté (vyšší dopad, vyšší riziko):**
+**Až poté (vyšší dopad):**
 
-1. Doplnit DB partial unique index (malá migrace).
-2. Offline: `SealListScreen` / `FloorListScreen` – při chybě sítě číst z Drift.
-3. UI pro sync konflikty.
+1. Offline: `SealListScreen` / `FloorListScreen` – při chybě sítě číst z Drift.
+2. UI pro sync konflikty.
 
 ---
 
@@ -219,7 +215,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 Kompletní fronta, paralelizace a pravidla pro agenty: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)** (task ID **BE-01**, **DB-01**, **FE-01** …).
 
-### Task A – Backend smoke testy (nejnižší riziko) → **BE-01**
+### Task A – Backend smoke testy → **BE-01** (hotovo)
 
 **Cíl:** `supertest` proti `createApp()` s test DB: health, login, job by-number, floors, seals list.
 
@@ -233,23 +229,9 @@ Kompletní fronta, paralelizace a pravidla pro agenty: **[AGENT_ORCHESTRATION.md
 
 ---
 
-### Task B – Partial unique index pro číslo ucpávky (nízké–střední riziko) → **DB-01**
+### Task B – Partial unique index → **DB-01** (hotovo)
 
-**Cíl:** Nová Prisma migrace:
-
-```sql
-CREATE UNIQUE INDEX seals_active_number_unique
-ON seals (job_id, floor_id, seal_number)
-WHERE deleted_at IS NULL;
-```
-
-**Rozsah:** pouze `prisma/migrations/`, bez změny business logiky.
-
-**Nesahej na:** frontend, sync.
-
-**Ověření:** duplicitní INSERT na DB selže; aplikační 409 stále funguje.
-
-**Riziko:** nízké (DB only) | **Přínos:** integrita dat dle spec
+Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.integration.test.js`.
 
 ---
 
@@ -269,4 +251,4 @@ WHERE deleted_at IS NULL;
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend + PostgreSQL runtime a napojený Flutter worker/management flow online; chybí hlavně automatické testy API, DB unique constraint pro číslo ucpávky, plný offline read a UI pro sync konflikty – další krok má být backend smoke testy, ne nové featury.**
+**Projekt má funkční backend + PostgreSQL runtime, smoke testy API a DB constraint pro číslo ucpávky; chybí hlavně plný offline read a UI pro sync konflikty – další krok BE-02 nebo FE-01.**

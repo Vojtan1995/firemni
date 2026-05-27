@@ -120,6 +120,7 @@ model Seal {
 
   @@index([floorId])
   @@index([jobId, floorId, sealNumber])
+  // Partial unique (deleted_at IS NULL): migration 20250528000000_seals_active_number_unique
   @@index([status])
   @@map("seals")
 }
