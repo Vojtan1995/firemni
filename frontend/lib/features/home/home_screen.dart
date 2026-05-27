@@ -38,6 +38,12 @@ class HomeScreen extends ConsumerWidget {
             _MenuTile(icon: Icons.assignment, title: 'Soupis prací / Export', onTap: () => context.push('/reports')),
             _MenuTile(icon: Icons.history, title: 'Logy', onTap: () => context.push('/logs')),
           ],
+          if (auth.isAdmin)
+            _MenuTile(
+              icon: Icons.delete_outline,
+              title: 'Koš / Smazané položky',
+              onTap: () => context.push('/trash'),
+            ),
           _MenuTile(icon: Icons.help_outline, title: 'Nápověda', onTap: () {
             showAboutDialog(context: context, applicationName: 'Ucpávky', applicationVersion: '1.0.0');
           }),

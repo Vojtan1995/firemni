@@ -39,6 +39,50 @@ const sealBodySchema = z.object({
   baseVersion: z.number().int().optional(),
 });
 
+router.get('/trash', requireRole(UserRole.admin), async (_req, res, next) => {
+  try {
+    const seals = await prisma.seal.findMany({
+      where: { deletedAt: { not: null } },
+      include: {
+        job: { select: { projectNumber: true, name: true } },
+        floor: { select: { name: true } },
+      },
+      orderBy: { deletedAt: 'desc' },
+      take: 200,
+    });
+
+    const deleterIds = [...new Set(seals.map((s) => s.deletedById).filter((id): id is string => !!id))];
+    const deleters =
+      deleterIds.length > 0
+        ? await prisma.user.findMany({
+            where: { id: { in: deleterIds } },
+            select: { id: true, displayName: true, username: true },
+          })
+        : [];
+    const deleterMap = new Map(deleters.map((u) => [u.id, u]));
+
+    res.json(
+      seals.map((s) => {
+        const deleter = s.deletedById ? deleterMap.get(s.deletedById) : undefined;
+        return {
+          entityType: 'seal',
+          id: s.id,
+          sealNumber: s.sealNumber,
+          status: s.status,
+          stavba: s.job.projectNumber,
+          nazevStavby: s.job.name,
+          patro: s.floor.name,
+          deletedAt: s.deletedAt,
+          deletedByName: deleter?.displayName ?? deleter?.username ?? null,
+          deleteReason: s.deleteReason,
+        };
+      }),
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/floors/:floorId/seals', async (req, res, next) => {
   try {
     const seals = await prisma.seal.findMany({

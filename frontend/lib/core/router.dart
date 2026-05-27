@@ -13,6 +13,7 @@ import '../features/management/management_home_screen.dart';
 import '../features/management/jobs_admin_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/logs/logs_screen.dart';
+import '../features/admin/admin_trash_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authUser = ref.watch(authUserProvider);
@@ -28,6 +29,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         final role = authUser['role'] as String?;
         final isManagement = role == 'management' || role == 'admin';
         if (!isManagement && state.matchedLocation == '/reports') {
+          return '/';
+        }
+        if (role != 'admin' && state.matchedLocation == '/trash') {
           return '/';
         }
       }
@@ -61,6 +65,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: 'jobs-admin', builder: (_, __) => const JobsAdminScreen()),
           GoRoute(path: 'reports', builder: (_, __) => const ReportsScreen()),
           GoRoute(path: 'logs', builder: (_, __) => const LogsScreen()),
+          GoRoute(path: 'trash', builder: (_, __) => const AdminTrashScreen()),
         ],
       ),
     ],

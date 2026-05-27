@@ -8,7 +8,8 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | Příkaz | Výsledek |
 |--------|----------|
 | `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
-| `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** (vč. CSV/PDF export, role 403) |
+| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** |
+| `npm test` (backend) | **52 passed** (vč. `seals.trash.integration.test.js`) |
 | `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
 | `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07) |
 | `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** (offline detail) |
@@ -57,6 +58,7 @@ Git historie (hlavní milníky):
 | Photos | `POST /seals/:id/photos`, DELETE (ne worker) | Sharp → WebP |
 | Sync | `POST /push`, `GET /pull` | idempotence `mutation_id` |
 | Reports | `work-summary`, `export/csv`, `export/pdf` | management/admin |
+| Seals trash/restore | `GET /trash`, `PATCH /:id/restore` | admin only |
 | Logs | `GET /activity`, `GET /changes` | management/admin |
 
 ### Frontend (UI + reálné API)
@@ -90,7 +92,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 |--------|---------------------|
 | **Offline-first čtení** | Seznamy (FE-01/02) i **detail ucpávky** (offline Drift fallback) hotové |
 | **Sync konflikty** | Zobrazení a skrytí v UI hotové (FE-03); automatické slučení záměrně není |
-| **Admin obnova** | API `PATCH /seals/:id/restore` existuje; **ve Flutter UI není** |
+| **Admin obnova** | hotové – `AdminTrashScreen` + `GET /api/seals/trash` (admin only) |
 | **Retry sync** | FE-06 hotové – `SyncRetryScheduler`, intervaly dle SYNC.md |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
 | **CI/CD** | Žádný pipeline v repu |
@@ -160,6 +162,7 @@ flowchart LR
 | Backend – seals HTTP | `backend/__tests__/seals.http.integration.test.js` | duplicita 409, statusy, editace worker (BE-03) |
 | Backend – sync push | `backend/__tests__/sync.push.integration.test.js` | idempotence, create, konflikty (BE-04) |
 | Backend – reports / export | `backend/__tests__/reports.integration.test.js` | work-summary filtry, CSV/PDF, role 403/200 (BE-05) |
+| Backend – admin trash | `backend/__tests__/seals.trash.integration.test.js` | list trash, restore, role 403 |
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
 | Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart`, `seal_detail_offline_test.dart` | Drift read, detail cache, konflikty (9 testů) |
@@ -213,7 +216,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **Admin restore UI** nebo **DOC-01** (CI pipeline).
+**Doporučení:** **DOC-01** (CI pipeline) nebo **PLAT-01** (Windows Release).
 
 **Hotovo od posledního auditu:**
 
@@ -231,11 +234,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **FE-07** – widget smoke login → home (`login_home_smoke_test.dart`)
 - **Offline detail** – `SealDetailScreen` Drift fallback + `seal_detail_offline_test.dart`
 - **FE-06** – sync retry timer (`sync_retry_test.dart`, Drift v3)
+- **Admin restore UI** – koš + `GET /api/seals/trash`
 
 **Až poté (vyšší dopad):**
 
-1. Admin restore UI.
-2. DOC-01 CI pipeline.
+1. DOC-01 CI pipeline.
+2. PLAT-01 Windows Release.
 
 ---
 
@@ -260,7 +264,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 |--------|----------|
 | Offline read: **detail ucpávky** | hotové (offline detail) |
 | Sync retry timer | FE-06 hotové |
-| Admin restore v UI | API existuje, obrazovka ne |
+| Admin restore v UI | hotové (`AdminTrashScreen`) |
 | Widget/E2E smoke | FE-07 hotové |
 | Sync pull HTTP testy | BE-04 jen push |
 | CI/CD, Windows Release, Android re-verify | DOC-01, PLAT-01, PLAT-02 |
@@ -273,9 +277,9 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **Admin restore UI** | malý scope, existující `PATCH /seals/:id/restore` |
-| 2 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
-| 3 | **PLAT-01** – Windows Release build | volitelné ověření release |
+| 1 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
+| 2 | **PLAT-01** – Windows Release build | volitelné ověření release |
+| 3 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
 
 **Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
 
@@ -283,6 +287,6 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ## Shrnutí jednou větou
 
-**Offline read a sync retry jsou hotové; další krok admin restore UI nebo DOC-01.**
+**MVP jádro včetně admin koše je hotové; další krok DOC-01 nebo PLAT-01.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

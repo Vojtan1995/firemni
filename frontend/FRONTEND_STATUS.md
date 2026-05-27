@@ -11,6 +11,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
 | `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** |
 | `flutter test test/sync_retry_test.dart` | **7/7 passed** (FE-06) |
+| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 ---
@@ -23,6 +24,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | Integrační testy API | OK | health, login, job, floors, seals, reports CSV/PDF, worker 403 |
 | Offline/sync unit testy | OK | seal list, floor list, sync conflict (6 testů) |
 | Widget smoke login → home (FE-07) | OK | UI bez sítě + E2E s backendem (`login_home_smoke_test.dart`) |
+| Admin koš / obnova | OK | `AdminTrashScreen`, trash list + restore (admin only) |
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
@@ -77,7 +79,8 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 - Seals: `/api/seals/floors/:floorId/seals`, `/api/seals/:id`, `POST /api/seals`
 - Photos: `POST /api/seals/:id/photos`
 - Sync: `/api/sync/push`, `/api/sync/pull`
-- Management: `/api/jobs`, `/api/reports/work-summary`, `/api/reports/export/csv`, `/api/reports/export/pdf`, `/api/logs/activity`
+- Management: `/api/jobs`, `/api/reports/*`, `/api/logs/activity`
+- Admin: `/api/seals/trash`, `PATCH /api/seals/:id/restore`
 
 ---
 
@@ -85,6 +88,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 
 - Automatické řešení konfliktů (záměrně mimo scope – pouze zobrazení)
 - Kompletní management workflow (kontrola statusů v terénním UX)
+- Koš pro smazané patra/stavby (zatím jen ucpávky v API)
 - Push notifikace, diskuze, ceník (mimo V1 scope)
 - Android build v tomto kole neověřován (dříve APK build prošel)
 - Web/Chrome target – **nefunguje** kvůli `drift`/SQLite FFI (očekávané)
@@ -145,8 +149,11 @@ flutter run -d windows --debug
 - **Soubory:** `sync_retry.dart`, `sync_retry_scheduler.dart`, migrace Drift v3 (`retryCount`, `lastError`, `nextRetryAt` u fotek).
 - **Chování:** timer každých 15 s volá `syncAll(force: false)`; ruční sync zůstává `force: true`; `conflict` se neposílá znovu.
 
+### 9) Admin restore UI – Koš
+- **Obrazovka:** `AdminTrashScreen` (`/trash`), menu jen pro `admin`.
+- **Backend mezera doplněna:** `GET /api/seals/trash` (restore endpoint už existoval).
+
 ## Další krok
 
-1. **Admin restore UI** – existující restore endpoint.  
-2. **DOC-01** – CI pipeline.  
-3. **PLAT-01** – Windows Release build.
+1. **DOC-01** – CI pipeline.  
+2. **PLAT-01** – Windows Release build.

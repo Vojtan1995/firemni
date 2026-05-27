@@ -205,6 +205,48 @@ void main() {
       }
     });
 
+    test('admin can access seals trash list', () async {
+      final login = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'admin',
+        'pin': '1234',
+      });
+      final adminToken = login['token'] as String;
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/seals/trash');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $adminToken');
+        final res = await req.close();
+        final text = await res.transform(utf8.decoder).join();
+        expect(res.statusCode, 200);
+        expect(jsonDecode(text), isA<List>());
+      } finally {
+        client.close();
+      }
+    });
+
+    test('management cannot access seals trash', () async {
+      final login = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'vedeni',
+        'pin': '1234',
+      });
+      final token = login['token'] as String;
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/seals/trash');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $token');
+        final res = await req.close();
+        final text = await res.transform(utf8.decoder).join();
+        expect(res.statusCode, 403);
+        expect(text, contains('FORBIDDEN'));
+      } finally {
+        client.close();
+      }
+    });
+
     test('Drift SQLite initializes and outbox queue works', () async {
       final db = AppDatabase.forTesting();
       addTearDown(() => db.close());
