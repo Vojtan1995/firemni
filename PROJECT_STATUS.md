@@ -10,7 +10,9 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
 | `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** (vč. CSV/PDF export, role 403) |
 | `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
+| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07) |
 | `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** (offline detail) |
+| `flutter test test/sync_retry_test.dart` | **7/7 passed** (FE-06) |
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
@@ -89,7 +91,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 | **Offline-first čtení** | Seznamy (FE-01/02) i **detail ucpávky** (offline Drift fallback) hotové |
 | **Sync konflikty** | Zobrazení a skrytí v UI hotové (FE-03); automatické slučení záměrně není |
 | **Admin obnova** | API `PATCH /seals/:id/restore` existuje; **ve Flutter UI není** |
-| **Retry sync** | V `SyncService` je `nextRetryAt`, ale **bez periodického scheduleru** dle docs (30s/2min/5min) |
+| **Retry sync** | FE-06 hotové – `SyncRetryScheduler`, intervaly dle SYNC.md |
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
 | **CI/CD** | Žádný pipeline v repu |
 | **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
@@ -161,6 +163,7 @@ flowchart LR
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
 | Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart`, `seal_detail_offline_test.dart` | Drift read, detail cache, konflikty (9 testů) |
+| Frontend – sync retry | `frontend/test/sync_retry_test.dart` | intervaly, pending/failed/conflict/success (FE-06, 7 testů) |
 | Frontend – widget smoke | `frontend/test/login_home_smoke_test.dart` | login UI + E2E home (FE-07) |
 | Manuální checklist | `docs/04_TESTOVACI_CHECKLIST.md`, `docs/TESTING.md` | scénáře k ručnímu běhu |
 
@@ -195,7 +198,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Střední priorita (kvalita / provoz)
 
 4. **Backend testy** – BE-01 až BE-05 + DB-01 hotové; `seal.service.test.js` stále netestuje importovaný service modul.
-6. **Sync retry intervaly** – dokumentováno v SYNC.md, v kódu chybí centrální timer (jen manuální sync + login sync).
+6. **Sync retry intervaly** – FE-06 hotové (timer + `retryCount`/`lastError`).
 7. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
 8. **Web target** – Drift/SQLite FFI na Chrome nefunguje (očekávané).
 
@@ -210,7 +213,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **Admin restore UI** nebo **FE-06** (sync retry timer).
+**Doporučení:** **Admin restore UI** nebo **DOC-01** (CI pipeline).
 
 **Hotovo od posledního auditu:**
 
@@ -227,11 +230,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **FE-05** – PDF download v `ReportsScreen` (stejné filtry a UX jako CSV)
 - **FE-07** – widget smoke login → home (`login_home_smoke_test.dart`)
 - **Offline detail** – `SealDetailScreen` Drift fallback + `seal_detail_offline_test.dart`
+- **FE-06** – sync retry timer (`sync_retry_test.dart`, Drift v3)
 
 **Až poté (vyšší dopad):**
 
 1. Admin restore UI.
-2. FE-06 sync retry timer.
+2. DOC-01 CI pipeline.
 
 ---
 
@@ -244,7 +248,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Auth + role (worker / management / admin) | API + UI menu + router guard na `/reports` |
 | Worker flow: stavba → patro → seznam → formulář | API + Drift cache |
 | Offline read: seznam ucpávek, patra a detail | FE-01, FE-02, offline detail |
-| Sync push/pull, outbox, konflikty (zobrazení) | BE-04, FE-03 |
+| Sync push/pull, outbox, konflikty, **automatický retry** | BE-04, FE-03, FE-06 |
 | Seals: duplicita, statusy, worker edit lock | BE-03, DB-01 |
 | Management: stavby, soupis, **CSV/PDF export** | FE-04, FE-05, BE-05 |
 | Backend regrese | BE-01–05, DB-01 (48 Jest testů) |
@@ -255,7 +259,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Oblast | Poznámka |
 |--------|----------|
 | Offline read: **detail ucpávky** | hotové (offline detail) |
-| Sync retry timer | FE-06 |
+| Sync retry timer | FE-06 hotové |
 | Admin restore v UI | API existuje, obrazovka ne |
 | Widget/E2E smoke | FE-07 hotové |
 | Sync pull HTTP testy | BE-04 jen push |
@@ -270,8 +274,8 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 | # | Task | Proč |
 |---|------|------|
 | 1 | **Admin restore UI** | malý scope, existující `PATCH /seals/:id/restore` |
-| 2 | **FE-06** – sync retry timer | střední riziko; nesekvenčně s většími sync úpravami |
-| 3 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
+| 2 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
+| 3 | **PLAT-01** – Windows Release build | volitelné ověření release |
 
 **Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
 
@@ -279,6 +283,6 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ## Shrnutí jednou větou
 
-**Offline read path je kompletní (seznamy + detail); další krok admin restore UI nebo FE-06.**
+**Offline read a sync retry jsou hotové; další krok admin restore UI nebo DOC-01.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

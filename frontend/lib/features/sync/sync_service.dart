@@ -9,6 +9,7 @@ import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import 'sync_conflict.dart';
+import 'sync_retry.dart';
 
 final syncServiceProvider = Provider((ref) => SyncService(ref));
 
@@ -18,7 +19,9 @@ final syncPendingCountProvider = StreamProvider<int>((ref) async* {
     final pending = await (db.select(db.localOutbox)
           ..where((o) => o.status.isIn(['pending', 'failed'])))
         .get();
-    final photos = await (db.select(db.localPhotos)..where((p) => p.status.equals('pending'))).get();
+    final photos = await (db.select(db.localPhotos)
+          ..where((p) => p.status.isIn(['pending', 'failed'])))
+        .get();
     yield pending.length + photos.length;
     await Future.delayed(const Duration(seconds: 5));
   }
@@ -65,27 +68,43 @@ class SyncService {
       payload: jsonEncode(payload),
       baseVersion: Value(baseVersion),
       status: const Value('pending'),
+      retryCount: const Value(0),
       createdAt: DateTime.now(),
     ));
   }
 
-  Future<SyncResult> syncAll() async {
+  /// [force] true = ruční sync (ignoruje nextRetryAt); false = automatický retry timer.
+  Future<SyncResult> syncAll({bool force = true}) async {
     final connectivity = await Connectivity().checkConnectivity();
     if (connectivity.contains(ConnectivityResult.none)) {
       return SyncResult(offline: true);
     }
 
-    await _uploadPendingPhotos();
-    await _pushOutbox();
-    await _pullChanges();
-    return SyncResult(success: true);
+    final now = DateTime.now();
+    if (!force && !await hasDueSyncWork(_db, now)) {
+      return SyncResult(success: true, skipped: true);
+    }
+
+    try {
+      await _uploadPendingPhotos(force: force, now: now);
+      await _pushOutbox(force: force, now: now);
+      await _pullChanges();
+      return SyncResult(success: true);
+    } on DioException catch (e) {
+      return SyncResult(success: false, error: e.message);
+    }
   }
 
-  Future<void> _pushOutbox() async {
-    final pending = await (_db.select(_db.localOutbox)
+  Future<List<LocalOutboxData>> _dueOutboxRows({required bool force, required DateTime now}) async {
+    final rows = await (_db.select(_db.localOutbox)
           ..where((o) => o.status.isIn(['pending', 'failed'])))
         .get();
+    if (force) return rows;
+    return rows.where((o) => outboxIsDueForRetry(o, now)).toList();
+  }
 
+  Future<void> _pushOutbox({required bool force, required DateTime now}) async {
+    final pending = await _dueOutboxRows(force: force, now: now);
     if (pending.isEmpty) return;
 
     final deviceId = await _deviceId();
@@ -98,15 +117,28 @@ class SyncService {
       if (o.baseVersion != null) 'baseVersion': o.baseVersion,
     }).toList();
 
-    final res = await _dio.post('/api/sync/push', data: {'mutations': mutations});
-    final results = (res.data['results'] as List).cast<Map<String, dynamic>>();
+    List<Map<String, dynamic>> results;
+    try {
+      final res = await _dio.post('/api/sync/push', data: {'mutations': mutations});
+      results = (res.data['results'] as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      for (final row in pending) {
+        await markOutboxSyncFailure(
+          _db,
+          row.id,
+          currentRetryCount: row.retryCount,
+          error: e.toString(),
+          now: now,
+        );
+      }
+      rethrow;
+    }
 
     for (var i = 0; i < pending.length && i < results.length; i++) {
       final r = results[i];
       final status = r['status'] as String;
       if (status == 'ok' || status == 'already_processed') {
-        await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id)))
-            .write(const LocalOutboxCompanion(status: Value('done')));
+        await markOutboxSyncSuccess(_db, pending[i].id);
         final localSealId = await resolveSealIdForOutbox(_db, pending[i]);
         final serverId = r['entityId'] as String?;
         if (localSealId != null && serverId != null) {
@@ -133,11 +165,14 @@ class SyncService {
           );
         }
       } else {
-        await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id)))
-            .write(LocalOutboxCompanion(
-          status: const Value('failed'),
-          nextRetryAt: Value(DateTime.now().add(const Duration(minutes: 2))),
-        ));
+        final err = r['error'] as String? ?? r['conflict'] as String? ?? 'Sync selhal';
+        await markOutboxSyncFailure(
+          _db,
+          pending[i].id,
+          currentRetryCount: pending[i].retryCount,
+          error: err,
+          now: now,
+        );
       }
     }
   }
@@ -199,23 +234,41 @@ class SyncService {
     );
   }
 
-  Future<void> _uploadPendingPhotos() async {
-    final pending = await (_db.select(_db.localPhotos)..where((p) => p.status.equals('pending'))).get();
+  Future<void> _uploadPendingPhotos({required bool force, required DateTime now}) async {
+    final all = await (_db.select(_db.localPhotos)
+          ..where((p) => p.status.isIn(['pending', 'failed'])))
+        .get();
+    final pending = force ? all : all.where((p) => photoIsDueForRetry(p, now)).toList();
+
     for (final photo in pending) {
       try {
         final formData = FormData.fromMap({
           'photo': await MultipartFile.fromFile(photo.localPath, filename: 'photo.webp'),
         });
         await _dio.post('/api/seals/${photo.sealId}/photos', data: formData);
-        await (_db.update(_db.localPhotos)..where((p) => p.id.equals(photo.id)))
-            .write(const LocalPhotosCompanion(status: Value('done')));
-      } catch (_) {}
+        await markPhotoSyncSuccess(_db, photo.id);
+      } catch (e) {
+        await markPhotoSyncFailure(
+          _db,
+          photo.id,
+          currentRetryCount: photo.retryCount,
+          error: e.toString(),
+          now: now,
+        );
+      }
     }
   }
 }
 
 class SyncResult {
-  SyncResult({this.success = false, this.offline = false});
+  SyncResult({
+    this.success = false,
+    this.offline = false,
+    this.skipped = false,
+    this.error,
+  });
   final bool success;
   final bool offline;
+  final bool skipped;
+  final String? error;
 }

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_provider.dart';
+import 'features/sync/sync_retry_scheduler.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +28,16 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
 
   Future<void> _init() async {
     await ref.read(authServiceProvider).tryRestoreSession();
-    if (mounted) setState(() => _ready = true);
+    if (mounted) {
+      setState(() => _ready = true);
+      ref.read(syncRetrySchedulerProvider).start();
+    }
+  }
+
+  @override
+  void dispose() {
+    ref.read(syncRetrySchedulerProvider).stop();
+    super.dispose();
   }
 
   @override

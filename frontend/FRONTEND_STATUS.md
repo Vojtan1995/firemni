@@ -9,6 +9,8 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** |
 | `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
+| `flutter test test/seal_detail_offline_test.dart` | **3/3 passed** |
+| `flutter test test/sync_retry_test.dart` | **7/7 passed** (FE-06) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
 ---
@@ -49,9 +51,9 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | Oblast | Stav |
 |--------|------|
 | Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
-| Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
+| Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
-| Fotky | upload při online save, retry fronta v `SyncService` |
+| Fotky | upload + retry fronta (`pending`/`failed`, FE-06) |
 | Windows release build | `flutter build windows` (Release) může selhat na INSTALL kroku |
 
 ---
@@ -100,6 +102,7 @@ flutter test test/login_home_smoke_test.dart
 flutter test test/seal_detail_offline_test.dart
 flutter test test/seal_list_offline_test.dart
 flutter test test/floor_list_offline_test.dart
+flutter test test/sync_retry_test.dart
 flutter test test/sync_conflict_test.dart
 flutter run -d windows --debug
 ```
@@ -138,8 +141,12 @@ flutter run -d windows --debug
 - **Oprava:** API first + `cacheSealDetailFromApi` (`jsonPayload`, entries, materiály, metadata fotek); offline čtení z Drift, chip/banner „Offline data“, hláška bez cache.
 - **Test:** `test/seal_detail_offline_test.dart` (3 testy).
 
+### 8) FE-06 – sync retry timer
+- **Soubory:** `sync_retry.dart`, `sync_retry_scheduler.dart`, migrace Drift v3 (`retryCount`, `lastError`, `nextRetryAt` u fotek).
+- **Chování:** timer každých 15 s volá `syncAll(force: false)`; ruční sync zůstává `force: true`; `conflict` se neposílá znovu.
+
 ## Další krok
 
 1. **Admin restore UI** – existující restore endpoint.  
-2. **FE-06** – sync retry timer.  
-3. **DOC-01** – CI pipeline.
+2. **DOC-01** – CI pipeline.  
+3. **PLAT-01** – Windows Release build.

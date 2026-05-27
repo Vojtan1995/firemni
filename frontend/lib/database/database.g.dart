@@ -1463,6 +1463,20 @@ class $LocalOutboxTable extends LocalOutbox
   late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
       'next_retry_at', aliasedName, true,
       type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   @override
   List<GeneratedColumn> get $columns => [
         id,
@@ -1476,7 +1490,9 @@ class $LocalOutboxTable extends LocalOutbox
         conflictMessage,
         dismissedAt,
         createdAt,
-        nextRetryAt
+        nextRetryAt,
+        retryCount,
+        lastError
       ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -1561,6 +1577,16 @@ class $LocalOutboxTable extends LocalOutbox
           nextRetryAt.isAcceptableOrUnknown(
               data['next_retry_at']!, _nextRetryAtMeta));
     }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
     return context;
   }
 
@@ -1594,6 +1620,10 @@ class $LocalOutboxTable extends LocalOutbox
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       nextRetryAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
     );
   }
 
@@ -1616,6 +1646,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   final DateTime? dismissedAt;
   final DateTime createdAt;
   final DateTime? nextRetryAt;
+  final int retryCount;
+  final String? lastError;
   const LocalOutboxData(
       {required this.id,
       required this.mutationId,
@@ -1628,7 +1660,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       this.conflictMessage,
       this.dismissedAt,
       required this.createdAt,
-      this.nextRetryAt});
+      this.nextRetryAt,
+      required this.retryCount,
+      this.lastError});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -1651,6 +1685,10 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || nextRetryAt != null) {
       map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
     }
     return map;
   }
@@ -1677,6 +1715,10 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       nextRetryAt: nextRetryAt == null && nullToAbsent
           ? const Value.absent()
           : Value(nextRetryAt),
+      retryCount: Value(retryCount),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
     );
   }
 
@@ -1696,6 +1738,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       dismissedAt: serializer.fromJson<DateTime?>(json['dismissedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
     );
   }
   @override
@@ -1714,6 +1758,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       'dismissedAt': serializer.toJson<DateTime?>(dismissedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'lastError': serializer.toJson<String?>(lastError),
     };
   }
 
@@ -1729,7 +1775,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           Value<String?> conflictMessage = const Value.absent(),
           Value<DateTime?> dismissedAt = const Value.absent(),
           DateTime? createdAt,
-          Value<DateTime?> nextRetryAt = const Value.absent()}) =>
+          Value<DateTime?> nextRetryAt = const Value.absent(),
+          int? retryCount,
+          Value<String?> lastError = const Value.absent()}) =>
       LocalOutboxData(
         id: id ?? this.id,
         mutationId: mutationId ?? this.mutationId,
@@ -1745,6 +1793,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
         dismissedAt: dismissedAt.present ? dismissedAt.value : this.dismissedAt,
         createdAt: createdAt ?? this.createdAt,
         nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+        retryCount: retryCount ?? this.retryCount,
+        lastError: lastError.present ? lastError.value : this.lastError,
       );
   LocalOutboxData copyWithCompanion(LocalOutboxCompanion data) {
     return LocalOutboxData(
@@ -1767,6 +1817,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       nextRetryAt:
           data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
     );
   }
 
@@ -1784,7 +1837,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           ..write('conflictMessage: $conflictMessage, ')
           ..write('dismissedAt: $dismissedAt, ')
           ..write('createdAt: $createdAt, ')
-          ..write('nextRetryAt: $nextRetryAt')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError')
           ..write(')'))
         .toString();
   }
@@ -1802,7 +1857,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       conflictMessage,
       dismissedAt,
       createdAt,
-      nextRetryAt);
+      nextRetryAt,
+      retryCount,
+      lastError);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1818,7 +1875,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           other.conflictMessage == this.conflictMessage &&
           other.dismissedAt == this.dismissedAt &&
           other.createdAt == this.createdAt &&
-          other.nextRetryAt == this.nextRetryAt);
+          other.nextRetryAt == this.nextRetryAt &&
+          other.retryCount == this.retryCount &&
+          other.lastError == this.lastError);
 }
 
 class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
@@ -1834,6 +1893,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   final Value<DateTime?> dismissedAt;
   final Value<DateTime> createdAt;
   final Value<DateTime?> nextRetryAt;
+  final Value<int> retryCount;
+  final Value<String?> lastError;
   final Value<int> rowid;
   const LocalOutboxCompanion({
     this.id = const Value.absent(),
@@ -1848,6 +1909,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     this.dismissedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.nextRetryAt = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalOutboxCompanion.insert({
@@ -1863,6 +1926,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     this.dismissedAt = const Value.absent(),
     required DateTime createdAt,
     this.nextRetryAt = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         mutationId = Value(mutationId),
@@ -1884,6 +1949,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     Expression<DateTime>? dismissedAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? nextRetryAt,
+    Expression<int>? retryCount,
+    Expression<String>? lastError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1899,6 +1966,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       if (dismissedAt != null) 'dismissed_at': dismissedAt,
       if (createdAt != null) 'created_at': createdAt,
       if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (lastError != null) 'last_error': lastError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1916,6 +1985,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       Value<DateTime?>? dismissedAt,
       Value<DateTime>? createdAt,
       Value<DateTime?>? nextRetryAt,
+      Value<int>? retryCount,
+      Value<String?>? lastError,
       Value<int>? rowid}) {
     return LocalOutboxCompanion(
       id: id ?? this.id,
@@ -1930,6 +2001,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       dismissedAt: dismissedAt ?? this.dismissedAt,
       createdAt: createdAt ?? this.createdAt,
       nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      retryCount: retryCount ?? this.retryCount,
+      lastError: lastError ?? this.lastError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1973,6 +2046,12 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     if (nextRetryAt.present) {
       map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
     }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1994,6 +2073,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
           ..write('dismissedAt: $dismissedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2041,9 +2122,38 @@ class $LocalPhotosTable extends LocalPhotos
   late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
       'created_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  static const VerificationMeta _nextRetryAtMeta =
+      const VerificationMeta('nextRetryAt');
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, sealId, localPath, serverPath, status, createdAt];
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+      'next_retry_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        sealId,
+        localPath,
+        serverPath,
+        status,
+        createdAt,
+        nextRetryAt,
+        retryCount,
+        lastError
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -2087,6 +2197,22 @@ class $LocalPhotosTable extends LocalPhotos
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+          _nextRetryAtMeta,
+          nextRetryAt.isAcceptableOrUnknown(
+              data['next_retry_at']!, _nextRetryAtMeta));
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
     return context;
   }
 
@@ -2108,6 +2234,12 @@ class $LocalPhotosTable extends LocalPhotos
           .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
+      nextRetryAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
     );
   }
 
@@ -2124,13 +2256,19 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   final String? serverPath;
   final String status;
   final DateTime createdAt;
+  final DateTime? nextRetryAt;
+  final int retryCount;
+  final String? lastError;
   const LocalPhoto(
       {required this.id,
       required this.sealId,
       required this.localPath,
       this.serverPath,
       required this.status,
-      required this.createdAt});
+      required this.createdAt,
+      this.nextRetryAt,
+      required this.retryCount,
+      this.lastError});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
@@ -2142,6 +2280,13 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
     }
     map['status'] = Variable<String>(status);
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
     return map;
   }
 
@@ -2155,6 +2300,13 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           : Value(serverPath),
       status: Value(status),
       createdAt: Value(createdAt),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+      retryCount: Value(retryCount),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
     );
   }
 
@@ -2168,6 +2320,9 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
       serverPath: serializer.fromJson<String?>(json['serverPath']),
       status: serializer.fromJson<String>(json['status']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
     );
   }
   @override
@@ -2180,6 +2335,9 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
       'serverPath': serializer.toJson<String?>(serverPath),
       'status': serializer.toJson<String>(status),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'lastError': serializer.toJson<String?>(lastError),
     };
   }
 
@@ -2189,7 +2347,10 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           String? localPath,
           Value<String?> serverPath = const Value.absent(),
           String? status,
-          DateTime? createdAt}) =>
+          DateTime? createdAt,
+          Value<DateTime?> nextRetryAt = const Value.absent(),
+          int? retryCount,
+          Value<String?> lastError = const Value.absent()}) =>
       LocalPhoto(
         id: id ?? this.id,
         sealId: sealId ?? this.sealId,
@@ -2197,6 +2358,9 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
         serverPath: serverPath.present ? serverPath.value : this.serverPath,
         status: status ?? this.status,
         createdAt: createdAt ?? this.createdAt,
+        nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+        retryCount: retryCount ?? this.retryCount,
+        lastError: lastError.present ? lastError.value : this.lastError,
       );
   LocalPhoto copyWithCompanion(LocalPhotosCompanion data) {
     return LocalPhoto(
@@ -2207,6 +2371,11 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           data.serverPath.present ? data.serverPath.value : this.serverPath,
       status: data.status.present ? data.status.value : this.status,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      nextRetryAt:
+          data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
     );
   }
 
@@ -2218,14 +2387,17 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           ..write('localPath: $localPath, ')
           ..write('serverPath: $serverPath, ')
           ..write('status: $status, ')
-          ..write('createdAt: $createdAt')
+          ..write('createdAt: $createdAt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, sealId, localPath, serverPath, status, createdAt);
+  int get hashCode => Object.hash(id, sealId, localPath, serverPath, status,
+      createdAt, nextRetryAt, retryCount, lastError);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -2235,7 +2407,10 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           other.localPath == this.localPath &&
           other.serverPath == this.serverPath &&
           other.status == this.status &&
-          other.createdAt == this.createdAt);
+          other.createdAt == this.createdAt &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.retryCount == this.retryCount &&
+          other.lastError == this.lastError);
 }
 
 class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
@@ -2245,6 +2420,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   final Value<String?> serverPath;
   final Value<String> status;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> nextRetryAt;
+  final Value<int> retryCount;
+  final Value<String?> lastError;
   final Value<int> rowid;
   const LocalPhotosCompanion({
     this.id = const Value.absent(),
@@ -2253,6 +2431,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
     this.serverPath = const Value.absent(),
     this.status = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalPhotosCompanion.insert({
@@ -2262,6 +2443,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
     this.serverPath = const Value.absent(),
     this.status = const Value.absent(),
     required DateTime createdAt,
+    this.nextRetryAt = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.lastError = const Value.absent(),
     this.rowid = const Value.absent(),
   })  : id = Value(id),
         sealId = Value(sealId),
@@ -2274,6 +2458,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
     Expression<String>? serverPath,
     Expression<String>? status,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? nextRetryAt,
+    Expression<int>? retryCount,
+    Expression<String>? lastError,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2283,6 +2470,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
       if (serverPath != null) 'server_path': serverPath,
       if (status != null) 'status': status,
       if (createdAt != null) 'created_at': createdAt,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (lastError != null) 'last_error': lastError,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2294,6 +2484,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
       Value<String?>? serverPath,
       Value<String>? status,
       Value<DateTime>? createdAt,
+      Value<DateTime?>? nextRetryAt,
+      Value<int>? retryCount,
+      Value<String?>? lastError,
       Value<int>? rowid}) {
     return LocalPhotosCompanion(
       id: id ?? this.id,
@@ -2302,6 +2495,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
       serverPath: serverPath ?? this.serverPath,
       status: status ?? this.status,
       createdAt: createdAt ?? this.createdAt,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      retryCount: retryCount ?? this.retryCount,
+      lastError: lastError ?? this.lastError,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2327,6 +2523,15 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -2342,6 +2547,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
           ..write('serverPath: $serverPath, ')
           ..write('status: $status, ')
           ..write('createdAt: $createdAt, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('lastError: $lastError, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -3241,6 +3449,8 @@ typedef $$LocalOutboxTableCreateCompanionBuilder = LocalOutboxCompanion
   Value<DateTime?> dismissedAt,
   required DateTime createdAt,
   Value<DateTime?> nextRetryAt,
+  Value<int> retryCount,
+  Value<String?> lastError,
   Value<int> rowid,
 });
 typedef $$LocalOutboxTableUpdateCompanionBuilder = LocalOutboxCompanion
@@ -3257,6 +3467,8 @@ typedef $$LocalOutboxTableUpdateCompanionBuilder = LocalOutboxCompanion
   Value<DateTime?> dismissedAt,
   Value<DateTime> createdAt,
   Value<DateTime?> nextRetryAt,
+  Value<int> retryCount,
+  Value<String?> lastError,
   Value<int> rowid,
 });
 
@@ -3305,6 +3517,12 @@ class $$LocalOutboxTableFilterComposer
 
   ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
       column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
 }
 
 class $$LocalOutboxTableOrderingComposer
@@ -3352,6 +3570,12 @@ class $$LocalOutboxTableOrderingComposer
 
   ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
       column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
 }
 
 class $$LocalOutboxTableAnnotationComposer
@@ -3398,6 +3622,12 @@ class $$LocalOutboxTableAnnotationComposer
 
   GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
       column: $table.nextRetryAt, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
 }
 
 class $$LocalOutboxTableTableManager extends RootTableManager<
@@ -3438,6 +3668,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             Value<DateTime?> dismissedAt = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               LocalOutboxCompanion(
@@ -3453,6 +3685,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             dismissedAt: dismissedAt,
             createdAt: createdAt,
             nextRetryAt: nextRetryAt,
+            retryCount: retryCount,
+            lastError: lastError,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3468,6 +3702,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             Value<DateTime?> dismissedAt = const Value.absent(),
             required DateTime createdAt,
             Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               LocalOutboxCompanion.insert(
@@ -3483,6 +3719,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             dismissedAt: dismissedAt,
             createdAt: createdAt,
             nextRetryAt: nextRetryAt,
+            retryCount: retryCount,
+            lastError: lastError,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0
@@ -3515,6 +3753,9 @@ typedef $$LocalPhotosTableCreateCompanionBuilder = LocalPhotosCompanion
   Value<String?> serverPath,
   Value<String> status,
   required DateTime createdAt,
+  Value<DateTime?> nextRetryAt,
+  Value<int> retryCount,
+  Value<String?> lastError,
   Value<int> rowid,
 });
 typedef $$LocalPhotosTableUpdateCompanionBuilder = LocalPhotosCompanion
@@ -3525,6 +3766,9 @@ typedef $$LocalPhotosTableUpdateCompanionBuilder = LocalPhotosCompanion
   Value<String?> serverPath,
   Value<String> status,
   Value<DateTime> createdAt,
+  Value<DateTime?> nextRetryAt,
+  Value<int> retryCount,
+  Value<String?> lastError,
   Value<int> rowid,
 });
 
@@ -3554,6 +3798,15 @@ class $$LocalPhotosTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
 }
 
 class $$LocalPhotosTableOrderingComposer
@@ -3582,6 +3835,15 @@ class $$LocalPhotosTableOrderingComposer
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
 }
 
 class $$LocalPhotosTableAnnotationComposer
@@ -3610,6 +3872,15 @@ class $$LocalPhotosTableAnnotationComposer
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
 }
 
 class $$LocalPhotosTableTableManager extends RootTableManager<
@@ -3641,6 +3912,9 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
             Value<String?> serverPath = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               LocalPhotosCompanion(
@@ -3650,6 +3924,9 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
             serverPath: serverPath,
             status: status,
             createdAt: createdAt,
+            nextRetryAt: nextRetryAt,
+            retryCount: retryCount,
+            lastError: lastError,
             rowid: rowid,
           ),
           createCompanionCallback: ({
@@ -3659,6 +3936,9 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
             Value<String?> serverPath = const Value.absent(),
             Value<String> status = const Value.absent(),
             required DateTime createdAt,
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
               LocalPhotosCompanion.insert(
@@ -3668,6 +3948,9 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
             serverPath: serverPath,
             status: status,
             createdAt: createdAt,
+            nextRetryAt: nextRetryAt,
+            retryCount: retryCount,
+            lastError: lastError,
             rowid: rowid,
           ),
           withReferenceMapper: (p0) => p0

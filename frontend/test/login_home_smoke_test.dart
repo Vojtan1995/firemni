@@ -26,7 +26,7 @@ class _NoopSyncService extends SyncService {
   _NoopSyncService(super.ref);
 
   @override
-  Future<SyncResult> syncAll() async => SyncResult(success: true);
+  Future<SyncResult> syncAll({bool force = true}) async => SyncResult(success: true);
 }
 
 Future<bool> _backendReachable() async {

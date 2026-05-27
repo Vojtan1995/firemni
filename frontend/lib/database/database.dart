@@ -60,6 +60,8 @@ class LocalOutbox extends Table {
   DateTimeColumn get dismissedAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get nextRetryAt => dateTime().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get lastError => text().nullable()();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -71,6 +73,9 @@ class LocalPhotos extends Table {
   TextColumn get serverPath => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('pending'))();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  TextColumn get lastError => text().nullable()();
   @override
   Set<Column> get primaryKey => {id};
 }
@@ -90,7 +95,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -98,6 +103,13 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) {
             await migrator.addColumn(localOutbox, localOutbox.conflictMessage);
             await migrator.addColumn(localOutbox, localOutbox.dismissedAt);
+          }
+          if (from < 3) {
+            await migrator.addColumn(localOutbox, localOutbox.retryCount);
+            await migrator.addColumn(localOutbox, localOutbox.lastError);
+            await migrator.addColumn(localPhotos, localPhotos.nextRetryAt);
+            await migrator.addColumn(localPhotos, localPhotos.retryCount);
+            await migrator.addColumn(localPhotos, localPhotos.lastError);
           }
         },
       );
