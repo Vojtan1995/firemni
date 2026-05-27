@@ -7,6 +7,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | Příkaz | Výsledek |
 |--------|----------|
 | `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** |
+| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
@@ -19,6 +20,7 @@ Kontrolní audit po vlně report/export (FE-04, FE-05). Backend musí běžet na
 | `flutter analyze` | OK | 2× info (`deprecated_member_use` v reports dropdownech) |
 | Integrační testy API | OK | health, login, job, floors, seals, reports CSV/PDF, worker 403 |
 | Offline/sync unit testy | OK | seal list, floor list, sync conflict (6 testů) |
+| Widget smoke login → home (FE-07) | OK | UI bez sítě + E2E s backendem (`login_home_smoke_test.dart`) |
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
@@ -94,6 +96,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 cd c:\Users\vojte\Desktop\unifast\frontend
 flutter pub get
 flutter test test/integration/runtime_verification_test.dart
+flutter test test/login_home_smoke_test.dart
 flutter test test/seal_list_offline_test.dart
 flutter test test/floor_list_offline_test.dart
 flutter test test/sync_conflict_test.dart
@@ -125,8 +128,13 @@ flutter run -d windows --debug
 
 ---
 
-## Další krok (po report/export)
+### 6) FE-07 – widget smoke login → home
+- **Soubor:** `test/login_home_smoke_test.dart`
+- **Strategie:** izolovaný `LoginScreen` bez sítě; E2E přes router + reálné `POST /api/auth/login` (backend `:3000`), sync v testu no-op override.
+- **Keys:** `login_username`, `login_pin`, `login_submit` – stabilní `find.byKey` v pump testu.
 
-1. **FE-07** – widget smoke login → home (nejnižší riziko).  
-2. **Offline detail** – `SealDetailScreen` Drift fallback (dokončení offline read).  
-3. **Admin restore UI** – volání existujícího restore endpointu.
+## Další krok
+
+1. **Offline detail** – `SealDetailScreen` Drift fallback.  
+2. **Admin restore UI** – existující restore endpoint.  
+3. **FE-06** – sync retry timer.

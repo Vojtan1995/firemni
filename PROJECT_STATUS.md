@@ -9,6 +9,7 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 |--------|----------|
 | `cd backend && npm test` | **7 suites, 48 passed** (`ucpavky_test`) |
 | `flutter test test/integration/runtime_verification_test.dart` | **10/10 passed** (vč. CSV/PDF export, role 403) |
+| `flutter test test/login_home_smoke_test.dart` | **2/2 passed** (FE-07 widget smoke) |
 | `flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart` | **6/6 passed** |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 
@@ -91,7 +92,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
 | **CI/CD** | Žádný pipeline v repu |
 | **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
-| **Widget / E2E testy** | Placeholder testy, žádný pump_widget flow |
+| **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam) chybí |
 
 ---
 
@@ -101,7 +102,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 |---------|-----|-----|
 | **Produkční `lib/` (backend + frontend)** | **Žádný mock** | Vše jde na reálné API / Prisma |
 | `backend/__tests__/health.test.js` | Placeholder | `expect(true).toBe(true)` |
-| `frontend/test/widget_test.dart` | Placeholder | stejné |
+| `frontend/test/widget_test.dart` | Stub | odkaz na `login_home_smoke_test.dart` (FE-07) |
 | `AppDatabase.forTesting()` | Test-only | in-memory Drift pro testy |
 | Hint na loginu „Seed: worker1 / 1234“ | Dev UX | `LoginScreen` |
 | `docker-compose.yml` | Volitelná alternativa | na tomto PC se nepoužívá |
@@ -159,7 +160,7 @@ flowchart LR
 | Backend – business rules | `backend/__tests__/seal.service.test.js` | kopie logiky statusů (ne importuje service) |
 | Frontend – integrace API | `frontend/test/integration/runtime_verification_test.dart` | health, login, job, floors, seals, reports CSV/PDF, role 403, Drift+outbox |
 | Frontend – offline/sync unit | `seal_list_offline_test.dart`, `floor_list_offline_test.dart`, `sync_conflict_test.dart` | Drift read, konflikty (6 testů) |
-| Frontend – placeholder | `frontend/test/widget_test.dart` | trivial pass |
+| Frontend – widget smoke | `frontend/test/login_home_smoke_test.dart` | login UI + E2E home (FE-07) |
 | Manuální checklist | `docs/04_TESTOVACI_CHECKLIST.md`, `docs/TESTING.md` | scénáře k ručnímu běhu |
 
 **Příkazy ověření:**
@@ -177,7 +178,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 |--------|--------|
 | Sync pull E2E + verze konflikt přes HTTP | BE-04 push hotové; pull bez dedikovaných HTTP testů |
 | Photos upload + permissions | worker vs management |
-| Flutter widget testy (login → seznam) | UI regrese |
+| Flutter widget testy (login → seznam ucpávek) | FE-07 pokrývá login→home |
 | Offline scénář E2E | hlavní hodnota V1 |
 | Android build v aktuálním auditu | dříve APK prošlo, nyní neověřeno |
 
@@ -223,6 +224,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **BE-05** – integrační testy `GET /api/reports/work-summary`, export CSV/PDF, filtry a role
 - **FE-04** – CSV download v `ReportsScreen` (filtry, uložení souboru, role guard)
 - **FE-05** – PDF download v `ReportsScreen` (stejné filtry a UX jako CSV)
+- **FE-07** – widget smoke login → home (`login_home_smoke_test.dart`)
 
 **Až poté (vyšší dopad):**
 
@@ -244,6 +246,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Seals: duplicita, statusy, worker edit lock | BE-03, DB-01 |
 | Management: stavby, soupis, **CSV/PDF export** | FE-04, FE-05, BE-05 |
 | Backend regrese | BE-01–05, DB-01 (48 Jest testů) |
+| Widget smoke login → home | FE-07 |
 
 ### Zbývá pro MVP / provoz
 
@@ -252,7 +255,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Offline read: **detail ucpávky** | `SealDetailScreen` bez Drift fallbacku |
 | Sync retry timer | FE-06 – periodický push dle SYNC.md |
 | Admin restore v UI | API existuje, obrazovka ne |
-| Widget/E2E smoke | FE-07 |
+| Widget/E2E smoke | FE-07 hotové |
 | Sync pull HTTP testy | BE-04 jen push |
 | CI/CD, Windows Release, Android re-verify | DOC-01, PLAT-01, PLAT-02 |
 
@@ -264,9 +267,9 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **FE-07** – widget smoke (login → home) | nejnižší riziko, jen `frontend/test/`, žádná business logika |
-| 2 | **Offline detail** – `SealDetailScreen` Drift fallback | dokončí offline read path (vzor FE-01), bez změny API |
-| 3 | **Admin restore UI** (orchestrace: FE-05 v docs = restore; v gitu PDF = `7804bb6`) | malý scope, existující `PATCH /seals/:id/restore` |
+| 1 | **Offline detail** – `SealDetailScreen` Drift fallback | dokončí offline read path (vzor FE-01), bez změny API |
+| 2 | **Admin restore UI** | malý scope, existující `PATCH /seals/:id/restore` |
+| 3 | **FE-06** – sync retry timer | střední riziko; nesekvenčně s většími sync úpravami |
 
 **Sekvenčně ne:** FE-06 (sync timer) paralelně s většími úpravami sync UI.
 
@@ -274,6 +277,6 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ## Shrnutí jednou větou
 
-**Report/export vlna je hotová (BE-05 + FE-04 + FE-05); testy zelené; další nejbezpečnější krok je FE-07 nebo offline detail ucpávky.**
+**Report/export vlna a FE-07 widget smoke jsou hotové; další krok offline detail ucpávky nebo admin restore UI.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

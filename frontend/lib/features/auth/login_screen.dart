@@ -45,12 +45,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               Text('Přihlášení jménem a PIN', style: Theme.of(context).textTheme.bodyMedium),
               const SizedBox(height: 32),
               TextField(
+                key: const Key('login_username'),
                 controller: _userCtrl,
                 decoration: const InputDecoration(labelText: 'Uživatelské jméno', border: OutlineInputBorder()),
                 textInputAction: TextInputAction.next,
               ),
               const SizedBox(height: 16),
               TextField(
+                key: const Key('login_pin'),
                 controller: _pinCtrl,
                 decoration: const InputDecoration(labelText: 'PIN', border: OutlineInputBorder()),
                 obscureText: true,
@@ -63,6 +65,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ],
               const SizedBox(height: 24),
               ElevatedButton(
+                key: const Key('login_submit'),
                 onPressed: _loading ? null : _login,
                 child: _loading
                     ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2))
