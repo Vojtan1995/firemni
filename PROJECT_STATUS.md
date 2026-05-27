@@ -176,7 +176,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Vysoká priorita (data / integrita)
 
 1. **Sync konflikty** – backend vrací `conflict`, frontend nemá UI pro rozhodnutí; auto-merge se neděje (správně dle spec), ale worker nevidí jasný postup.
-2. **Offline read path** – seznam ucpávek hotov (FE-01); patra a detail ucpávky stále primárně API.
+2. **Offline read path** – seznam ucpávek (FE-01) a patra (FE-02) hotové; detail ucpávky stále primárně API.
 
 ### Střední priorita (kvalita / provoz)
 
@@ -197,7 +197,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **FE-02** (offline read pater) nebo **BE-04** (sync push testy).
+**Doporučení:** **BE-04** (sync push testy) nebo **FE-03** (sync conflict UI).
 
 **Hotovo od posledního auditu:**
 
@@ -206,11 +206,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **BE-03** – seals HTTP (409 duplicita, statusy, worker edit lock)
 - **DB-01** – partial unique index `seals_active_number_unique` + integrační test duplicity
 - **FE-01** – `SealListScreen` offline fallback z Drift + indikátor
+- **FE-02** – `FloorListScreen` offline fallback z Drift + indikátor
 
 **Až poté (vyšší dopad):**
 
-1. Offline: `FloorListScreen` – při chybě sítě číst z Drift.
-2. UI pro sync konflikty.
+1. UI pro sync konflikty (FE-03).
+2. Offline detail ucpávky.
 
 ---
 
@@ -254,4 +255,4 @@ Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.in
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend + testy a Flutter seznam ucpávek s offline cache; chybí offline patra/detail a UI pro sync konflikty – další krok FE-02 nebo BE-04.**
+**Projekt má funkční backend + testy a Flutter worker flow se offline cache (patra + ucpávky); chybí sync conflict UI a offline detail – další krok BE-04 nebo FE-03.**

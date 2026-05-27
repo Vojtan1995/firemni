@@ -15,7 +15,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
-| Zakázky / patra (API) | OK | `12345678` + `/api/jobs/:id/floors` |
+| Zakázky / patra (API + offline) | OK | patra: API + Drift cache (FE-02); stavba přes číslo |
 | Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
 | Spuštění Windows (debug) | OK | `flutter run -d windows --debug` |
 | Worker flow (kód + API) | OK | login → číslo stavby → patro → seznam ucpávek (vše přes Dio) |
@@ -27,7 +27,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 | Login | `LoginScreen` | `POST /api/auth/login` + `SyncService.syncAll()` |
 | Menu | `HomeScreen` | role-based menu |
 | Číslo stavby | `JobNumberScreen` | `GET /api/jobs/by-number/:num` + cache do Drift |
-| Patro | `FloorListScreen` | `GET /api/jobs/:jobId/floors` |
+| Patro | `FloorListScreen` | API + Drift cache; offline banner + chip |
 | Seznam ucpávek | `SealListScreen` | API + Drift cache; offline banner + chip |
 | Nová ucpávka | `SealFormScreen` | `POST /api/seals` + lokální Drift + outbox |
 
@@ -37,7 +37,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 
 | Oblast | Stav |
 |--------|------|
-| Offline-first read path | částečně – **seznam ucpávek** má offline fallback (FE-01); patra (`FloorListScreen`) stále jen API |
+| Offline-first read path | částečně – seznam ucpávek (FE-01) a patra (FE-02); detail ucpávky stále API |
 | Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
 | Konflikty sync | backend + outbox existují, UI pro řešení konfliktů je minimální |
 | Fotky | upload při online save, retry fronta v `SyncService` |
@@ -71,7 +71,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 
 ## Co ještě není implementované / neověřené v UI
 
-- Offline read pro seznam pater (`FloorListScreen`, FE-02)
+- Offline read pro detail ucpávky (`SealDetailScreen`)
 - UI pro ruční řešení sync konfliktů
 - Kompletní management workflow (kontrola statusů v terénním UX)
 - PDF export z mobilního UI
@@ -89,6 +89,7 @@ cd c:\Users\vojte\Desktop\unifast\frontend
 flutter pub get
 flutter test test/integration/runtime_verification_test.dart
 flutter test test/seal_list_offline_test.dart
+flutter test test/floor_list_offline_test.dart
 flutter run -d windows --debug
 ```
 
