@@ -22,6 +22,7 @@ class SealListScreen extends ConsumerStatefulWidget {
 
 class _SealListScreenState extends ConsumerState<SealListScreen> {
   List<Map<String, dynamic>> _seals = [];
+  Set<String> _conflictSealIds = {};
   bool _loading = true;
   SealListDataSource? _dataSource;
   String? _offlineHint;
@@ -46,9 +47,11 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       final apiList = (res.data as List).cast<Map<String, dynamic>>();
       await _cacheSealsFromApi(db, apiList);
       final merged = await _mergeWithUnsyncedLocal(db, apiList);
+      final conflictIds = await _loadConflictSealIds(db, merged);
       if (!mounted) return;
       setState(() {
         _seals = merged;
+        _conflictSealIds = conflictIds;
         _dataSource = SealListDataSource.online;
         _loading = false;
       });
@@ -110,15 +113,32 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
           ..orderBy([(s) => OrderingTerm.asc(s.sealNumber)]))
         .get();
 
+    final seals = rows.map(_mapLocalSealRow).toList();
+    final conflictIds = await _loadConflictSealIds(db, seals);
+
     if (!mounted) return;
     setState(() {
-      _seals = rows.map(_mapLocalSealRow).toList();
+      _seals = seals;
+      _conflictSealIds = conflictIds;
       _dataSource = SealListDataSource.offline;
       _offlineHint = rows.isEmpty
           ? 'Server nedostupný a v cache nejsou žádné ucpávky pro toto patro.'
           : null;
       _loading = false;
     });
+  }
+
+  Future<Set<String>> _loadConflictSealIds(
+    AppDatabase db,
+    List<Map<String, dynamic>> seals,
+  ) async {
+    final ids = seals.map((s) => s['id'] as String).toList();
+    if (ids.isEmpty) return {};
+
+    final rows = await (db.select(db.localSeals)
+          ..where((s) => s.id.isIn(ids) & s.syncConflict.equals(true)))
+        .get();
+    return rows.map((r) => r.id).toSet();
   }
 
   static Map<String, dynamic> _mapLocalSealRow(LocalSeal row) => {
@@ -191,24 +211,30 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                       itemBuilder: (_, i) {
                         final s = _seals[i];
                         final status = s['status'] as String? ?? 'draft';
+                        final hasConflict = _conflictSealIds.contains(s['id']);
                         return InkWell(
                           onTap: () {
                             context.push('/seal/${s['id']}').then((_) => _load());
                           },
                           child: Card(
-                            color: AppTheme.statusColor(status).withValues(alpha: 0.2),
+                            color: hasConflict
+                                ? Colors.orange.shade100
+                                : AppTheme.statusColor(status).withValues(alpha: 0.2),
                             child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
-                                  Container(
-                                    width: 12,
-                                    height: 12,
-                                    decoration: BoxDecoration(
-                                      color: AppTheme.statusColor(status),
-                                      shape: BoxShape.circle,
+                                  if (hasConflict)
+                                    const Icon(Icons.warning_amber, color: Colors.orange, size: 22)
+                                  else
+                                    Container(
+                                      width: 12,
+                                      height: 12,
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.statusColor(status),
+                                        shape: BoxShape.circle,
+                                      ),
                                     ),
-                                  ),
                                   const SizedBox(height: 8),
                                   Text(
                                     s['sealNumber'] as String,

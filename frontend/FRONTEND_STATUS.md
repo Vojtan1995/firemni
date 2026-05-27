@@ -39,7 +39,7 @@ Automatický test: `flutter test test/integration/runtime_verification_test.dart
 |--------|------|
 | Offline-first read path | částečně – seznam ucpávek (FE-01) a patra (FE-02); detail ucpávky stále API |
 | Sync po loginu | volá se `syncAll()`, ale plná konzistence UI ↔ server není všude dokončená |
-| Konflikty sync | backend + outbox existují, UI pro řešení konfliktů je minimální |
+| Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
 | Fotky | upload při online save, retry fronta v `SyncService` |
 | Management export CSV | tlačítko ukazuje URL, bez plného download flow v UI |
 | Windows release build | `flutter build windows` (Release) může selhat na INSTALL kroku |
@@ -72,7 +72,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 ## Co ještě není implementované / neověřené v UI
 
 - Offline read pro detail ucpávky (`SealDetailScreen`)
-- UI pro ruční řešení sync konfliktů
+- Automatické řešení konfliktů (záměrně mimo scope – pouze zobrazení)
 - Kompletní management workflow (kontrola statusů v terénním UX)
 - PDF export z mobilního UI
 - Push notifikace, diskuze, ceník (mimo V1 scope)
@@ -90,6 +90,7 @@ flutter pub get
 flutter test test/integration/runtime_verification_test.dart
 flutter test test/seal_list_offline_test.dart
 flutter test test/floor_list_offline_test.dart
+flutter test test/sync_conflict_test.dart
 flutter run -d windows --debug
 ```
 

@@ -8,6 +8,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import 'sync_conflict.dart';
 
 final syncServiceProvider = Provider((ref) => SyncService(ref));
 
@@ -106,20 +107,30 @@ class SyncService {
       if (status == 'ok' || status == 'already_processed') {
         await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id)))
             .write(const LocalOutboxCompanion(status: Value('done')));
-        if (r['entityId'] != null) {
-          await (_db.update(_db.localSeals)..where((s) => s.id.equals(pending[i].id)))
-              .write(LocalSealsCompanion(
-            isSynced: const Value(true),
-            syncConflict: const Value(false),
-          ));
+        final localSealId = await resolveSealIdForOutbox(_db, pending[i]);
+        final serverId = r['entityId'] as String?;
+        if (localSealId != null && serverId != null) {
+          await (_db.update(_db.localSeals)..where((s) => s.id.equals(localSealId))).write(
+            LocalSealsCompanion(
+              id: Value(serverId),
+              isSynced: const Value(true),
+              syncConflict: const Value(false),
+            ),
+          );
         }
       } else if (status == 'conflict') {
-        await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id)))
-            .write(const LocalOutboxCompanion(status: Value('conflict')));
-        final sealId = jsonDecode(pending[i].payload)['id'] ?? jsonDecode(pending[i].payload)['sealId'];
+        final conflictMsg = r['conflict'] as String? ?? 'Konflikt při synchronizaci';
+        await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id))).write(
+          LocalOutboxCompanion(
+            status: const Value('conflict'),
+            conflictMessage: Value(conflictMsg),
+          ),
+        );
+        final sealId = await resolveSealIdForOutbox(_db, pending[i]);
         if (sealId != null) {
-          await (_db.update(_db.localSeals)..where((s) => s.id.equals(sealId.toString())))
-              .write(const LocalSealsCompanion(syncConflict: Value(true)));
+          await (_db.update(_db.localSeals)..where((s) => s.id.equals(sealId))).write(
+            const LocalSealsCompanion(syncConflict: Value(true)),
+          );
         }
       } else {
         await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id)))

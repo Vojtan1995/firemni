@@ -176,7 +176,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ### Vysoká priorita (data / integrita)
 
-1. **Sync konflikty** – backend vrací `conflict`, frontend nemá UI pro rozhodnutí; auto-merge se neděje (správně dle spec), ale worker nevidí jasný postup.
+1. **Sync konflikty – UI** – zobrazení a skrytí upozornění hotové (FE-03); automatické slučení záměrně není.
 2. **Offline read path** – seznam ucpávek (FE-01) a patra (FE-02) hotové; detail ucpávky stále primárně API.
 
 ### Střední priorita (kvalita / provoz)
@@ -198,7 +198,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **FE-03** (sync conflict UI) nebo **BE-05** (reports smoke).
+**Doporučení:** **BE-05** (reports smoke) nebo **FE-04** (CSV download).
 
 **Hotovo od posledního auditu:**
 
@@ -209,11 +209,12 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 - **FE-01** – `SealListScreen` offline fallback z Drift + indikátor
 - **FE-02** – `FloorListScreen` offline fallback z Drift + indikátor
 - **BE-04** – `POST /api/sync/push` integrační testy
+- **FE-03** – SyncScreen konflikty + indikátor v seznamu ucpávek
 
 **Až poté (vyšší dopad):**
 
-1. UI pro sync konflikty (FE-03).
-2. Offline detail ucpávky.
+1. Offline detail ucpávky.
+2. FE-04 CSV download v management UI.
 
 ---
 
@@ -257,4 +258,4 @@ Migrace `20250528000000_seals_active_number_unique`, testy v `seals.duplicate.in
 
 ## Shrnutí jednou větou
 
-**Projekt má funkční backend včetně sync push testů a Flutter worker flow s offline cache; chybí sync conflict UI a offline detail – další krok FE-03 nebo BE-05.**
+**Projekt má funkční backend včetně sync push testů a Flutter worker flow s offline cache a zobrazením sync konfliktů; další krok BE-05 nebo FE-04.**

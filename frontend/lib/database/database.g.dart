@@ -1439,6 +1439,18 @@ class $LocalOutboxTable extends LocalOutbox
       type: DriftSqlType.string,
       requiredDuringInsert: false,
       defaultValue: const Constant('pending'));
+  static const VerificationMeta _conflictMessageMeta =
+      const VerificationMeta('conflictMessage');
+  @override
+  late final GeneratedColumn<String> conflictMessage = GeneratedColumn<String>(
+      'conflict_message', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _dismissedAtMeta =
+      const VerificationMeta('dismissedAt');
+  @override
+  late final GeneratedColumn<DateTime> dismissedAt = GeneratedColumn<DateTime>(
+      'dismissed_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -1461,6 +1473,8 @@ class $LocalOutboxTable extends LocalOutbox
         payload,
         baseVersion,
         status,
+        conflictMessage,
+        dismissedAt,
         createdAt,
         nextRetryAt
       ];
@@ -1523,6 +1537,18 @@ class $LocalOutboxTable extends LocalOutbox
       context.handle(_statusMeta,
           status.isAcceptableOrUnknown(data['status']!, _statusMeta));
     }
+    if (data.containsKey('conflict_message')) {
+      context.handle(
+          _conflictMessageMeta,
+          conflictMessage.isAcceptableOrUnknown(
+              data['conflict_message']!, _conflictMessageMeta));
+    }
+    if (data.containsKey('dismissed_at')) {
+      context.handle(
+          _dismissedAtMeta,
+          dismissedAt.isAcceptableOrUnknown(
+              data['dismissed_at']!, _dismissedAtMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -1560,6 +1586,10 @@ class $LocalOutboxTable extends LocalOutbox
           .read(DriftSqlType.int, data['${effectivePrefix}base_version']),
       status: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
+      conflictMessage: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}conflict_message']),
+      dismissedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}dismissed_at']),
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       nextRetryAt: attachedDatabase.typeMapping
@@ -1582,6 +1612,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   final String payload;
   final int? baseVersion;
   final String status;
+  final String? conflictMessage;
+  final DateTime? dismissedAt;
   final DateTime createdAt;
   final DateTime? nextRetryAt;
   const LocalOutboxData(
@@ -1593,6 +1625,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       required this.payload,
       this.baseVersion,
       required this.status,
+      this.conflictMessage,
+      this.dismissedAt,
       required this.createdAt,
       this.nextRetryAt});
   @override
@@ -1608,6 +1642,12 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       map['base_version'] = Variable<int>(baseVersion);
     }
     map['status'] = Variable<String>(status);
+    if (!nullToAbsent || conflictMessage != null) {
+      map['conflict_message'] = Variable<String>(conflictMessage);
+    }
+    if (!nullToAbsent || dismissedAt != null) {
+      map['dismissed_at'] = Variable<DateTime>(dismissedAt);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     if (!nullToAbsent || nextRetryAt != null) {
       map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
@@ -1627,6 +1667,12 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           ? const Value.absent()
           : Value(baseVersion),
       status: Value(status),
+      conflictMessage: conflictMessage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(conflictMessage),
+      dismissedAt: dismissedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(dismissedAt),
       createdAt: Value(createdAt),
       nextRetryAt: nextRetryAt == null && nullToAbsent
           ? const Value.absent()
@@ -1646,6 +1692,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       payload: serializer.fromJson<String>(json['payload']),
       baseVersion: serializer.fromJson<int?>(json['baseVersion']),
       status: serializer.fromJson<String>(json['status']),
+      conflictMessage: serializer.fromJson<String?>(json['conflictMessage']),
+      dismissedAt: serializer.fromJson<DateTime?>(json['dismissedAt']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
     );
@@ -1662,6 +1710,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       'payload': serializer.toJson<String>(payload),
       'baseVersion': serializer.toJson<int?>(baseVersion),
       'status': serializer.toJson<String>(status),
+      'conflictMessage': serializer.toJson<String?>(conflictMessage),
+      'dismissedAt': serializer.toJson<DateTime?>(dismissedAt),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
     };
@@ -1676,6 +1726,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           String? payload,
           Value<int?> baseVersion = const Value.absent(),
           String? status,
+          Value<String?> conflictMessage = const Value.absent(),
+          Value<DateTime?> dismissedAt = const Value.absent(),
           DateTime? createdAt,
           Value<DateTime?> nextRetryAt = const Value.absent()}) =>
       LocalOutboxData(
@@ -1687,6 +1739,10 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
         payload: payload ?? this.payload,
         baseVersion: baseVersion.present ? baseVersion.value : this.baseVersion,
         status: status ?? this.status,
+        conflictMessage: conflictMessage.present
+            ? conflictMessage.value
+            : this.conflictMessage,
+        dismissedAt: dismissedAt.present ? dismissedAt.value : this.dismissedAt,
         createdAt: createdAt ?? this.createdAt,
         nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
       );
@@ -1703,6 +1759,11 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       baseVersion:
           data.baseVersion.present ? data.baseVersion.value : this.baseVersion,
       status: data.status.present ? data.status.value : this.status,
+      conflictMessage: data.conflictMessage.present
+          ? data.conflictMessage.value
+          : this.conflictMessage,
+      dismissedAt:
+          data.dismissedAt.present ? data.dismissedAt.value : this.dismissedAt,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       nextRetryAt:
           data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
@@ -1720,6 +1781,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           ..write('payload: $payload, ')
           ..write('baseVersion: $baseVersion, ')
           ..write('status: $status, ')
+          ..write('conflictMessage: $conflictMessage, ')
+          ..write('dismissedAt: $dismissedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('nextRetryAt: $nextRetryAt')
           ..write(')'))
@@ -1727,8 +1790,19 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   }
 
   @override
-  int get hashCode => Object.hash(id, mutationId, deviceId, entityType,
-      operation, payload, baseVersion, status, createdAt, nextRetryAt);
+  int get hashCode => Object.hash(
+      id,
+      mutationId,
+      deviceId,
+      entityType,
+      operation,
+      payload,
+      baseVersion,
+      status,
+      conflictMessage,
+      dismissedAt,
+      createdAt,
+      nextRetryAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1741,6 +1815,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
           other.payload == this.payload &&
           other.baseVersion == this.baseVersion &&
           other.status == this.status &&
+          other.conflictMessage == this.conflictMessage &&
+          other.dismissedAt == this.dismissedAt &&
           other.createdAt == this.createdAt &&
           other.nextRetryAt == this.nextRetryAt);
 }
@@ -1754,6 +1830,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   final Value<String> payload;
   final Value<int?> baseVersion;
   final Value<String> status;
+  final Value<String?> conflictMessage;
+  final Value<DateTime?> dismissedAt;
   final Value<DateTime> createdAt;
   final Value<DateTime?> nextRetryAt;
   final Value<int> rowid;
@@ -1766,6 +1844,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     this.payload = const Value.absent(),
     this.baseVersion = const Value.absent(),
     this.status = const Value.absent(),
+    this.conflictMessage = const Value.absent(),
+    this.dismissedAt = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.nextRetryAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1779,6 +1859,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     required String payload,
     this.baseVersion = const Value.absent(),
     this.status = const Value.absent(),
+    this.conflictMessage = const Value.absent(),
+    this.dismissedAt = const Value.absent(),
     required DateTime createdAt,
     this.nextRetryAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -1798,6 +1880,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     Expression<String>? payload,
     Expression<int>? baseVersion,
     Expression<String>? status,
+    Expression<String>? conflictMessage,
+    Expression<DateTime>? dismissedAt,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? nextRetryAt,
     Expression<int>? rowid,
@@ -1811,6 +1895,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       if (payload != null) 'payload': payload,
       if (baseVersion != null) 'base_version': baseVersion,
       if (status != null) 'status': status,
+      if (conflictMessage != null) 'conflict_message': conflictMessage,
+      if (dismissedAt != null) 'dismissed_at': dismissedAt,
       if (createdAt != null) 'created_at': createdAt,
       if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
       if (rowid != null) 'rowid': rowid,
@@ -1826,6 +1912,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       Value<String>? payload,
       Value<int?>? baseVersion,
       Value<String>? status,
+      Value<String?>? conflictMessage,
+      Value<DateTime?>? dismissedAt,
       Value<DateTime>? createdAt,
       Value<DateTime?>? nextRetryAt,
       Value<int>? rowid}) {
@@ -1838,6 +1926,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
       payload: payload ?? this.payload,
       baseVersion: baseVersion ?? this.baseVersion,
       status: status ?? this.status,
+      conflictMessage: conflictMessage ?? this.conflictMessage,
+      dismissedAt: dismissedAt ?? this.dismissedAt,
       createdAt: createdAt ?? this.createdAt,
       nextRetryAt: nextRetryAt ?? this.nextRetryAt,
       rowid: rowid ?? this.rowid,
@@ -1871,6 +1961,12 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
+    if (conflictMessage.present) {
+      map['conflict_message'] = Variable<String>(conflictMessage.value);
+    }
+    if (dismissedAt.present) {
+      map['dismissed_at'] = Variable<DateTime>(dismissedAt.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -1894,6 +1990,8 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
           ..write('payload: $payload, ')
           ..write('baseVersion: $baseVersion, ')
           ..write('status: $status, ')
+          ..write('conflictMessage: $conflictMessage, ')
+          ..write('dismissedAt: $dismissedAt, ')
           ..write('createdAt: $createdAt, ')
           ..write('nextRetryAt: $nextRetryAt, ')
           ..write('rowid: $rowid')
@@ -3139,6 +3237,8 @@ typedef $$LocalOutboxTableCreateCompanionBuilder = LocalOutboxCompanion
   required String payload,
   Value<int?> baseVersion,
   Value<String> status,
+  Value<String?> conflictMessage,
+  Value<DateTime?> dismissedAt,
   required DateTime createdAt,
   Value<DateTime?> nextRetryAt,
   Value<int> rowid,
@@ -3153,6 +3253,8 @@ typedef $$LocalOutboxTableUpdateCompanionBuilder = LocalOutboxCompanion
   Value<String> payload,
   Value<int?> baseVersion,
   Value<String> status,
+  Value<String?> conflictMessage,
+  Value<DateTime?> dismissedAt,
   Value<DateTime> createdAt,
   Value<DateTime?> nextRetryAt,
   Value<int> rowid,
@@ -3190,6 +3292,13 @@ class $$LocalOutboxTableFilterComposer
 
   ColumnFilters<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get conflictMessage => $composableBuilder(
+      column: $table.conflictMessage,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get dismissedAt => $composableBuilder(
+      column: $table.dismissedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -3231,6 +3340,13 @@ class $$LocalOutboxTableOrderingComposer
   ColumnOrderings<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get conflictMessage => $composableBuilder(
+      column: $table.conflictMessage,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get dismissedAt => $composableBuilder(
+      column: $table.dismissedAt, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
 
@@ -3270,6 +3386,12 @@ class $$LocalOutboxTableAnnotationComposer
 
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<String> get conflictMessage => $composableBuilder(
+      column: $table.conflictMessage, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get dismissedAt => $composableBuilder(
+      column: $table.dismissedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -3312,6 +3434,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             Value<String> payload = const Value.absent(),
             Value<int?> baseVersion = const Value.absent(),
             Value<String> status = const Value.absent(),
+            Value<String?> conflictMessage = const Value.absent(),
+            Value<DateTime?> dismissedAt = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime?> nextRetryAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -3325,6 +3449,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             payload: payload,
             baseVersion: baseVersion,
             status: status,
+            conflictMessage: conflictMessage,
+            dismissedAt: dismissedAt,
             createdAt: createdAt,
             nextRetryAt: nextRetryAt,
             rowid: rowid,
@@ -3338,6 +3464,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             required String payload,
             Value<int?> baseVersion = const Value.absent(),
             Value<String> status = const Value.absent(),
+            Value<String?> conflictMessage = const Value.absent(),
+            Value<DateTime?> dismissedAt = const Value.absent(),
             required DateTime createdAt,
             Value<DateTime?> nextRetryAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -3351,6 +3479,8 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
             payload: payload,
             baseVersion: baseVersion,
             status: status,
+            conflictMessage: conflictMessage,
+            dismissedAt: dismissedAt,
             createdAt: createdAt,
             nextRetryAt: nextRetryAt,
             rowid: rowid,

@@ -56,6 +56,8 @@ class LocalOutbox extends Table {
   TextColumn get payload => text()();
   IntColumn get baseVersion => integer().nullable()();
   TextColumn get status => text().withDefault(const Constant('pending'))();
+  TextColumn get conflictMessage => text().nullable()();
+  DateTimeColumn get dismissedAt => dateTime().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get nextRetryAt => dateTime().nullable()();
   @override
@@ -88,7 +90,17 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onUpgrade: (migrator, from, to) async {
+          if (from < 2) {
+            await migrator.addColumn(localOutbox, localOutbox.conflictMessage);
+            await migrator.addColumn(localOutbox, localOutbox.dismissedAt);
+          }
+        },
+      );
 }
 
 LazyDatabase _openConnection() {
