@@ -138,6 +138,52 @@ void main() {
       }
     });
 
+    test('management can download reports PDF export', () async {
+      final data = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'vedeni',
+        'pin': '1234',
+      });
+      final mgmtToken = data['token'] as String;
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/reports/export/pdf');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $mgmtToken');
+        final res = await req.close();
+        final bytes = await res.fold<List<int>>(
+          <int>[],
+          (prev, chunk) => prev..addAll(chunk),
+        );
+        expect(res.statusCode, 200);
+        expect(bytes.length, greaterThan(100));
+        expect(String.fromCharCodes(bytes.sublist(0, 4)), '%PDF');
+      } finally {
+        client.close();
+      }
+    });
+
+    test('worker cannot access reports PDF export', () async {
+      final login = await _jsonRequest('POST', '/api/auth/login', body: {
+        'username': 'worker1',
+        'pin': '1234',
+      });
+      final workerToken = login['token'] as String;
+
+      final client = HttpClient();
+      try {
+        final uri = Uri.parse('$_apiBase/api/reports/export/pdf');
+        final req = await client.getUrl(uri);
+        req.headers.set('Authorization', 'Bearer $workerToken');
+        final res = await req.close();
+        final text = await res.transform(utf8.decoder).join();
+        expect(res.statusCode, 403);
+        expect(text, contains('FORBIDDEN'));
+      } finally {
+        client.close();
+      }
+    });
+
     test('worker cannot access reports CSV export', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',

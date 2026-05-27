@@ -80,10 +80,33 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> _exportCsv() async {
+    await _exportFile(
+      path: '/api/reports/export/csv',
+      extension: 'csv',
+      successLabel: 'CSV',
+      errorLabel: 'Export CSV selhal',
+    );
+  }
+
+  Future<void> _exportPdf() async {
+    await _exportFile(
+      path: '/api/reports/export/pdf',
+      extension: 'pdf',
+      successLabel: 'PDF',
+      errorLabel: 'Export PDF selhal',
+    );
+  }
+
+  Future<void> _exportFile({
+    required String path,
+    required String extension,
+    required String successLabel,
+    required String errorLabel,
+  }) async {
     setState(() => _exporting = true);
     try {
       final res = await ref.read(dioProvider).get(
-        '/api/reports/export/csv',
+        path,
         queryParameters: _queryParams,
         options: Options(responseType: ResponseType.bytes),
       );
@@ -94,17 +117,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
 
       final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
       final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final filePath = p.join(dir.path, 'soupis_praci_$date.csv');
+      final filePath = p.join(dir.path, 'soupis_praci_$date.$extension');
       await File(filePath).writeAsBytes(bytes, flush: true);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('CSV uloženo: $filePath')),
+        SnackBar(content: Text('$successLabel uloženo: $filePath')),
       );
     } on DioException catch (e) {
-      _showError(_dioMessage(e, 'Export CSV selhal'));
+      _showError(_dioMessage(e, errorLabel));
     } catch (e) {
-      _showError('Export CSV selhal: $e');
+      _showError('$errorLabel: $e');
     } finally {
       if (mounted) setState(() => _exporting = false);
     }
@@ -174,21 +197,22 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                   onChanged: (v) => setState(() => _filterStatus = v),
                 ),
                 const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _loading ? null : _load,
+                    child: _loading
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Načíst'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: _loading ? null : _load,
-                        child: _loading
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('Načíst'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
                     Expanded(
                       child: ElevatedButton.icon(
                         onPressed: _exporting ? null : _exportCsv,
@@ -200,6 +224,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                               )
                             : const Icon(Icons.download),
                         label: const Text('Export CSV'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _exporting ? null : _exportPdf,
+                        icon: _exporting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.picture_as_pdf),
+                        label: const Text('Export PDF'),
                       ),
                     ),
                   ],
