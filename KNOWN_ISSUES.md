@@ -44,5 +44,39 @@
 
 ## 5. Flutter build APK – varování pluginů
 
-- **Projev:** varování Kotlin Gradle Plugin u některých pluginů.
-- **Dopad:** build APK obvykle proběhne úspěšně; není to blokér backend runtime.
+- **Projev:** varování Kotlin Gradle Plugin u `image_picker_android`, `flutter_image_compress_common`.
+- **Dopad:** build APK proběhne (ověřeno PLAT-02); budoucí Flutter verze mohou vyžadovat upgrade pluginů.
+
+## 6. Android runtime (PLAT-02)
+
+### 6.1 Release APK bez INTERNET (opraveno)
+
+- **Projev:** release APK nevolá API; login „visí“ / síťová chyba.
+- **Příčina:** `INTERNET` byl jen v `android/app/src/debug/AndroidManifest.xml`, release merge ho neměl.
+- **Oprava:** `uses-permission INTERNET` v `android/app/src/main/AndroidManifest.xml` (commit PLAT-02).
+
+### 6.2 Cleartext HTTP
+
+- **Projev:** `Cleartext HTTP traffic to … not permitted`.
+- **Příčina:** Android 9+ blokuje HTTP; dev backend běží na `http://`.
+- **Oprava:** `res/xml/network_security_config.xml` + `android:networkSecurityConfig` (dev/test). **Produkce:** HTTPS + odstranit cleartext.
+
+### 6.3 `localhost` na zařízení
+
+- **Projev:** aplikace na telefonu/emulátoru se nemůže připojit k `http://localhost:3000` na PC.
+- **Příčina:** `localhost` = loopback zařízení.
+- **Workaround:**
+  - emulátor: `adb reverse tcp:3000 tcp:3000` a ponechat výchozí URL;
+  - emulátor bez reverse: `--dart-define=API_BASE_URL=http://10.0.2.2:3000`;
+  - telefon: IP PC na LAN + `--dart-define=API_BASE_URL=http://192.168.x.x:3000`.
+
+### 6.4 Sync timer na pozadí
+
+- **Projev:** automatický sync (FE-06, každých 15 s) po zhasnutí obrazovky nebo v pozadí neběží spolehlivě.
+- **Příčina:** Android battery / Doze omezuje timery.
+- **Workaround:** ruční **Synchronizovat** na `SyncScreen`; po návratu do popředí timer pokračuje.
+
+### 6.5 Export CSV/PDF na Androidu
+
+- **Chování:** `getDownloadsDirectory()` nemusí být dostupné → fallback `getApplicationDocumentsDirectory()`.
+- **Dopad:** soubor je v app-specific složce; cesta se zobrazí ve SnackBar (scoped storage, bez legacy permission).

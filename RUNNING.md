@@ -249,7 +249,91 @@ flutter test test/integration/runtime_verification_test.dart
 
 ---
 
-## 6. Rychlý checklist backend runtime
+## 6. Flutter (Android) – PLAT-02
+
+Adresář: `c:\Users\vojte\Desktop\unifast\frontend`
+
+### 6.1 Release APK
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast\frontend
+flutter pub get
+flutter build apk --release
+```
+
+**Výstup (ověřeno 2026-05-28):** `build\app\outputs\flutter-apk\app-release.apk` (~58 MB).
+
+**Oprávnění v release** (`android/app/src/main/AndroidManifest.xml`):
+
+| Položka | Účel |
+|---------|------|
+| `INTERNET` | API volání (dříve chybělo v release – jen debug manifest) |
+| `ACCESS_NETWORK_STATE` | `connectivity_plus` |
+| `network_security_config` | HTTP k dev backendu (cleartext); produkce → HTTPS |
+
+Fotky: `image_picker` používá systémový photo picker + `FileProvider` (bez legacy storage permission).
+
+### 6.2 API URL na zařízení / emulátoru
+
+Výchozí `http://localhost:3000` na **Androidu znamená samotné zařízení**, ne váš PC.
+
+| Prostředí | URL backendu |
+|-----------|----------------|
+| **Emulátor** + `adb reverse` | `http://localhost:3000` (doporučeno) |
+| **Emulátor** bez reverse | `http://10.0.2.2:3000` |
+| **Fyzické zařízení** (stejná Wi‑Fi) | `http://<IP_PC>:3000` přes `--dart-define` |
+
+```powershell
+# Emulátor: přesměrování portu host → emulátor
+$adb = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
+& $adb reverse tcp:3000 tcp:3000
+
+# Nebo build s explicitní URL (LAN / 10.0.2.2)
+flutter build apk --release --dart-define=API_BASE_URL=http://10.0.2.2:3000
+```
+
+Backend na PC musí naslouchat na `0.0.0.0:3000` nebo být dostupný z LAN (firewall).
+
+### 6.3 Instalace a debug run
+
+```powershell
+# Emulátor
+flutter emulators --launch Medium_Phone_API_36.0
+flutter install -d emulator-5554   # po build apk
+# nebo
+flutter run -d emulator-5554 --release
+```
+
+```powershell
+& $adb install -r build\app\outputs\flutter-apk\app-release.apk
+& $adb shell am start -n com.example.ucpavky/.MainActivity
+```
+
+### 6.4 Ověření runtime (checklist)
+
+Před testem: backend + seed (sekce 3), `adb reverse` (emulátor).
+
+- [ ] Aplikace naběhne bez crash (logcat bez `FATAL`)
+- [ ] Login `worker1` / `1234`
+- [ ] Worker: stavba `12345678` → patro → seznam
+- [ ] Offline: vypnout Wi‑Fi → nová ucpávka → Sync pending
+- [ ] Online: Sync → odeslání
+- [ ] Management `vedeni`: CSV/PDF export (uloží do app documents / downloads – viz SnackBar cesta)
+- [ ] Fotka u ucpávky (photo picker)
+
+**Drift / storage:** SQLite v app-specific úložišti (`getApplicationDocumentsDirectory`), scoped storage bez `MANAGE_EXTERNAL_STORAGE`.
+
+**Sync timer (FE-06):** `Timer.periodic` může být zpomalen v pozadí (battery optimization) – ruční sync na obrazovce Sync vždy funguje.
+
+**Automatická kontrola API (host, stejný backend):**
+
+```powershell
+flutter test test/integration/runtime_verification_test.dart
+```
+
+---
+
+## 7. Rychlý checklist backend runtime
 
 - [ ] PostgreSQL služba běží (`localhost:5432`)
 - [ ] existuje DB `ucpavky` a uživatel odpovídá `DATABASE_URL`

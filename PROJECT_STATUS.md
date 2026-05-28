@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-27** (PLAT-01 Windows Release)  
-Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`. CI: [docs/CI.md](docs/CI.md). Release: [RUNNING.md](RUNNING.md) §5.2.
+Datum auditu: **2026-05-28** (PLAT-02 Android)  
+Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`. CI: [docs/CI.md](docs/CI.md). Windows: [RUNNING.md](RUNNING.md) §5. Android: [RUNNING.md](RUNNING.md) §6.
 
 ### Ověření testů (2026-05-27)
 
@@ -12,7 +12,8 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 | GitHub Actions CI | `.github/workflows/ci.yml` – backend + flutter-unit + flutter-runtime |
-| `flutter build windows --release` | **OK** – `build/windows/x64/runner/Release/ucpavky.exe`, ~34 MB bundle, proces běží |
+| `flutter build windows --release` | **OK** – `Release/ucpavky.exe` (~34 MB) |
+| `flutter build apk --release` | **OK** – `app-release.apk` (~58 MB), emulátor install + start |
 
 Související dokumenty: [docs/CI.md](docs/CI.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
 
@@ -33,6 +34,7 @@ Git historie (hlavní milníky):
 | `5a3e453` | Admin restore UI + `GET /api/seals/trash` |
 | (DOC-01) | GitHub Actions CI – backend + Flutter analyze/unit/runtime |
 | (PLAT-01) | Windows Release build ověřen |
+| (PLAT-02) | Android APK + manifest fix (INTERNET, cleartext) |
 
 ---
 
@@ -47,7 +49,8 @@ Git historie (hlavní milníky):
 | Auth login | OK | `worker1/1234` → token + role |
 | Prisma schema ↔ DB | OK | „Database schema is up to date“ |
 | Flutter Windows debug | OK | `flutter run -d windows --debug` |
-| Flutter Windows release | OK | `flutter build windows --release` → `Release/ucpavky.exe` (PLAT-01) |
+| Flutter Windows release | OK | `flutter build windows --release` (PLAT-01) |
+| Flutter Android release APK | OK | `flutter build apk --release` (PLAT-02) |
 | Flutter integrační testy API | OK | 12/12 v `runtime_verification_test.dart` (+ 18 offline/sync/widget unit testů) |
 
 ### Backend API (implementováno + ověřitelné přes HTTP)
@@ -97,7 +100,8 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
-| **Distribuce release** | Build OK; chybí kódový podpis / installer (SmartScreen u nepodepsaného exe) |
+| **Distribuce release** | Build OK; chybí store signing / installer (Windows SmartScreen, Android release signing) |
+| **Android dev API URL** | `localhost` na zařízení ≠ PC – `adb reverse` nebo `--dart-define=API_BASE_URL` |
 | **CI/CD** | GitHub Actions hotové (DOC-01); release deploy mimo scope |
 | **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports, trash (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
 | **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam ucpávek) chybí |
@@ -214,10 +218,11 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **PLAT-02** (Android verify) nebo rozšíření koše (patra/stavby).
+**Doporučení:** rozšíření koše (patra/stavby) nebo HTTPS pro produkční mobilní klient.
 
 **Hotovo od posledního auditu:**
 
+- **PLAT-02** – Android APK build, INTERNET + cleartext config, emulátor install ([RUNNING.md](RUNNING.md) §6, [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §6)
 - **PLAT-01** – Windows Release build ověřen ([RUNNING.md](RUNNING.md) §5.2, [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §4.1)
 - **DOC-01** – GitHub Actions (`.github/workflows/ci.yml`, [docs/CI.md](docs/CI.md))
 
@@ -239,8 +244,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 **Až poté (vyšší dopad):**
 
-1. PLAT-02 Android verify.
-2. Kódový podpis / installer pro Windows distribuci (mimo V1 scope).
+1. HTTPS + produkční `API_BASE_URL` pro mobilní klienty.
+2. Kódový podpis / installer (Windows/Android store).
 
 ---
 
@@ -260,7 +265,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Backend regrese | BE-01–05, DB-01, admin trash (52 Jest testů) |
 | Widget smoke login → home | FE-07 |
 | CI na push/PR | DOC-01 – backend + Flutter analyze/unit/runtime |
-| Windows Release build | PLAT-01 – `flutter build windows --release` |
+| Windows Release build | PLAT-01 |
+| Android release APK | PLAT-02 |
 
 ### Zbývá pro MVP / provoz
 
@@ -270,8 +276,9 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Photos upload integrační testy | worker vs management |
 | Širší widget E2E | login → seznam ucpávek (FE-07 jen login→home) |
 | Koš patra/stavby | chybí backend list + UI |
-| Android re-verify | PLAT-02 |
-| Windows installer / code signing | mimo V1 |
+| Android E2E na fyzickém zařízení (LAN) | ruční checklist RUNNING §6.4 |
+| HTTPS / produkční API URL pro mobil | mimo aktuální dev scope |
+| Windows/Android store signing | mimo V1 |
 
 Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
@@ -281,14 +288,14 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **PLAT-02** – Android verify | platforma mimo Windows |
-| 2 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
-| 3 | Sync pull HTTP testy | BE-04 jen push |
+| 1 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
+| 2 | Sync pull HTTP testy | BE-04 jen push |
+| 3 | HTTPS + produkční mobilní API URL | odstranit cleartext config |
 
 ---
 
 ## Shrnutí jednou větou
 
-**MVP jádro včetně Windows Release buildu je hotové; CI na GitHub Actions; další krok PLAT-02 (Android).**
+**MVP jádro včetně Windows a Android release buildů je hotové; CI na GitHub Actions; mobilní dev vyžaduje `adb reverse` nebo LAN API URL.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

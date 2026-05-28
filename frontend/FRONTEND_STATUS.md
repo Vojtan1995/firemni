@@ -87,7 +87,7 @@ Všechny hlavní obrazovky používají `dioProvider` → `http://localhost:3000
 - Kompletní management workflow (kontrola statusů v terénním UX)
 - Koš pro smazané patra/stavby (zatím jen ucpávky v API)
 - Push notifikace, diskuze, ceník (mimo V1 scope)
-- Android build v tomto kole neověřován (dříve APK build prošel)
+- Android release APK ověřen (PLAT-02) – viz [RUNNING.md](../RUNNING.md) §6
 - Web/Chrome target – **nefunguje** kvůli `drift`/SQLite FFI (očekávané)
 
 ---
@@ -155,4 +155,4 @@ flutter run -d windows --debug
 ## Další krok
 
 1. **DOC-01** – CI pipeline.  
-2. **PLAT-02** – Android build verify.
+2. HTTPS / produkční API URL pro mobilní klienty.
