@@ -1,6 +1,16 @@
 # Testovací checklist – Ucpávky V1
 
-Viz také [04_TESTOVACI_CHECKLIST.md](04_TESTOVACI_CHECKLIST.md).
+Viz také [04_TESTOVACI_CHECKLIST.md](04_TESTOVACI_CHECKLIST.md), [CI.md](CI.md) (GitHub Actions).
+
+## CI (GitHub Actions)
+
+Při push/PR do `main` běží workflow [`.github/workflows/ci.yml`](../.github/workflows/ci.yml):
+
+1. **backend** – PostgreSQL service, `npm test` (52 integrační testů)
+2. **flutter-unit** – `flutter analyze` + offline/sync unit testy (bez API)
+3. **flutter-runtime** – backend na `:3000` + `runtime_verification_test.dart` + `login_home_smoke_test.dart`
+
+Podrobnosti: [CI.md](CI.md).
 
 ## Automatické testy
 
@@ -59,9 +69,18 @@ npm test
 
 ### Frontend
 
+**Unit/offline (bez běžícího backendu):**
+
 ```powershell
 cd c:\Users\vojte\Desktop\unifast\frontend
-flutter test test/integration/runtime_verification_test.dart
+flutter analyze
+flutter test test/seal_list_offline_test.dart test/floor_list_offline_test.dart test/sync_conflict_test.dart test/seal_detail_offline_test.dart test/sync_retry_test.dart test/widget_test.dart
+```
+
+**Runtime (vyžaduje backend na `:3000`):**
+
+```powershell
+flutter test test/integration/runtime_verification_test.dart test/login_home_smoke_test.dart
 ```
 
 ## Manuální scénáře (po spuštění DB + backend + frontend)

@@ -7,6 +7,8 @@ Tento návod předpokládá:
 
 > **Docker není potřeba.** `docker-compose.yml` zůstává v repozitáři jen jako volitelná alternativa.
 
+**CI:** automatické testy na GitHubu při push/PR – viz [docs/CI.md](docs/CI.md).
+
 ---
 
 ## 1. PostgreSQL ve Windows (bez Dockeru)

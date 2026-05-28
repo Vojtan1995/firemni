@@ -104,7 +104,7 @@ WHERE deleted_at IS NULL;
 
 | ID | Název | Scope | Riziko |
 |----|-------|-------|--------|
-| **DOC-01** | GitHub Actions | `.github/workflows/` | nízké |
+| **DOC-01** | GitHub Actions | `.github/workflows/ci.yml`, [docs/CI.md](docs/CI.md) | nízké (hotovo) |
 | **PLAT-01** | Windows Release build | `frontend/windows/` | nízké |
 | **PLAT-02** | Android build verify | docs + build | nízké |
 
@@ -249,7 +249,7 @@ flowchart LR
 | DB-* | `npx prisma migrate deploy` (test/dev DB dle tasku) + `npm test` |
 | FE-* | `flutter analyze` + `flutter test test/integration/runtime_verification_test.dart` |
 | FE-01/02/03 | + [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md) § Offline / Konflikty |
-| DOC-01 | validní workflow yaml |
+| DOC-01 | push/PR → `.github/workflows/ci.yml` green (viz [docs/CI.md](docs/CI.md)) |
 
 **Test DB (BE-*):** `ucpavky_test` – viz [docs/setup-local-postgres-test.sql](docs/setup-local-postgres-test.sql), [docs/TESTING.md](docs/TESTING.md).
 

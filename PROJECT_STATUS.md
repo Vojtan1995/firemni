@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-27** (stabilizační audit po Admin restore UI)  
-Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`.
+Datum auditu: **2026-05-27** (DOC-01 CI pipeline)  
+Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`. CI: GitHub Actions – viz [docs/CI.md](docs/CI.md).
 
 ### Ověření testů (2026-05-27)
 
@@ -11,8 +11,9 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash 200, management trash 403) |
 | `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
+| GitHub Actions CI | `.github/workflows/ci.yml` – backend + flutter-unit + flutter-runtime |
 
-Související dokumenty: [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
+Související dokumenty: [docs/CI.md](docs/CI.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
 
 Git historie (hlavní milníky):
 
@@ -29,6 +30,7 @@ Git historie (hlavní milníky):
 | `04532b8` | FE-07 widget smoke login → home |
 | `b1cd198` | FE-06 sync retry timer + Drift v3 |
 | `5a3e453` | Admin restore UI + `GET /api/seals/trash` |
+| (DOC-01) | GitHub Actions CI – backend + Flutter analyze/unit/runtime |
 
 ---
 
@@ -93,7 +95,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
 | **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
-| **CI/CD** | Žádný pipeline v repu |
+| **CI/CD** | GitHub Actions hotové (DOC-01); release deploy mimo scope |
 | **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports, trash (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
 | **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam ucpávek) chybí |
 | **Koš mimo ucpávky** | Patra/stavby – chybí list API + UI |
@@ -209,9 +211,11 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **DOC-01** (CI pipeline) nebo **PLAT-01** (Windows Release).
+**Doporučení:** **PLAT-01** (Windows Release) nebo rozšíření koše (patra/stavby).
 
 **Hotovo od posledního auditu:**
+
+- **DOC-01** – GitHub Actions (`.github/workflows/ci.yml`, [docs/CI.md](docs/CI.md))
 
 - **BE-01** – smoke supertest (`ucpavky_test`)
 - **BE-02** – auth/role integrační testy (401, 403, `isActive`)
@@ -231,8 +235,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 **Až poté (vyšší dopad):**
 
-1. DOC-01 CI pipeline.
-2. PLAT-01 Windows Release.
+1. PLAT-01 Windows Release.
+2. PLAT-02 Android verify.
 
 ---
 
@@ -251,6 +255,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Admin koš + obnova ucpávek | `AdminTrashScreen`, `GET /api/seals/trash`, `PATCH restore` |
 | Backend regrese | BE-01–05, DB-01, admin trash (52 Jest testů) |
 | Widget smoke login → home | FE-07 |
+| CI na push/PR | DOC-01 – backend + Flutter analyze/unit/runtime |
 
 ### Zbývá pro MVP / provoz
 
@@ -260,7 +265,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Photos upload integrační testy | worker vs management |
 | Širší widget E2E | login → seznam ucpávek (FE-07 jen login→home) |
 | Koš patra/stavby | chybí backend list + UI |
-| CI/CD, Windows Release, Android re-verify | DOC-01, PLAT-01, PLAT-02 |
+| Windows Release, Android re-verify | PLAT-01, PLAT-02 |
 
 Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
@@ -270,14 +275,14 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **DOC-01** – CI pipeline | nízké riziko, bez business logiky |
-| 2 | **PLAT-01** – Windows Release build | volitelné ověření release |
+| 1 | **PLAT-01** – Windows Release build | ověření release buildu |
+| 2 | **PLAT-02** – Android verify | platforma mimo Windows |
 | 3 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
 
 ---
 
 ## Shrnutí jednou větou
 
-**MVP jádro včetně admin koše a obnovy ucpávek je hotové a ověřené testy; další krok DOC-01 nebo PLAT-01.**
+**MVP jádro včetně admin koše je hotové; CI běží na GitHub Actions; další krok PLAT-01 nebo PLAT-02.**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.
