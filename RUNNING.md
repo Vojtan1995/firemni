@@ -9,6 +9,8 @@ Tento návod předpokládá:
 
 **CI:** automatické testy na GitHubu při push/PR – viz [docs/CI.md](docs/CI.md).
 
+**Interní beta:** [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) · [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md)
+
 ---
 
 ## 1. PostgreSQL ve Windows (bez Dockeru)

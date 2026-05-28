@@ -1,21 +1,44 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-28** (PLAT-02 Android)  
-Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`. CI: [docs/CI.md](docs/CI.md). Windows: [RUNNING.md](RUNNING.md) §5. Android: [RUNNING.md](RUNNING.md) §6.
+Datum auditu: **2026-05-28** (finální MVP – interní beta)  
+Kontext: lokální PostgreSQL, backend `:3000`. **Beta:** [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md).
 
-### Ověření testů (2026-05-27)
+### Ověření testů (2026-05-28)
 
 | Příkaz | Výsledek |
 |--------|----------|
-| `cd backend && npm test` | **8 suites, 52 passed** (`ucpavky_test`, vč. `seals.trash.integration.test.js`) |
-| `flutter test test/integration/runtime_verification_test.dart` | **12/12 passed** (vč. admin trash 200, management trash 403) |
-| `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
-| `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
-| GitHub Actions CI | `.github/workflows/ci.yml` – backend + flutter-unit + flutter-runtime |
+| `cd backend && npm test` | **8 suites, 52/52 passed** |
+| `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use`) |
+| `flutter test` (unit/offline + login smoke) | **18/18 passed** |
+| `flutter test test/integration/runtime_verification_test.dart` | **12/12** (poslední plný běh; před betou zopakovat) |
+| GitHub Actions CI | `.github/workflows/ci.yml` |
 | `flutter build windows --release` | **OK** – `Release/ucpavky.exe` (~34 MB) |
-| `flutter build apk --release` | **OK** – `app-release.apk` (~58 MB), emulátor install + start |
+| `flutter build apk --release` | **OK** – `app-release.apk` (~58 MB) |
 
-Související dokumenty: [docs/CI.md](docs/CI.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
+Související dokumenty: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md), [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [docs/CI.md](docs/CI.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md).
+
+---
+
+## 0. Finální MVP – interní beta vs. ostré nasazení
+
+### Připraveno pro interní betu
+
+- Kompletní V1 jádro (worker, offline/sync, management export, admin koš)
+- Windows release + Android APK sestavitelné a ověřené (PLAT-01, PLAT-02)
+- Automatické testy (52 backend + 30 Flutter) + CI
+- Dokumentace instalace a [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md) pro 1–2 testery
+
+### Blokuje ostré nasazení
+
+| Blokér | Poznámka |
+|--------|----------|
+| Hostovaný backend + HTTPS | nyní lokální/LAN HTTP |
+| Podpis Windows exe / Android release | SmartScreen, debug signing |
+| Mobilní API URL na fyzickém telefonu | LAN IP nebo `dart-define` |
+| Provoz (zálohy, monitoring, správa uživatelů) | mimo V1 |
+| Koš patra/stavby, sync pull HTTP testy | nižší priorita |
+
+Detail: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §2.
 
 Git historie (hlavní milníky):
 
@@ -35,6 +58,7 @@ Git historie (hlavní milníky):
 | (DOC-01) | GitHub Actions CI – backend + Flutter analyze/unit/runtime |
 | (PLAT-01) | Windows Release build ověřen |
 | (PLAT-02) | Android APK + manifest fix (INTERNET, cleartext) |
+| (MVP audit) | RELEASE_CHECKLIST.md, BETA_TEST_PLAN.md |
 
 ---
 
@@ -296,6 +320,6 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 ## Shrnutí jednou větou
 
-**MVP jádro včetně Windows a Android release buildů je hotové; CI na GitHub Actions; mobilní dev vyžaduje `adb reverse` nebo LAN API URL.**
+**Interní beta je připravená** (Windows/Android klient + lokální/LAN backend); **ostré nasazení** vyžaduje HTTPS, hostovaný API, podpis aplikací a provoz – viz [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.

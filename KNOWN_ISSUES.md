@@ -1,5 +1,7 @@
 # KNOWN_ISSUES.md – známé problémy a omezení
 
+Přehled pro beta a release: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §5.
+
 ## 1. PostgreSQL není spuštěný → Prisma chyby (P1001)
 
 - **Projev:** `npx prisma migrate deploy`, `npx prisma db seed`, login na `/api/auth/login` končí:
