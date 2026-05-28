@@ -105,7 +105,7 @@ WHERE deleted_at IS NULL;
 | ID | Název | Scope | Riziko |
 |----|-------|-------|--------|
 | **DOC-01** | GitHub Actions | `.github/workflows/ci.yml`, [docs/CI.md](docs/CI.md) | nízké (hotovo) |
-| **PLAT-01** | Windows Release build | `frontend/windows/` | nízké |
+| **PLAT-01** | Windows Release build | [RUNNING.md](RUNNING.md) §5.2 | nízké (hotovo) |
 | **PLAT-02** | Android build verify | docs + build | nízké |
 
 ### Mimo scope V1 (agentům zakázat)

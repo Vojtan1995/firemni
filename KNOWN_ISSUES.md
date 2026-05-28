@@ -30,9 +30,17 @@
 
 ## 4. Flutter build Windows – toolchain
 
-- **Projev:** `flutter build windows` může skončit `MSBUILD : error MSB1009`.
-- **Příčina:** chybí Visual Studio Build Tools / CMake / Windows SDK.
-- **Oprava:** doinstalovat desktop C++ workload, pak `flutter doctor` a znovu build.
+- **Projev:** `flutter build windows` skončí `MSBUILD : error MSB1009` (projektový soubor neexistuje).
+- **Příčina:** chybí Visual Studio Build Tools / CMake / Windows SDK, nebo poškozený `frontend/windows/`.
+- **Oprava:** doinstalovat workload **Desktop development with C++**, `flutter doctor`, případně znovu `flutter create . --platforms=windows` ve složce `frontend/`.
+
+### 4.1 Windows Release – stav (PLAT-01, 2026-05-27)
+
+- **Ověřeno:** `flutter build windows --release` → `build\windows\x64\runner\Release\ucpavky.exe` (Flutter 3.44, VS 2022).
+- **CMake INSTALL:** součást standardního release buildu (kopíruje DLL, `data\flutter_assets`, `app.so`) – není samostatný krok.
+- **Spuštění:** kopírovat / distribuovat celou složku `Release\`, ne jen exe.
+- **SmartScreen:** nepodepsaný exe – uživatel může potvrdit „Spustit přesto“.
+- **API:** release používá stejné `http://localhost:3000` – bez běžícího backendu login selže (ne chyba buildu).
 
 ## 5. Flutter build APK – varování pluginů
 

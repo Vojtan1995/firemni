@@ -53,7 +53,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
 | Fotky | upload + retry fronta (`pending`/`failed`, FE-06) |
-| Windows release build | `flutter build windows` (Release) může selhat na INSTALL kroku |
+| Windows release build | OK – `flutter build windows --release` (PLAT-01, viz RUNNING.md §5.2) |
 
 ---
 
@@ -155,4 +155,4 @@ flutter run -d windows --debug
 ## Další krok
 
 1. **DOC-01** – CI pipeline.  
-2. **PLAT-01** – Windows Release build.
+2. **PLAT-02** – Android build verify.

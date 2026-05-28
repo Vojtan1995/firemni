@@ -176,16 +176,76 @@ docker compose up -d
 
 ---
 
-## 5. Flutter (stručně)
+## 5. Flutter (Windows)
 
 Adresář: `c:\Users\vojte\Desktop\unifast\frontend`
 
+API URL: `lib/core/config.dart` → `http://localhost:3000` (stejné v debug i release).
+
+### 5.1 Debug (vývoj)
+
 ```powershell
 flutter pub get
-flutter run -d windows
+flutter run -d windows --debug
 ```
 
-API URL: `lib/core/config.dart` → `http://localhost:3000`
+### 5.2 Release build (PLAT-01)
+
+**Předpoklady:** `flutter doctor` bez chyb u **Visual Studio** (Desktop development with C++), Windows 10/11 SDK.
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast\frontend
+flutter pub get
+flutter build windows --release
+```
+
+**Výstup (ověřeno 2026-05-27):**
+
+```text
+build\windows\x64\runner\Release\ucpavky.exe
+```
+
+Celá složka `Release\` (~34 MB) musí zůstat pohromadě – spouštějte `ucpavky.exe` **z této složky** (ne kopírovat jen exe).
+
+| Soubor / složka | Účel |
+|-----------------|------|
+| `ucpavky.exe` | spustitelná aplikace |
+| `flutter_windows.dll` | Flutter engine |
+| `sqlite3.dll`, `sqlite3_flutter_libs_plugin.dll` | Drift / lokální SQLite |
+| `flutter_secure_storage_windows_plugin.dll` | JWT v secure storage |
+| `connectivity_plus_plugin.dll`, `file_selector_windows_plugin.dll` | síť, výběr souborů |
+| `data\app.so` | AOT kód (release) |
+| `data\icudtl.dat`, `data\flutter_assets\` | ICU + assety |
+
+**Drift DB:** ukládá se do uživatelských dokumentů (`getApplicationDocumentsDirectory()`), typicky `%USERPROFILE%\Documents` – zápis bez admin práv.
+
+### 5.3 Spuštění release + ověření flow
+
+1. Backend musí běžet (sekce 3): `npm run dev` na `:3000`.
+2. Spusťte release:
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast\frontend\build\windows\x64\runner\Release
+.\ucpavky.exe
+```
+
+3. Ruční checklist UI:
+   - [ ] Login `worker1` / PIN `1234` → hlavní menu
+   - [ ] **Stavba** → číslo `12345678` → patro → seznam ucpávek
+   - [ ] (volitelně) Sync obrazovka – pending fronta
+
+4. Automatická kontrola API (stejný backend jako release klient):
+
+```powershell
+cd c:\Users\vojte\Desktop\unifast\frontend
+flutter test test/integration/runtime_verification_test.dart
+```
+
+**Poznámky:**
+
+- Release exe není kódově podepsané – Windows SmartScreen může zobrazit varování (očekávané pro dev build).
+- Pokud build selže `MSB1009`: chybí CMake / VS Build Tools – viz [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §4.
+- Dřívější problém s prázdným `windows/CMakeLists.txt` je vyřešen (`flutter create . --platforms=windows`).
 
 ---
 

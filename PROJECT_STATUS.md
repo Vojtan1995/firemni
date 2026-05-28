@@ -1,7 +1,7 @@
 # PROJECT_STATUS.md – audit stavu projektu Ucpávky V1
 
-Datum auditu: **2026-05-27** (DOC-01 CI pipeline)  
-Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`. CI: GitHub Actions – viz [docs/CI.md](docs/CI.md).
+Datum auditu: **2026-05-27** (PLAT-01 Windows Release)  
+Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace proti `http://localhost:3000`. CI: [docs/CI.md](docs/CI.md). Release: [RUNNING.md](RUNNING.md) §5.2.
 
 ### Ověření testů (2026-05-27)
 
@@ -12,6 +12,7 @@ Kontext: lokální PostgreSQL (bez Dockeru), backend `:3000`, Flutter integrace 
 | `flutter test` (unit/offline batch) | **18/18 passed** (FE-07, offline, sync retry, konflikty) |
 | `flutter analyze` | **0 errors**, 2× info (`deprecated_member_use` v `reports_screen.dart`) |
 | GitHub Actions CI | `.github/workflows/ci.yml` – backend + flutter-unit + flutter-runtime |
+| `flutter build windows --release` | **OK** – `build/windows/x64/runner/Release/ucpavky.exe`, ~34 MB bundle, proces běží |
 
 Související dokumenty: [docs/CI.md](docs/CI.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [FRONTEND_STATUS.md](frontend/FRONTEND_STATUS.md), [docs/04_TESTOVACI_CHECKLIST.md](docs/04_TESTOVACI_CHECKLIST.md).
 
@@ -31,6 +32,7 @@ Git historie (hlavní milníky):
 | `b1cd198` | FE-06 sync retry timer + Drift v3 |
 | `5a3e453` | Admin restore UI + `GET /api/seals/trash` |
 | (DOC-01) | GitHub Actions CI – backend + Flutter analyze/unit/runtime |
+| (PLAT-01) | Windows Release build ověřen |
 
 ---
 
@@ -45,6 +47,7 @@ Git historie (hlavní milníky):
 | Auth login | OK | `worker1/1234` → token + role |
 | Prisma schema ↔ DB | OK | „Database schema is up to date“ |
 | Flutter Windows debug | OK | `flutter run -d windows --debug` |
+| Flutter Windows release | OK | `flutter build windows --release` → `Release/ucpavky.exe` (PLAT-01) |
 | Flutter integrační testy API | OK | 12/12 v `runtime_verification_test.dart` (+ 18 offline/sync/widget unit testů) |
 
 ### Backend API (implementováno + ověřitelné přes HTTP)
@@ -94,7 +97,7 @@ Jde o kód, který **existuje**, ale není end-to-end hotový nebo není plně o
 
 | Oblast | Co chybí / je hrubé |
 |--------|---------------------|
-| **Windows Release build** | Debug build OK; Release `flutter build windows` může selhat na INSTALL |
+| **Distribuce release** | Build OK; chybí kódový podpis / installer (SmartScreen u nepodepsaného exe) |
 | **CI/CD** | GitHub Actions hotové (DOC-01); release deploy mimo scope |
 | **Backend integrační testy** | Supertest pokrývá auth, seals, sync, reports, trash (BE-01–05); `seal.service.test.js` stále neimportuje service modul |
 | **Widget / E2E testy** | FE-07 login→home hotové; širší pump_widget flow (login→seznam ucpávek) chybí |
@@ -197,7 +200,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 ### Střední priorita (kvalita / provoz)
 
 1. **Backend testy** – BE-01 až BE-05 + DB-01 + admin trash hotové; `seal.service.test.js` stále netestuje importovaný service modul.
-2. **Windows Release build** – INSTALL krok může selhat; Debug je OK.
+2. **Release distribuce** – nepodepsaný exe, bez MSI/instalátoru.
 8. **Web target** – Drift/SQLite FFI na Chrome nefunguje (očekávané).
 
 ### Nízká priorita
@@ -211,10 +214,11 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 ## 8. Nejbezpečnější další implementační krok
 
-**Doporučení:** **PLAT-01** (Windows Release) nebo rozšíření koše (patra/stavby).
+**Doporučení:** **PLAT-02** (Android verify) nebo rozšíření koše (patra/stavby).
 
 **Hotovo od posledního auditu:**
 
+- **PLAT-01** – Windows Release build ověřen ([RUNNING.md](RUNNING.md) §5.2, [KNOWN_ISSUES.md](KNOWN_ISSUES.md) §4.1)
 - **DOC-01** – GitHub Actions (`.github/workflows/ci.yml`, [docs/CI.md](docs/CI.md))
 
 - **BE-01** – smoke supertest (`ucpavky_test`)
@@ -235,8 +239,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 
 **Až poté (vyšší dopad):**
 
-1. PLAT-01 Windows Release.
-2. PLAT-02 Android verify.
+1. PLAT-02 Android verify.
+2. Kódový podpis / installer pro Windows distribuci (mimo V1 scope).
 
 ---
 
@@ -256,6 +260,7 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Backend regrese | BE-01–05, DB-01, admin trash (52 Jest testů) |
 | Widget smoke login → home | FE-07 |
 | CI na push/PR | DOC-01 – backend + Flutter analyze/unit/runtime |
+| Windows Release build | PLAT-01 – `flutter build windows --release` |
 
 ### Zbývá pro MVP / provoz
 
@@ -265,7 +270,8 @@ cd frontend && flutter test test/integration/runtime_verification_test.dart
 | Photos upload integrační testy | worker vs management |
 | Širší widget E2E | login → seznam ucpávek (FE-07 jen login→home) |
 | Koš patra/stavby | chybí backend list + UI |
-| Windows Release, Android re-verify | PLAT-01, PLAT-02 |
+| Android re-verify | PLAT-02 |
+| Windows installer / code signing | mimo V1 |
 
 Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
@@ -275,14 +281,14 @@ Kompletní fronta: **[AGENT_ORCHESTRATION.md](AGENT_ORCHESTRATION.md)**.
 
 | # | Task | Proč |
 |---|------|------|
-| 1 | **PLAT-01** – Windows Release build | ověření release buildu |
-| 2 | **PLAT-02** – Android verify | platforma mimo Windows |
-| 3 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
+| 1 | **PLAT-02** – Android verify | platforma mimo Windows |
+| 2 | Rozšíření koše (patra/stavby) | až bude backend list endpoint |
+| 3 | Sync pull HTTP testy | BE-04 jen push |
 
 ---
 
 ## Shrnutí jednou větou
 
-**MVP jádro včetně admin koše je hotové; CI běží na GitHub Actions; další krok PLAT-01 nebo PLAT-02.**
+**MVP jádro včetně Windows Release buildu je hotové; CI na GitHub Actions; další krok PLAT-02 (Android).**
 
 **Poznámka reports role:** `/api/reports/*` vyžaduje management/admin (`403` pro worker) – odpovídá implementaci.
