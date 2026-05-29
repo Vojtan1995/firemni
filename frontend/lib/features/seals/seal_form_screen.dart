@@ -27,7 +27,7 @@ class SealFormScreen extends ConsumerStatefulWidget {
 
 class _EntryDraft {
   String entryType = 'EL.V.';
-  String dimension = 'Ø50';
+  String dimension = defaultDimensionForEntry('EL.V.', 'žádná');
   int quantity = 1;
   String insulation = 'žádná';
   List<String> materials = [];
@@ -66,6 +66,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
     if (_entries.any((e) => e.materials.isEmpty)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Každý prostup potřebuje materiál')));
+      return;
+    }
+    if (_entries.any((e) => e.dimension.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
       return;
     }
     if (_photoPaths.isEmpty) {
@@ -235,12 +239,138 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   }
 }
 
-class _EntryEditor extends StatelessWidget {
+class _EntryEditor extends StatefulWidget {
   const _EntryEditor({required this.index, required this.entry, required this.system, required this.onChanged});
   final int index;
   final _EntryDraft entry;
   final String? system;
   final VoidCallback onChanged;
+
+  @override
+  State<_EntryEditor> createState() => _EntryEditorState();
+}
+
+class _EntryEditorState extends State<_EntryEditor> {
+  final _ocelDiameterCtrl = TextEditingController();
+  final _vztWidthCtrl = TextEditingController();
+  final _vztLengthCtrl = TextEditingController();
+
+  _EntryDraft get entry => widget.entry;
+
+  @override
+  void dispose() {
+    _ocelDiameterCtrl.dispose();
+    _vztWidthCtrl.dispose();
+    _vztLengthCtrl.dispose();
+    super.dispose();
+  }
+
+  void _applyEntryType(String v) {
+    entry.entryType = v;
+    entry.dimension = defaultDimensionForEntry(v, entry.insulation);
+    widget.onChanged();
+  }
+
+  void _applyInsulation(String v) {
+    entry.insulation = v;
+    if (entry.entryType == 'PROSTUP') {
+      entry.dimension = defaultDimensionForEntry(entry.entryType, v);
+    }
+    widget.onChanged();
+  }
+
+  void _applyOcelDiameter() {
+    final mm = _ocelDiameterCtrl.text.trim();
+    if (mm.isEmpty) return;
+    entry.dimension = 'Ø$mm';
+    widget.onChanged();
+  }
+
+  void _applyVztCustomSize() {
+    final w = _vztWidthCtrl.text.trim();
+    final l = _vztLengthCtrl.text.trim();
+    if (w.isEmpty || l.isEmpty) return;
+    entry.dimension = '${w}x$l mm';
+    widget.onChanged();
+  }
+
+  Widget _dimensionSection() {
+    if (entry.entryType == 'OCEL') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Průměr trubky (mm)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _ocelDiameterCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'mm',
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.number,
+                  onSubmitted: (_) => _applyOcelDiameter(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(onPressed: _applyOcelDiameter, child: const Text('Použít')),
+            ],
+          ),
+          if (entry.dimension.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text('Rozměr: ${entry.dimension}', style: Theme.of(context).textTheme.bodySmall),
+          ],
+        ],
+      );
+    }
+
+    final presets = dimensionPresetsForEntry(entry.entryType, entry.insulation);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ChipSelector(
+          label: 'Rozměr',
+          options: presets,
+          selected: entry.dimension.isEmpty ? null : entry.dimension,
+          onSelected: (v) {
+            entry.dimension = v;
+            widget.onChanged();
+          },
+          allowCustom: true,
+        ),
+        if (entry.entryType == 'VZT') ...[
+          const SizedBox(height: 8),
+          const Text('Vlastní rozměr VZT (mm)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _vztWidthCtrl,
+                  decoration: const InputDecoration(labelText: 'Šířka', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _vztLengthCtrl,
+                  decoration: const InputDecoration(labelText: 'Délka', border: OutlineInputBorder()),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(onPressed: _applyVztCustomSize, child: const Text('Použít vlastní rozměr')),
+          ),
+        ],
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -251,27 +381,33 @@ class _EntryEditor extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Prostup ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ChipSelector(label: 'Typ', options: entryTypes, selected: entry.entryType, onSelected: (v) { entry.entryType = v; onChanged(); }),
-            ChipSelector(label: 'Rozměr', options: dimensions, selected: entry.dimension, onSelected: (v) { entry.dimension = v; onChanged(); }, allowCustom: true),
-            ChipSelector(label: 'Izolace', options: insulations, selected: entry.insulation, onSelected: (v) { entry.insulation = v; onChanged(); }),
+            Text('Prostup ${widget.index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+            ChipSelector(
+              label: 'Typ',
+              options: entryTypes,
+              selected: entry.entryType,
+              onSelected: _applyEntryType,
+            ),
+            ChipSelector(label: 'Izolace', options: insulations, selected: entry.insulation, onSelected: _applyInsulation),
+            const SizedBox(height: 8),
+            _dimensionSection(),
             Row(
               children: [
                 const Text('Kusy: '),
-                IconButton(onPressed: entry.quantity > 1 ? () { entry.quantity--; onChanged(); } : null, icon: const Icon(Icons.remove)),
+                IconButton(onPressed: entry.quantity > 1 ? () { entry.quantity--; widget.onChanged(); } : null, icon: const Icon(Icons.remove)),
                 Text('${entry.quantity}'),
-                IconButton(onPressed: () { entry.quantity++; onChanged(); }, icon: const Icon(Icons.add)),
+                IconButton(onPressed: () { entry.quantity++; widget.onChanged(); }, icon: const Icon(Icons.add)),
               ],
             ),
-            if (system != null)
+            if (widget.system != null)
               MultiChipSelector(
                 label: 'Materiály',
-                options: systemMaterials[system] ?? ['Jiný'],
+                options: systemMaterials[widget.system] ?? ['Jiný'],
                 selected: entry.materials,
                 allowCustom: true,
                 onChanged: (v) {
                   entry.materials = v;
-                  onChanged();
+                  widget.onChanged();
                 },
               ),
           ],

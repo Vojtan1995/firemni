@@ -62,5 +62,82 @@ const constructions = ['Beton/Cihla', 'SDK/PUR'];
 const locations = ['Stěna', 'Strop', 'Podlaha', 'Šachta'];
 const fireRatings = ['60 min', '90 min', '120 min'];
 const entryTypes = ['EL.V.', 'PVC', 'VZT', 'PROSTUP', 'OCEL'];
-const dimensions = ['Ø50', 'Ø100', '100x100', '150x150', 'Vlastní'];
 const insulations = ['žádná', 'hořlavá', 'nehořlavá'];
+
+const dimensionPresetsElV = [
+  'Ø20',
+  'Ø30',
+  'Ø40',
+  'Ø50',
+  '100/100',
+  '150/100',
+  '200/100',
+  '300/100',
+  '300/200',
+  '500/300',
+];
+
+const dimensionPresetsPvc = [
+  'Ø40',
+  'Ø50',
+  'Ø75',
+  'Ø90',
+  'Ø110',
+  'Ø125',
+  'Ø160',
+];
+
+const dimensionPresetsVzt = [
+  'Ø100',
+  'Ø125',
+  'Ø160',
+  'Ø200',
+  'Ø220',
+  'Ø250',
+  'Ø300',
+];
+
+/// OC + OC nehořlavá izolace (PROSTUP + nehořlavá).
+const dimensionPresetsOcNonFlammable = [
+  'Ø20-100',
+  'Ø110-150',
+  'Ø160-200',
+  'Ø210-250',
+];
+
+/// OC, hořlavá izolace (PROSTUP + hořlavá).
+const dimensionPresetsOcFlammable = [
+  'Ø40',
+  'Ø50',
+  'Ø75',
+  'Ø90',
+  'Ø100',
+  'Ø125',
+  'Ø150',
+];
+
+/// Presety rozměrů podle typu prostupu a izolace.
+List<String> dimensionPresetsForEntry(String entryType, String insulation) {
+  switch (entryType) {
+    case 'EL.V.':
+      return dimensionPresetsElV;
+    case 'PVC':
+      return dimensionPresetsPvc;
+    case 'VZT':
+      return dimensionPresetsVzt;
+    case 'PROSTUP':
+      if (insulation == 'hořlavá') return dimensionPresetsOcFlammable;
+      if (insulation == 'nehořlavá') return dimensionPresetsOcNonFlammable;
+      return dimensionPresetsOcNonFlammable;
+    case 'OCEL':
+      return const [];
+    default:
+      return const ['Vlastní'];
+  }
+}
+
+String defaultDimensionForEntry(String entryType, String insulation) {
+  if (entryType == 'OCEL') return '';
+  final presets = dimensionPresetsForEntry(entryType, insulation);
+  return presets.isNotEmpty ? presets.first : '';
+}
