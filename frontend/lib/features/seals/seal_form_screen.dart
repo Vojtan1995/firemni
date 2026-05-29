@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -44,19 +45,70 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _photoPaths = <String>[];
   bool _saving = false;
 
-  Future<void> _pickPhoto() async {
-    final picker = ImagePicker();
-    final img = await picker.pickImage(source: ImageSource.camera, imageQuality: 85);
-    if (img == null) return;
-    final dir = await getTemporaryDirectory();
-    final out = '${dir.path}/${const Uuid().v4()}.webp';
-    final compressed = await FlutterImageCompress.compressAndGetFile(
-      img.path,
-      out,
-      quality: 85,
-      format: CompressFormat.webp,
+  Future<void> _pickPhotoSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Vyfotit'),
+              onTap: () => Navigator.pop(c, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Vybrat z galerie'),
+              onTap: () => Navigator.pop(c, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
     );
-    if (compressed != null) setState(() => _photoPaths.add(compressed.path));
+    if (source == null) return;
+    await _addPhotoFromSource(source);
+  }
+
+  Future<void> _addPhotoFromSource(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final img = await picker.pickImage(source: source, imageQuality: 85);
+      if (img == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Fotka nebyla vybrána')),
+          );
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final out = '${dir.path}/${const Uuid().v4()}.webp';
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        img.path,
+        out,
+        quality: 85,
+        format: CompressFormat.webp,
+      );
+      if (compressed == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Komprese fotky se nezdařila')),
+          );
+        }
+        return;
+      }
+      setState(() => _photoPaths.add(compressed.path));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fotku se nepodařilo přidat: $e')),
+        );
+      }
+    }
+  }
+
+  void _removePhotoAt(int index) {
+    setState(() => _photoPaths.removeAt(index));
   }
 
   Future<void> _save() async {
@@ -222,11 +274,57 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                ElevatedButton.icon(onPressed: _pickPhoto, icon: const Icon(Icons.camera_alt), label: const Text('Fotka')),
+                ElevatedButton.icon(
+                  onPressed: _pickPhotoSource,
+                  icon: const Icon(Icons.add_a_photo),
+                  label: const Text('Přidat fotku'),
+                ),
                 const SizedBox(width: 12),
                 Text('${_photoPaths.length} fotek'),
               ],
             ),
+            if (_photoPaths.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                height: 96,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: _photoPaths.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) {
+                    final path = _photoPaths[i];
+                    return Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(path),
+                            width: 96,
+                            height: 96,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 0,
+                          right: 0,
+                          child: IconButton(
+                            style: IconButton.styleFrom(
+                              backgroundColor: Colors.black54,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.all(4),
+                              minimumSize: const Size(28, 28),
+                            ),
+                            iconSize: 18,
+                            onPressed: () => _removePhotoAt(i),
+                            icon: const Icon(Icons.close),
+                          ),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _saving ? null : _save,
