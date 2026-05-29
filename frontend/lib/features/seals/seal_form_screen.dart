@@ -13,6 +13,7 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../sync/sync_service.dart';
 import 'chip_selector.dart';
+import 'multi_chip_selector.dart';
 import 'seal_constants.dart';
 
 class SealFormScreen extends ConsumerStatefulWidget {
@@ -195,16 +196,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             ),
             const SizedBox(height: 16),
             ChipSelector(label: 'Systém *', options: sealSystems, selected: _system, onSelected: (v) => setState(() => _system = v)),
-            if (_system != null) ...[
-              const SizedBox(height: 12),
-              ChipSelector(
-                label: 'Materiály (1. prostup)',
-                options: systemMaterials[_system] ?? ['Jiný'],
-                selected: _entries[0].materials.isNotEmpty ? _entries[0].materials.first : null,
-                onSelected: (v) => setState(() => _entries[0].materials = [v]),
-                allowCustom: true,
-              ),
-            ],
             const SizedBox(height: 12),
             ChipSelector(label: 'Konstrukce *', options: constructions, selected: _construction, onSelected: (v) => setState(() => _construction = v)),
             const SizedBox(height: 12),
@@ -273,12 +264,15 @@ class _EntryEditor extends StatelessWidget {
               ],
             ),
             if (system != null)
-              ChipSelector(
+              MultiChipSelector(
                 label: 'Materiály',
                 options: systemMaterials[system] ?? ['Jiný'],
-                selected: entry.materials.isNotEmpty ? entry.materials.first : null,
-                onSelected: (v) { entry.materials = [v]; onChanged(); },
+                selected: entry.materials,
                 allowCustom: true,
+                onChanged: (v) {
+                  entry.materials = v;
+                  onChanged();
+                },
               ),
           ],
         ),
