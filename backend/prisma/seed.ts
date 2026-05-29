@@ -52,7 +52,13 @@ async function main() {
 
   const job = await prisma.job.upsert({
     where: { projectNumber: '12345678' },
-    update: {},
+    update: {
+      deletedAt: null,
+      deletedById: null,
+      deleteReason: null,
+      isArchived: false,
+      name: 'Testovací stavba',
+    },
     create: {
       projectNumber: '12345678',
       name: 'Testovací stavba',
@@ -63,7 +69,13 @@ async function main() {
 
   const floor1 = await prisma.jobFloor.upsert({
     where: { id: '00000000-0000-0000-0000-000000000001' },
-    update: {},
+    update: {
+      deletedAt: null,
+      deletedById: null,
+      deleteReason: null,
+      name: '1. NP',
+      jobId: job.id,
+    },
     create: {
       id: '00000000-0000-0000-0000-000000000001',
       jobId: job.id,
@@ -74,7 +86,13 @@ async function main() {
 
   const floor2 = await prisma.jobFloor.upsert({
     where: { id: '00000000-0000-0000-0000-000000000002' },
-    update: {},
+    update: {
+      deletedAt: null,
+      deletedById: null,
+      deleteReason: null,
+      name: '2. NP',
+      jobId: job.id,
+    },
     create: {
       id: '00000000-0000-0000-0000-000000000002',
       jobId: job.id,

@@ -1,0 +1,148 @@
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import request from 'supertest';
+import { createApp } from '../dist/app.js';
+import { prisma } from '../dist/lib/prisma.js';
+
+describe('Jobs and floors admin (management)', () => {
+  const app = createApp();
+  let managementToken;
+  let workerToken;
+  let seedJobId;
+  let seedFloorId;
+
+  beforeAll(async () => {
+    const mgmt = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'vedeni', pin: '1234' });
+    managementToken = mgmt.body.token;
+
+    const worker = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'worker1', pin: '1234' });
+    workerToken = worker.body.token;
+
+    const jobRes = await request(app)
+      .get('/api/jobs/by-number/12345678')
+      .set('Authorization', `Bearer ${managementToken}`);
+    seedJobId = jobRes.body.id;
+    seedFloorId = jobRes.body.floors[0].id;
+  });
+
+  afterAll(async () => {
+    await prisma.$disconnect();
+  });
+
+  it('worker cannot PATCH job', async () => {
+    const res = await request(app)
+      .patch(`/api/jobs/${seedJobId}`)
+      .set('Authorization', `Bearer ${workerToken}`)
+      .send({ name: 'X' });
+    expect(res.status).toBe(403);
+  });
+
+  it('management can PATCH job name', async () => {
+    const res = await request(app)
+      .patch(`/api/jobs/${seedJobId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: 'Testovací stavba' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('Testovací stavba');
+  });
+
+  it('management can archive and unarchive job', async () => {
+    const archived = await request(app)
+      .patch(`/api/jobs/${seedJobId}/archive`)
+      .set('Authorization', `Bearer ${managementToken}`);
+    expect(archived.status).toBe(200);
+    expect(archived.body.isArchived).toBe(true);
+
+    const unarchived = await request(app)
+      .patch(`/api/jobs/${seedJobId}/unarchive`)
+      .set('Authorization', `Bearer ${managementToken}`);
+    expect(unarchived.status).toBe(200);
+    expect(unarchived.body.isArchived).toBe(false);
+  });
+
+  it('management can PATCH floor name', async () => {
+    const res = await request(app)
+      .patch(`/api/jobs/${seedJobId}/floors/${seedFloorId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: '1. NP upraveno' });
+    expect(res.status).toBe(200);
+    expect(res.body.name).toBe('1. NP upraveno');
+
+    await request(app)
+      .patch(`/api/jobs/${seedJobId}/floors/${seedFloorId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: '1. NP' });
+  });
+
+  it('cannot delete job with active seals (409)', async () => {
+    const num = `8${Date.now().toString().slice(-7)}`;
+    const created = await request(app)
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ projectNumber: num, name: 'Stavba s ucpávkou' });
+    const jobId = created.body.id;
+    const floor = await request(app)
+      .post(`/api/jobs/${jobId}/floors`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: 'Patro' });
+
+    await request(app)
+      .post('/api/seals')
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({
+        jobId,
+        floorId: floor.body.id,
+        sealNumber: '999',
+        system: 'Hilti',
+        construction: 'Beton/Cihla',
+        location: 'Stěna',
+        fireRating: '60 min',
+        entries: [
+          {
+            entryType: 'EL.V.',
+            dimension: 'Ø50',
+            quantity: 1,
+            insulation: 'žádná',
+            materials: ['FiAM'],
+          },
+        ],
+      });
+
+    const res = await request(app)
+      .delete(`/api/jobs/${jobId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({});
+    expect(res.status).toBe(409);
+  });
+
+  it('management can create and delete empty job', async () => {
+    const num = `9${Date.now().toString().slice(-7)}`;
+    const created = await request(app)
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ projectNumber: num, name: 'Dočasná stavba' });
+    expect(created.status).toBe(201);
+    const jobId = created.body.id;
+
+    const floor = await request(app)
+      .post(`/api/jobs/${jobId}/floors`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: 'Dočasné patro' });
+    expect(floor.status).toBe(201);
+
+    const delFloor = await request(app)
+      .delete(`/api/jobs/${jobId}/floors/${floor.body.id}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({});
+    expect(delFloor.status).toBe(200);
+
+    const delJob = await request(app)
+      .delete(`/api/jobs/${jobId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({});
+    expect(delJob.status).toBe(200);
+  });
+});
