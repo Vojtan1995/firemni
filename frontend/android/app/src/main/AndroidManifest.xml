@@ -2,6 +2,7 @@
     <!-- Release APK: INTERNET jen v debug manifestu nestačí (PLAT-02). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
 
     <application
         android:label="ucpavky"

@@ -52,7 +52,8 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Formulář ucpávky – vícenásobné materiály | **t01–t02 hotovo** – `MultiChipSelector` v prostupech `SealFormScreen` |
 | Katalog systémů/produktů | **t03 hotovo** – výrobci + produkty dle zadání v `seal_constants.dart` |
 | Presety rozměrů (EL.V./VZT/OCEL…) | **t04 hotovo** – presety + OCEL mm + VZT W×L |
-| Fotky – Android permission / form UX | t05–t06 rozpracováno |
+| Fotky – Android CAMERA permission | **t05 hotovo** |
+| Fotky – form UX (galerie, náhledy) | t06 rozpracováno |
 | Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
 | Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
