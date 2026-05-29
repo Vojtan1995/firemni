@@ -11,6 +11,7 @@ import '../features/seals/seal_detail_screen.dart';
 import '../features/sync/sync_screen.dart';
 import '../features/management/management_home_screen.dart';
 import '../features/management/jobs_admin_screen.dart';
+import '../features/management/users_admin_screen.dart';
 import '../features/reports/reports_screen.dart';
 import '../features/logs/logs_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
@@ -28,7 +29,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (loggedIn) {
         final role = authUser['role'] as String?;
         final isManagement = role == 'management' || role == 'admin';
-        if (!isManagement && state.matchedLocation == '/reports') {
+        const managementOnly = ['/reports', '/jobs-admin', '/users-admin', '/logs', '/management'];
+        if (!isManagement && managementOnly.contains(state.matchedLocation)) {
           return '/';
         }
         if (role != 'admin' && state.matchedLocation == '/trash') {
@@ -63,6 +65,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
           GoRoute(path: 'management', builder: (_, __) => const ManagementHomeScreen()),
           GoRoute(path: 'jobs-admin', builder: (_, __) => const JobsAdminScreen()),
+          GoRoute(path: 'users-admin', builder: (_, __) => const UsersAdminScreen()),
           GoRoute(path: 'reports', builder: (_, __) => const ReportsScreen()),
           GoRoute(path: 'logs', builder: (_, __) => const LogsScreen()),
           GoRoute(path: 'trash', builder: (_, __) => const AdminTrashScreen()),

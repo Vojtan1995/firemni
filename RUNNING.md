@@ -335,6 +335,19 @@ flutter test test/integration/runtime_verification_test.dart
 
 ---
 
+## 6.5 Formulář ucpávky – katalogy, rozměry, správa účtů
+
+- **Vícenásobné materiály:** u každého prostupu lze vybrat více materiálů; API pole `materials` je pole řetězců.
+- **Rozměry podle typu prostupu** (`seal_constants.dart`):
+  - **EL.V. / PVC** – předdefinované chipy rozměrů
+  - **VZT** – chipy + vlastní šířka × délka (mm)
+  - **PROSTUP** – presety dle izolace (hořlavá / nehořlavá)
+  - **OCEL** – pouze průměr trubky v mm
+- **Správa staveb:** účet `vedeni` / `admin` → Správa staveb – úprava, archivace, soft delete stavby i patra (409 pokud existují aktivní ucpávky).
+- **Správa uživatelů:** Správa → Uživatelé – `GET/POST/PATCH /api/users`; deaktivace přes `isActive: false`. Vedení může spravovat role `worker` a `management`, roli `admin` pouze účet `admin`.
+
+---
+
 ## 7. Rychlý checklist backend runtime
 
 - [ ] PostgreSQL služba běží (`localhost:5432`)

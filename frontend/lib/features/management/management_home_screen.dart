@@ -11,6 +11,7 @@ class ManagementHomeScreen extends StatelessWidget {
       body: ListView(
         children: [
           ListTile(title: const Text('Stavby a patra'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/jobs-admin')),
+          ListTile(title: const Text('Uživatelé'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/users-admin')),
           ListTile(title: const Text('Exporty'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/reports')),
           ListTile(title: const Text('Logy'), trailing: const Icon(Icons.chevron_right), onTap: () => context.push('/logs')),
         ],

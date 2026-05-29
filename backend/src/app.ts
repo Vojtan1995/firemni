@@ -13,6 +13,7 @@ import photosRoutes from './routes/photos.routes.js';
 import syncRoutes from './routes/sync.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import logsRoutes from './routes/logs.routes.js';
+import usersRoutes from './routes/users.routes.js';
 
 export function createApp() {
   const app = express();
@@ -40,6 +41,7 @@ export function createApp() {
   app.use('/api/sync', syncRoutes);
   app.use('/api/reports', reportsRoutes);
   app.use('/api/logs', logsRoutes);
+  app.use('/api/users', usersRoutes);
 
   app.use(errorMiddleware);
 

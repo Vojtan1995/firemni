@@ -55,7 +55,8 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Fotky – Android CAMERA permission | **t05 hotovo** |
 | Fotky – form UX (galerie, náhledy) | **t06 hotovo** |
 | Fotky – přidání v detailu draft | **t07 hotovo** |
-| Správa staveb CRUD (API+UI) | t08–t09 – čeká schválení (nové endpointy) |
+| Správa staveb CRUD (API+UI) | **t08–t09 hotovo** – PATCH/archive/delete stavby i patra |
+| Správa uživatelů (API+UI) | **t10–t11 hotovo** – `/api/users`, `UsersAdminScreen` |
 | Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
 | Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
