@@ -4,7 +4,11 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../core/config.dart';
 import '../../core/theme.dart';
@@ -84,7 +88,8 @@ Map<String, dynamic>? sealDetailFromLocal(LocalSeal row, List<LocalPhoto> photos
   final photoMaps = <Map<String, dynamic>>[];
 
   for (final p in photos) {
-    if (p.status == 'pending' && p.localPath.isNotEmpty) {
+    final hasLocalFile = p.localPath.isNotEmpty && File(p.localPath).existsSync();
+    if (hasLocalFile) {
       photoMaps.add({
         'id': p.id,
         'localPath': p.localPath,
@@ -95,6 +100,12 @@ Map<String, dynamic>? sealDetailFromLocal(LocalSeal row, List<LocalPhoto> photos
         'id': p.id,
         'filePath': p.serverPath,
         'localPath': p.localPath,
+      });
+    } else if (p.status == 'pending' && p.localPath.isNotEmpty) {
+      photoMaps.add({
+        'id': p.id,
+        'localPath': p.localPath,
+        'filePath': p.serverPath,
       });
     }
   }
@@ -117,6 +128,7 @@ class SealDetailScreen extends ConsumerStatefulWidget {
 class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   Map<String, dynamic>? _seal;
   bool _loading = true;
+  bool _uploadingPhoto = false;
   SealDetailDataSource? _dataSource;
   String? _offlineHint;
 
@@ -187,6 +199,118 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     if (_dataSource == SealDetailDataSource.offline) return;
     await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {'status': status});
     await _load();
+  }
+
+  Future<void> _pickPhotoSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.camera_alt),
+              title: const Text('Vyfotit'),
+              onTap: () => Navigator.pop(c, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library),
+              title: const Text('Vybrat z galerie'),
+              onTap: () => Navigator.pop(c, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source == null) return;
+    await _addPhotoFromSource(source);
+  }
+
+  Future<void> _addPhotoFromSource(ImageSource source) async {
+    if (_uploadingPhoto) return;
+    setState(() => _uploadingPhoto = true);
+    final db = ref.read(databaseProvider);
+
+    try {
+      final picker = ImagePicker();
+      final img = await picker.pickImage(source: source, imageQuality: 85);
+      if (img == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Fotka nebyla vybrána')),
+          );
+        }
+        return;
+      }
+
+      final dir = await getTemporaryDirectory();
+      final out = '${dir.path}/${const Uuid().v4()}.webp';
+      final compressed = await FlutterImageCompress.compressAndGetFile(
+        img.path,
+        out,
+        quality: 85,
+        format: CompressFormat.webp,
+      );
+      if (compressed == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Komprese fotky se nezdařila')),
+          );
+        }
+        return;
+      }
+
+      final photoId = const Uuid().v4();
+      final online = _dataSource == SealDetailDataSource.online;
+
+      if (online) {
+        try {
+          final formData = FormData.fromMap({
+            'photo': await MultipartFile.fromFile(compressed.path, filename: 'photo.webp'),
+          });
+          await ref.read(dioProvider).post('/api/seals/${widget.sealId}/photos', data: formData);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Fotka nahrána')),
+            );
+          }
+          await _load();
+          return;
+        } catch (_) {
+          // fronta pro sync
+        }
+      }
+
+      await db.into(db.localPhotos).insert(
+            LocalPhotosCompanion.insert(
+              id: photoId,
+              sealId: widget.sealId,
+              localPath: compressed.path,
+              status: const Value('pending'),
+              createdAt: DateTime.now(),
+            ),
+          );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              online
+                  ? 'Fotka uložena lokálně, odešle se při synchronizaci'
+                  : 'Fotka uložena lokálně, odešle se po připojení',
+            ),
+          ),
+        );
+      }
+      await _loadFromDrift(db);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fotku se nepodařilo přidat: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingPhoto = false);
+    }
   }
 
   Widget _photoTile(Map<String, dynamic> m) {
@@ -314,6 +438,20 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             }),
           const Divider(),
           const Text('Fotky', style: TextStyle(fontWeight: FontWeight.bold)),
+          if (status == 'draft') ...[
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: _uploadingPhoto ? null : _pickPhotoSource,
+              icon: _uploadingPhoto
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_a_photo),
+              label: Text(_uploadingPhoto ? 'Nahrávám…' : 'Přidat fotku'),
+            ),
+          ],
           if ((seal['photos'] as List? ?? []).isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),

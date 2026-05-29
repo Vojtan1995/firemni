@@ -54,7 +54,8 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Presety rozměrů (EL.V./VZT/OCEL…) | **t04 hotovo** – presety + OCEL mm + VZT W×L |
 | Fotky – Android CAMERA permission | **t05 hotovo** |
 | Fotky – form UX (galerie, náhledy) | **t06 hotovo** |
-| Fotky – přidání v detailu draft | t07 – další |
+| Fotky – přidání v detailu draft | **t07 hotovo** |
+| Správa staveb CRUD (API+UI) | t08–t09 – čeká schválení (nové endpointy) |
 | Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
 | Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
