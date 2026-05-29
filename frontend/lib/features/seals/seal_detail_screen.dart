@@ -201,30 +201,6 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     await _load();
   }
 
-  Future<void> _pickPhotoSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Vyfotit'),
-              onTap: () => Navigator.pop(c, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Vybrat z galerie'),
-              onTap: () => Navigator.pop(c, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return;
-    await _addPhotoFromSource(source);
-  }
-
   Future<void> _addPhotoFromSource(ImageSource source) async {
     if (_uploadingPhoto) return;
     setState(() => _uploadingPhoto = true);
@@ -440,17 +416,30 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           const Text('Fotky', style: TextStyle(fontWeight: FontWeight.bold)),
           if (status == 'draft') ...[
             const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: _uploadingPhoto ? null : _pickPhotoSource,
-              icon: _uploadingPhoto
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add_a_photo),
-              label: Text(_uploadingPhoto ? 'Nahrávám…' : 'Přidat fotku'),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _uploadingPhoto ? null : () => _addPhotoFromSource(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt),
+                    label: const Text('Vyfotit'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _uploadingPhoto ? null : () => _addPhotoFromSource(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library),
+                    label: const Text('Galerie'),
+                  ),
+                ),
+              ],
             ),
+            if (_uploadingPhoto)
+              const Padding(
+                padding: EdgeInsets.only(top: 8),
+                child: LinearProgressIndicator(),
+              ),
           ],
           if ((seal['photos'] as List? ?? []).isEmpty)
             const Padding(

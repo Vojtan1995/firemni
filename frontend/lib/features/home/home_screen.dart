@@ -35,6 +35,7 @@ class HomeScreen extends ConsumerWidget {
           _MenuTile(icon: Icons.sync, title: 'Synchronizace', onTap: () => context.push('/sync')),
           if (auth.isManagement) ...[
             _MenuTile(icon: Icons.admin_panel_settings, title: 'Správa staveb', onTap: () => context.push('/jobs-admin')),
+            _MenuTile(icon: Icons.people, title: 'Uživatelé', onTap: () => context.push('/users-admin')),
             _MenuTile(icon: Icons.assignment, title: 'Soupis prací / Export', onTap: () => context.push('/reports')),
             _MenuTile(icon: Icons.history, title: 'Logy', onTap: () => context.push('/logs')),
           ],

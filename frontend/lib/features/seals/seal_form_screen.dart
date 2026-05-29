@@ -17,6 +17,8 @@ import 'chip_selector.dart';
 import 'multi_chip_selector.dart';
 import 'seal_constants.dart';
 
+final _sealNumberPattern = RegExp(r'^\d+$');
+
 class SealFormScreen extends ConsumerStatefulWidget {
   const SealFormScreen({super.key, required this.jobId, required this.floorId});
   final String jobId;
@@ -44,30 +46,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _entries = [_EntryDraft()];
   final _photoPaths = <String>[];
   bool _saving = false;
-
-  Future<void> _pickPhotoSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (c) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('Vyfotit'),
-              onTap: () => Navigator.pop(c, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('Vybrat z galerie'),
-              onTap: () => Navigator.pop(c, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source == null) return;
-    await _addPhotoFromSource(source);
-  }
+  bool _showPhotoWarning = false;
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
     try {
@@ -97,7 +76,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         }
         return;
       }
-      setState(() => _photoPaths.add(compressed.path));
+      setState(() {
+        _photoPaths.add(compressed.path);
+        _showPhotoWarning = false;
+      });
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -111,9 +93,116 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     setState(() => _photoPaths.removeAt(index));
   }
 
+  Widget _photosSection() {
+    final missing = _photoPaths.isEmpty;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        border: Border.all(
+          color: missing && _showPhotoWarning
+              ? Theme.of(context).colorScheme.error
+              : Theme.of(context).dividerColor,
+        ),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Text('Fotky *', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          const SizedBox(height: 4),
+          Text(
+            'Minimálně 1 fotka před uložením',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: missing && _showPhotoWarning
+                      ? Theme.of(context).colorScheme.error
+                      : null,
+                ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: () => _addPhotoFromSource(ImageSource.camera),
+                  icon: const Icon(Icons.camera_alt),
+                  label: const Text('Vyfotit'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  onPressed: () => _addPhotoFromSource(ImageSource.gallery),
+                  icon: const Icon(Icons.photo_library),
+                  label: const Text('Galerie'),
+                ),
+              ),
+            ],
+          ),
+          if (_photoPaths.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text('${_photoPaths.length} fotek'),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 96,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: _photoPaths.length,
+                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                itemBuilder: (_, i) {
+                  final path = _photoPaths[i];
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(path),
+                          width: 96,
+                          height: 96,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: IconButton(
+                          style: IconButton.styleFrom(
+                            backgroundColor: Colors.black54,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.all(4),
+                            minimumSize: const Size(28, 28),
+                          ),
+                          iconSize: 18,
+                          onPressed: () => _removePhotoAt(i),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Future<void> _save() async {
-    if (_numberCtrl.text.isEmpty || _system == null || _construction == null || _location == null || _fireRating == null) {
+    final sealNumber = _numberCtrl.text.trim();
+    if (sealNumber.isEmpty ||
+        _system == null ||
+        _construction == null ||
+        _location == null ||
+        _fireRating == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vyplňte povinná pole')));
+      return;
+    }
+    if (!_sealNumberPattern.hasMatch(sealNumber)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Číslo ucpávky musí obsahovat jen číslice')),
+      );
       return;
     }
     if (_entries.any((e) => e.materials.isEmpty)) {
@@ -125,6 +214,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       return;
     }
     if (_photoPaths.isEmpty) {
+      setState(() => _showPhotoWarning = true);
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Přidejte alespoň jednu fotku')));
       return;
     }
@@ -135,7 +225,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'id': sealId,
       'jobId': widget.jobId,
       'floorId': widget.floorId,
-      'sealNumber': _numberCtrl.text,
+      'sealNumber': sealNumber,
       'system': _system,
       'construction': _construction,
       'location': _location,
@@ -156,7 +246,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         id: sealId,
         jobId: widget.jobId,
         floorId: widget.floorId,
-        sealNumber: _numberCtrl.text,
+        sealNumber: sealNumber,
         system: _system!,
         construction: _construction!,
         location: _location!,
@@ -236,6 +326,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
   }
 
+  void _removeEntry(int index) {
+    if (_entries.length <= 1) return;
+    setState(() => _entries.removeAt(index));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -247,22 +342,27 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           children: [
             TextField(
               controller: _numberCtrl,
-              decoration: const InputDecoration(labelText: 'Číslo ucpávky *', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                labelText: 'Číslo ucpávky *',
+                border: OutlineInputBorder(),
+                helperText: 'Pouze číslice',
+              ),
               keyboardType: TextInputType.number,
             ),
             const SizedBox(height: 16),
-            ChipSelector(label: 'Systém *', options: sealSystems, selected: _system, onSelected: (v) => setState(() => _system = v)),
-            const SizedBox(height: 12),
-            ChipSelector(label: 'Konstrukce *', options: constructions, selected: _construction, onSelected: (v) => setState(() => _construction = v)),
-            const SizedBox(height: 12),
-            ChipSelector(label: 'Umístění *', options: locations, selected: _location, onSelected: (v) => setState(() => _location = v)),
-            const SizedBox(height: 12),
-            ChipSelector(label: 'Požární odolnost *', options: fireRatings, selected: _fireRating, onSelected: (v) => setState(() => _fireRating = v)),
+            ChipSelector(
+              label: 'Systém *',
+              options: sealSystems,
+              selected: _system,
+              onSelected: (v) => setState(() => _system = v),
+            ),
             const SizedBox(height: 16),
             ..._entries.asMap().entries.map((i) => _EntryEditor(
               index: i.key,
               entry: i.value,
               system: _system,
+              canRemove: _entries.length > 1,
+              onRemove: () => _removeEntry(i.key),
               onChanged: () => setState(() {}),
             )),
             TextButton.icon(
@@ -270,61 +370,35 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Přidat prostup'),
             ),
-            TextField(controller: _noteCtrl, decoration: const InputDecoration(labelText: 'Poznámka', border: OutlineInputBorder()), maxLines: 2),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  onPressed: _pickPhotoSource,
-                  icon: const Icon(Icons.add_a_photo),
-                  label: const Text('Přidat fotku'),
-                ),
-                const SizedBox(width: 12),
-                Text('${_photoPaths.length} fotek'),
-              ],
+            const SizedBox(height: 12),
+            ChipSelector(
+              label: 'Konstrukce *',
+              options: constructions,
+              selected: _construction,
+              onSelected: (v) => setState(() => _construction = v),
             ),
-            if (_photoPaths.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              SizedBox(
-                height: 96,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _photoPaths.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final path = _photoPaths[i];
-                    return Stack(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(path),
-                            width: 96,
-                            height: 96,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        Positioned(
-                          top: 0,
-                          right: 0,
-                          child: IconButton(
-                            style: IconButton.styleFrom(
-                              backgroundColor: Colors.black54,
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.all(4),
-                              minimumSize: const Size(28, 28),
-                            ),
-                            iconSize: 18,
-                            onPressed: () => _removePhotoAt(i),
-                            icon: const Icon(Icons.close),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
+            const SizedBox(height: 12),
+            ChipSelector(
+              label: 'Umístění *',
+              options: locations,
+              selected: _location,
+              onSelected: (v) => setState(() => _location = v),
+            ),
+            const SizedBox(height: 12),
+            ChipSelector(
+              label: 'Požární odolnost *',
+              options: fireRatings,
+              selected: _fireRating,
+              onSelected: (v) => setState(() => _fireRating = v),
+            ),
+            const SizedBox(height: 16),
+            _photosSection(),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _noteCtrl,
+              decoration: const InputDecoration(labelText: 'Poznámka', border: OutlineInputBorder()),
+              maxLines: 2,
+            ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _saving ? null : _save,
@@ -338,11 +412,20 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 }
 
 class _EntryEditor extends StatefulWidget {
-  const _EntryEditor({required this.index, required this.entry, required this.system, required this.onChanged});
+  const _EntryEditor({
+    required this.index,
+    required this.entry,
+    required this.system,
+    required this.onChanged,
+    this.canRemove = false,
+    this.onRemove,
+  });
   final int index;
   final _EntryDraft entry;
   final String? system;
   final VoidCallback onChanged;
+  final bool canRemove;
+  final VoidCallback? onRemove;
 
   @override
   State<_EntryEditor> createState() => _EntryEditorState();
@@ -479,22 +562,17 @@ class _EntryEditorState extends State<_EntryEditor> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Prostup ${widget.index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
-            ChipSelector(
-              label: 'Typ',
-              options: entryTypes,
-              selected: entry.entryType,
-              onSelected: _applyEntryType,
-            ),
-            ChipSelector(label: 'Izolace', options: insulations, selected: entry.insulation, onSelected: _applyInsulation),
-            const SizedBox(height: 8),
-            _dimensionSection(),
             Row(
               children: [
-                const Text('Kusy: '),
-                IconButton(onPressed: entry.quantity > 1 ? () { entry.quantity--; widget.onChanged(); } : null, icon: const Icon(Icons.remove)),
-                Text('${entry.quantity}'),
-                IconButton(onPressed: () { entry.quantity++; widget.onChanged(); }, icon: const Icon(Icons.add)),
+                Expanded(
+                  child: Text('Prostup ${widget.index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                ),
+                if (widget.canRemove)
+                  IconButton(
+                    tooltip: 'Odebrat prostup',
+                    onPressed: widget.onRemove,
+                    icon: const Icon(Icons.delete_outline),
+                  ),
               ],
             ),
             if (widget.system != null)
@@ -507,7 +585,52 @@ class _EntryEditorState extends State<_EntryEditor> {
                   entry.materials = v;
                   widget.onChanged();
                 },
+              )
+            else
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Text(
+                  'Nejdřív vyberte systém',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ),
+            const SizedBox(height: 8),
+            ChipSelector(
+              label: 'Typ',
+              options: entryTypes,
+              selected: entry.entryType,
+              onSelected: _applyEntryType,
+            ),
+            const SizedBox(height: 8),
+            _dimensionSection(),
+            Row(
+              children: [
+                const Text('Kusy: '),
+                IconButton(
+                  onPressed: entry.quantity > 1
+                      ? () {
+                          entry.quantity--;
+                          widget.onChanged();
+                        }
+                      : null,
+                  icon: const Icon(Icons.remove),
+                ),
+                Text('${entry.quantity}'),
+                IconButton(
+                  onPressed: () {
+                    entry.quantity++;
+                    widget.onChanged();
+                  },
+                  icon: const Icon(Icons.add),
+                ),
+              ],
+            ),
+            ChipSelector(
+              label: 'Izolace',
+              options: insulations,
+              selected: entry.insulation,
+              onSelected: _applyInsulation,
+            ),
           ],
         ),
       ),

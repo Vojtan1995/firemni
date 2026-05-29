@@ -4,6 +4,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
 import '../auth/auth_provider.dart';
 
+String roleLabel(String role) {
+  switch (role) {
+    case 'worker':
+      return 'Pracovník';
+    case 'management':
+      return 'Vedení';
+    case 'admin':
+      return 'Admin';
+    default:
+      return role;
+  }
+}
+
 class UsersAdminScreen extends ConsumerStatefulWidget {
   const UsersAdminScreen({super.key});
 
@@ -21,6 +34,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
   }
 
   bool get _isAdmin => ref.read(authServiceProvider).isAdmin;
+
+  String? get _currentUserId => ref.read(authUserProvider)?['id'] as String?;
 
   List<String> get _assignableRoles =>
       _isAdmin ? ['worker', 'management', 'admin'] : ['worker', 'management'];
@@ -78,7 +93,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                   value: role,
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: _assignableRoles
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r))))
                       .toList(),
                   onChanged: (v) {
                     if (v != null) setDialog(() => role = v);
@@ -108,6 +123,25 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
     }
   }
 
+  Future<bool> _confirmDeactivate(String username) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Deaktivovat účet'),
+        content: Text('Opravdu chcete deaktivovat účet „$username“? Uživatel se nebude moci přihlásit.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
+          TextButton(
+            onPressed: () => Navigator.pop(c, true),
+            style: TextButton.styleFrom(foregroundColor: Theme.of(c).colorScheme.error),
+            child: const Text('Deaktivovat'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
   Future<void> _editUser(Map<String, dynamic> user) async {
     if (!_isAdmin && user['role'] == 'admin') {
       _showError('Vedení nemůže upravovat administrátorské účty');
@@ -118,12 +152,15 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
     var role = user['role'] as String;
     var isActive = user['isActive'] != false;
     final roles = _assignableRoles.contains(role) ? _assignableRoles : [role, ..._assignableRoles];
+    final userId = user['id'] as String;
+    final username = user['username'] as String;
+    final isSelf = userId == _currentUserId;
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
         builder: (c, setDialog) => AlertDialog(
-          title: Text('Upravit ${user['username']}'),
+          title: Text('Upravit $username'),
           content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -142,7 +179,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                   value: roles.contains(role) ? role : roles.first,
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: roles
-                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r))))
                       .toList(),
                   onChanged: (v) {
                     if (v != null) setDialog(() => role = v);
@@ -151,8 +188,25 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 SwitchListTile(
                   title: const Text('Účet aktivní'),
                   value: isActive,
-                  onChanged: (v) => setDialog(() => isActive = v),
+                  onChanged: isSelf ? null : (v) => setDialog(() => isActive = v),
                 ),
+                if (isActive && !isSelf) ...[
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      final confirmed = await _confirmDeactivate(username);
+                      if (confirmed) {
+                        setDialog(() => isActive = false);
+                      }
+                    },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Theme.of(c).colorScheme.error,
+                      side: BorderSide(color: Theme.of(c).colorScheme.error),
+                    ),
+                    icon: const Icon(Icons.person_off),
+                    label: const Text('Deaktivovat účet'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -173,7 +227,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
     if (pinCtrl.text.isNotEmpty) data['pin'] = pinCtrl.text;
 
     try {
-      await ref.read(dioProvider).patch('/api/users/${user['id']}', data: data);
+      await ref.read(dioProvider).patch('/api/users/$userId', data: data);
       await _load();
     } catch (e) {
       _showError(e);
@@ -186,6 +240,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
       appBar: AppBar(title: const Text('Uživatelé')),
       floatingActionButton: FloatingActionButton(
         onPressed: _createUser,
+        tooltip: 'Nový uživatel',
         child: const Icon(Icons.person_add),
       ),
       body: _users.isEmpty
@@ -195,12 +250,13 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
               itemBuilder: (_, i) {
                 final u = _users[i];
                 final active = u['isActive'] != false;
+                final role = u['role'] as String? ?? '';
                 return ListTile(
                   leading: CircleAvatar(
                     child: Icon(active ? Icons.person : Icons.person_off),
                   ),
                   title: Text(u['displayName'] as String? ?? ''),
-                  subtitle: Text('${u['username']} · ${u['role']}'),
+                  subtitle: Text('${u['username']} · ${roleLabel(role)}'),
                   trailing: active
                       ? null
                       : const Chip(label: Text('neaktivní')),
