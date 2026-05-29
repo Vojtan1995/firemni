@@ -50,7 +50,8 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Oblast | Stav |
 |--------|------|
 | Formulář ucpávky – vícenásobné materiály | **t01–t02 hotovo** – `MultiChipSelector` v prostupech `SealFormScreen` |
-| Katalog systémů/produktů | t03 rozpracováno – viz `seal_constants.dart` |
+| Katalog systémů/produktů | **t03 hotovo** – výrobci + produkty dle zadání v `seal_constants.dart` |
+| Presety rozměrů (EL.V./VZT/OCEL…) | t04 – plánováno |
 | Offline-first read path | hotové – seznamy (FE-01/02) i detail ucpávky (offline detail) |
 | Sync po loginu + automatický retry | `SyncRetryScheduler` každých 15 s, intervaly 30 s / 2 min / 5 min (FE-06) |
 | Konflikty sync | SyncScreen zobrazuje konflikty, indikátor v seznamu ucpávek (FE-03) |
