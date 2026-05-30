@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/api/api_client.dart';
 
 const _tokenKey = 'auth_token';
+const _sessionRestoreTimeout = Duration(seconds: 10);
 
 final authStorageProvider = Provider((_) => const FlutterSecureStorage());
 
@@ -20,16 +21,37 @@ class AuthService {
   Dio get _dio => _ref.read(dioProvider);
   FlutterSecureStorage get _storage => _ref.read(authStorageProvider);
 
-  Future<bool> tryRestoreSession() async {
-    final token = await _storage.read(key: _tokenKey);
-    if (token == null) return false;
-    _ref.read(authTokenProvider.notifier).state = token;
+  Future<void> clearLocalSession() async {
     try {
-      final res = await _dio.get('/api/auth/me');
-      _ref.read(authUserProvider.notifier).state = res.data as Map<String, dynamic>;
-      return true;
+      await _storage.delete(key: _tokenKey);
+    } catch (_) {}
+    _ref.read(authTokenProvider.notifier).state = null;
+    _ref.read(authUserProvider.notifier).state = null;
+  }
+
+  Future<bool> tryRestoreSession() async {
+    try {
+      final token = await _storage.read(key: _tokenKey);
+      if (token == null) return false;
+      _ref.read(authTokenProvider.notifier).state = token;
+      try {
+        final res = await _dio
+            .get(
+              '/api/auth/me',
+              options: Options(
+                sendTimeout: _sessionRestoreTimeout,
+                receiveTimeout: _sessionRestoreTimeout,
+              ),
+            )
+            .timeout(_sessionRestoreTimeout);
+        _ref.read(authUserProvider.notifier).state = res.data as Map<String, dynamic>;
+        return true;
+      } catch (_) {
+        await clearLocalSession();
+        return false;
+      }
     } catch (_) {
-      await logout();
+      await clearLocalSession();
       return false;
     }
   }
@@ -50,9 +72,7 @@ class AuthService {
     try {
       await _dio.post('/api/auth/logout');
     } catch (_) {}
-    await _storage.delete(key: _tokenKey);
-    _ref.read(authTokenProvider.notifier).state = null;
-    _ref.read(authUserProvider.notifier).state = null;
+    await clearLocalSession();
   }
 
   String? get role => _ref.read(authUserProvider)?['role'] as String?;

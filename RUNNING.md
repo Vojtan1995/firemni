@@ -257,13 +257,25 @@ Adresář: `c:\Users\vojte\Desktop\unifast\frontend`
 
 ### 6.1 Release APK
 
+**Produkce (Railway) – fyzické zařízení:**
+
 ```powershell
 cd c:\Users\vojte\Desktop\unifast\frontend
 flutter pub get
+flutter build apk --release --dart-define=API_BASE_URL=https://firemni-production.up.railway.app
+```
+
+Bez `--dart-define` APK volá `http://localhost:3000` (na telefonu nefunguje). Při startu s uloženým tokenem pak může dlouho „točit kolečko“.
+
+**Lokální dev build:**
+
+```powershell
 flutter build apk --release
 ```
 
 **Výstup (ověřeno 2026-05-28):** `build\app\outputs\flutter-apk\app-release.apk` (~58 MB).
+
+**Start visí na kolečku:** Nastavení → Aplikace → Ucpávky → Vymazat data (smaže token), nebo přeinstalovat APK s Railway URL výše.
 
 **Oprávnění v release** (`android/app/src/main/AndroidManifest.xml`):
 

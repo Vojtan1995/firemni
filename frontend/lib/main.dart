@@ -27,10 +27,15 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
   }
 
   Future<void> _init() async {
-    await ref.read(authServiceProvider).tryRestoreSession();
-    if (mounted) {
-      setState(() => _ready = true);
-      ref.read(syncRetrySchedulerProvider).start();
+    try {
+      await ref.read(authServiceProvider).tryRestoreSession();
+    } catch (_) {
+      // Session restore failed — show login.
+    } finally {
+      if (mounted) {
+        setState(() => _ready = true);
+        ref.read(syncRetrySchedulerProvider).start();
+      }
     }
   }
 
