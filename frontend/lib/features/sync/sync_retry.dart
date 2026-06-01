@@ -104,14 +104,20 @@ Future<void> markPhotoSyncFailure(
   );
 }
 
-Future<bool> hasDueSyncWork(AppDatabase db, DateTime now) async {
+/// Count of outbox rows and photos ready for sync now (T4 / S3).
+Future<int> countDueSyncItems(AppDatabase db, DateTime now) async {
   final outbox = await (db.select(db.localOutbox)
         ..where((o) => o.status.isIn(['pending', 'failed'])))
       .get();
-  if (outbox.any((o) => outboxIsDueForRetry(o, now))) return true;
+  var count = outbox.where((o) => outboxIsDueForRetry(o, now)).length;
 
   final photos = await (db.select(db.localPhotos)
         ..where((p) => p.status.isIn(['pending', 'failed'])))
       .get();
-  return photos.any((p) => photoIsDueForRetry(p, now));
+  count += photos.where((p) => photoIsDueForRetry(p, now)).length;
+  return count;
+}
+
+Future<bool> hasDueSyncWork(AppDatabase db, DateTime now) async {
+  return (await countDueSyncItems(db, now)) > 0;
 }

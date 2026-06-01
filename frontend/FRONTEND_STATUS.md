@@ -9,6 +9,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T1 pull preserve flags | hotovo | `pullSealSyncFlags`, `loadSealIdsWithActiveSyncOutbox` |
 | T2 list merge after sync | hotovo | merge lokálních řádků chybějících v API |
 | T3 push results loop | hotovo | neúplná push odpověď → `markOutboxSyncFailure` |
+| T4 pending count align | hotovo | `countDueSyncItems` respektuje `nextRetryAt` |
 
 ### Ověření testů (2026-05-27)
 

@@ -187,6 +187,41 @@ void main() {
     expect(row.serverPath, 'server-photo.webp');
   });
 
+  test('countDueSyncItems excludes failed rows before nextRetryAt (T4)', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+    final now = DateTime(2026, 5, 27, 10, 0);
+
+    await db.into(db.localOutbox).insert(
+          LocalOutboxCompanion.insert(
+            id: 'out-due',
+            mutationId: 'mut-due',
+            deviceId: 'dev',
+            entityType: 'seal',
+            operation: 'create',
+            payload: '{}',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localOutbox).insert(
+          LocalOutboxCompanion.insert(
+            id: 'out-wait',
+            mutationId: 'mut-wait',
+            deviceId: 'dev',
+            entityType: 'seal',
+            operation: 'create',
+            payload: '{}',
+            status: const Value('failed'),
+            retryCount: const Value(1),
+            nextRetryAt: Value(now.add(const Duration(minutes: 5))),
+            createdAt: now,
+          ),
+        );
+
+    expect(await countDueSyncItems(db, now), 1);
+  });
+
   test('hasDueSyncWork ignores failed outbox before nextRetryAt', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);

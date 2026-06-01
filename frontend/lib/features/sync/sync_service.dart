@@ -16,13 +16,7 @@ final syncServiceProvider = Provider((ref) => SyncService(ref));
 final syncPendingCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
   while (true) {
-    final pending = await (db.select(db.localOutbox)
-          ..where((o) => o.status.isIn(['pending', 'failed'])))
-        .get();
-    final photos = await (db.select(db.localPhotos)
-          ..where((p) => p.status.isIn(['pending', 'failed'])))
-        .get();
-    yield pending.length + photos.length;
+    yield await countDueSyncItems(db, DateTime.now());
     await Future.delayed(const Duration(seconds: 5));
   }
 });
