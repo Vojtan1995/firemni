@@ -126,4 +126,35 @@ void main() {
     expect(seals.length, 1);
     expect(seals.first.isSynced, false);
   });
+
+  test('local seal missing from API ids includes isSynced true (T2 list merge)', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-synced-local',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '77',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            isSynced: const Value(true),
+            updatedAt: DateTime.now(),
+          ),
+        );
+
+    const apiIds = {'seal-from-server'};
+    final localOnFloor = await (db.select(db.localSeals)
+          ..where((s) => s.floorId.equals('floor-1') & s.deletedAt.isNull()))
+        .get();
+    final missingFromApi =
+        localOnFloor.where((r) => !apiIds.contains(r.id)).toList();
+
+    expect(missingFromApi.length, 1);
+    expect(missingFromApi.single.sealNumber, '77');
+    expect(missingFromApi.single.isSynced, isTrue);
+  });
 }

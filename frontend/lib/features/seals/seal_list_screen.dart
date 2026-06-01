@@ -91,20 +91,19 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     }
   }
 
+  /// Merges API list with local rows missing from API (T2 / S1), including after sync.
   Future<List<Map<String, dynamic>>> _mergeWithUnsyncedLocal(
     AppDatabase db,
     List<Map<String, dynamic>> apiList,
   ) async {
     final apiIds = apiList.map((e) => e['id'] as String).toSet();
-    final pending = await (db.select(db.localSeals)
+    final localOnFloor = await (db.select(db.localSeals)
           ..where((s) =>
-              s.floorId.equals(widget.floorId) &
-              s.isSynced.equals(false) &
-              s.deletedAt.isNull()))
+              s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
         .get();
 
     final merged = [...apiList];
-    for (final row in pending) {
+    for (final row in localOnFloor) {
       if (!apiIds.contains(row.id)) {
         merged.add(_mapLocalSealRow(row));
       }
