@@ -5,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
-import 'package:path/path.dart' as p;
-import 'package:path_provider/path_provider.dart';
 import '../../core/api/api_client.dart';
 import 'reports_query.dart';
 
@@ -185,10 +183,28 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         throw StateError('Export vrátil prázdný soubor');
       }
 
-      final dir = await getDownloadsDirectory() ??
-          await getApplicationDocumentsDirectory();
       final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final filePath = p.join(dir.path, 'soupis_praci_$date.$extension');
+      final defaultName = 'soupis_praci_$date.$extension';
+
+      String? filePath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Uložit $successLabel',
+        fileName: defaultName,
+        type: FileType.custom,
+        allowedExtensions: [extension],
+      );
+
+      if (filePath == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Uložení zrušeno')),
+        );
+        return;
+      }
+
+      if (!filePath.toLowerCase().endsWith('.$extension')) {
+        filePath = '$filePath.$extension';
+      }
+
       await File(filePath).writeAsBytes(bytes, flush: true);
 
       if (!mounted) return;
