@@ -141,3 +141,20 @@ String defaultDimensionForEntry(String entryType, String insulation) {
   final presets = dimensionPresetsForEntry(entryType, insulation);
   return presets.isNotEmpty ? presets.first : '';
 }
+
+/// Prostupy 2+ inherit materials from the first entry (F1 / T8).
+List<Map<String, dynamic>> sealEntriesWithSharedMaterials(
+  List<Map<String, dynamic>> entries,
+) {
+  if (entries.isEmpty) return entries;
+  final main = List<String>.from(
+    (entries.first['materials'] as List).map((e) => e.toString()),
+  );
+  return [
+    for (var i = 0; i < entries.length; i++)
+      {
+        ...entries[i],
+        'materials': List<String>.from(main),
+      },
+  ];
+}

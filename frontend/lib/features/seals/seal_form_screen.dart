@@ -208,9 +208,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       );
       return;
     }
-    if (_entries.any((e) => e.materials.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Každý prostup potřebuje materiál')));
+    if (_entries.first.materials.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Hlavní prostup potřebuje alespoň jeden materiál')));
       return;
     }
     if (_entries.any((e) => e.dimension.trim().isEmpty)) {
@@ -237,15 +237,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _location,
       'fireRating': _fireRating,
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-      'entries': _entries
-          .map((e) => {
-                'entryType': e.entryType,
-                'dimension': e.dimension,
-                'quantity': e.quantity,
-                'insulation': e.insulation,
-                'materials': e.materials,
-              })
-          .toList(),
+      'entries': sealEntriesWithSharedMaterials(
+        _entries
+            .map((e) => {
+                  'entryType': e.entryType,
+                  'dimension': e.dimension,
+                  'quantity': e.quantity,
+                  'insulation': e.insulation,
+                  'materials': e.materials,
+                })
+            .toList(),
+      ),
     };
 
     try {
@@ -568,8 +570,12 @@ class _EntryEditorState extends State<_EntryEditor> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Prostup ${widget.index + 1}',
-                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text(
+                    widget.index == 0
+                        ? 'Hlavní prostup'
+                        : 'Prostup ${widget.index + 1}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
                 if (widget.canRemove)
                   IconButton(
@@ -579,22 +585,31 @@ class _EntryEditorState extends State<_EntryEditor> {
                   ),
               ],
             ),
-            if (widget.system != null)
-              MultiChipSelector(
-                label: 'Materiály',
-                options: systemMaterials[widget.system] ?? ['Jiný'],
-                selected: entry.materials,
-                allowCustom: true,
-                onChanged: (v) {
-                  entry.materials = v;
-                  widget.onChanged();
-                },
-              )
-            else
+            if (widget.index == 0) ...[
+              if (widget.system != null)
+                MultiChipSelector(
+                  label: 'Materiály',
+                  options: systemMaterials[widget.system] ?? ['Jiný'],
+                  selected: entry.materials,
+                  allowCustom: true,
+                  onChanged: (v) {
+                    entry.materials = v;
+                    widget.onChanged();
+                  },
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'Nejdřív vyberte systém',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+            ] else
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
-                  'Nejdřív vyberte systém',
+                  'Materiály z hlavního prostupu (systém ucpávky)',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
