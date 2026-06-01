@@ -12,6 +12,7 @@ class LocalJobs extends Table {
   TextColumn get name => text()();
   TextColumn get address => text().nullable()();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {id};
@@ -22,6 +23,7 @@ class LocalFloors extends Table {
   TextColumn get jobId => text()();
   TextColumn get name => text()();
   IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {id};
@@ -42,6 +44,7 @@ class LocalSeals extends Table {
   BoolColumn get syncConflict => boolean().withDefault(const Constant(false))();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
   TextColumn get jsonPayload => text().nullable()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {id};
@@ -87,7 +90,14 @@ class SyncCursor extends Table {
   Set<Column> get primaryKey => {key};
 }
 
-@DriftDatabase(tables: [LocalJobs, LocalFloors, LocalSeals, LocalOutbox, LocalPhotos, SyncCursor])
+@DriftDatabase(tables: [
+  LocalJobs,
+  LocalFloors,
+  LocalSeals,
+  LocalOutbox,
+  LocalPhotos,
+  SyncCursor
+])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -95,7 +105,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -110,6 +120,11 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(localPhotos, localPhotos.nextRetryAt);
             await migrator.addColumn(localPhotos, localPhotos.retryCount);
             await migrator.addColumn(localPhotos, localPhotos.lastError);
+          }
+          if (from < 4) {
+            await migrator.addColumn(localJobs, localJobs.deletedAt);
+            await migrator.addColumn(localFloors, localFloors.deletedAt);
+            await migrator.addColumn(localSeals, localSeals.deletedAt);
           }
         },
       );

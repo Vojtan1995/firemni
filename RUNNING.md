@@ -320,7 +320,7 @@ flutter run -d emulator-5554 --release
 
 ```powershell
 & $adb install -r build\app\outputs\flutter-apk\app-release.apk
-& $adb shell am start -n com.example.ucpavky/.MainActivity
+& $adb shell am start -n cz.unifast.ucpavky/.MainActivity
 ```
 
 ### 6.4 Ověření runtime (checklist)

@@ -16,6 +16,22 @@ function sealCreatePayload(jobId, floorId, sealNumber) {
     construction: 'Stěna',
     location: 'Chodba',
     fireRating: 'EI 60',
+    entries: [
+      {
+        entryType: 'EL.V.',
+        dimension: '50',
+        quantity: 2,
+        insulation: 'zadna',
+        materials: ['Pena', 'Tmel'],
+      },
+      {
+        entryType: 'PVC',
+        dimension: 'DN 110',
+        quantity: 1,
+        insulation: 'horlava',
+        materials: ['Manzeta'],
+      },
+    ],
   };
 }
 
@@ -50,6 +66,13 @@ describe('POST /api/sync/push (BE-04)', () => {
       .post('/api/sync/push')
       .set('Authorization', `Bearer ${token}`)
       .send({ mutations });
+  }
+
+  async function pull(token, since) {
+    return request(app)
+      .get('/api/sync/pull')
+      .query({ since: since.toISOString() })
+      .set('Authorization', `Bearer ${token}`);
   }
 
   beforeAll(async () => {
@@ -94,9 +117,24 @@ describe('POST /api/sync/push (BE-04)', () => {
 
     const seal = await prisma.seal.findFirst({
       where: { sealNumber, floorId, deletedAt: null },
+      include: {
+        entries: {
+          include: { materials: { orderBy: { sortOrder: 'asc' } } },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
     });
     expect(seal).toBeTruthy();
     expect(seal.id).toBe(res.body.results[0].entityId);
+    expect(seal.entries).toHaveLength(2);
+    expect(seal.entries[0]).toMatchObject({
+      entryType: 'EL.V.',
+      dimension: '50',
+      quantity: 2,
+      insulation: 'zadna',
+    });
+    expect(seal.entries[0].materials.map((m) => m.material)).toEqual(['Pena', 'Tmel']);
+    expect(seal.entries[1].materials.map((m) => m.material)).toEqual(['Manzeta']);
   });
 
   it('returns already_processed for duplicate mutationId (idempotence)', async () => {
@@ -145,6 +183,93 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(duplicate.status).toBe(200);
     expect(duplicate.body.results[0].status).toBe('conflict');
     expect(duplicate.body.results[0].conflict).toMatch(/duplicit/i);
+  });
+
+  it('returns the stored conflict for duplicate mutationId after a business conflict', async () => {
+    const sealNumber = `${SEAL_PREFIX}6`;
+    const first = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, sealNumber),
+      }),
+    ]);
+    expect(first.body.results[0].status).toBe('ok');
+
+    const mutationId = randomUUID();
+    const duplicateMutation = sealMutation({
+      mutationId,
+      operation: 'create',
+      payload: sealCreatePayload(jobId, floorId, sealNumber),
+    });
+
+    const duplicateFirst = await push(workerToken, [duplicateMutation]);
+    expect(duplicateFirst.body.results[0].status).toBe('conflict');
+    expect(duplicateFirst.body.results[0].conflict).toMatch(/duplicit/i);
+
+    const duplicateSecond = await push(workerToken, [duplicateMutation]);
+    expect(duplicateSecond.body.results[0].status).toBe('conflict');
+    expect(duplicateSecond.body.results[0].conflict).toMatch(/duplicit/i);
+
+    const stored = await prisma.syncMutation.findUnique({ where: { mutationId } });
+    expect(stored.processedAt).toBeTruthy();
+    expect(stored.result.status).toBe('conflict');
+  });
+
+  it('does not mark technical/validation errors as processed', async () => {
+    const mutationId = randomUUID();
+    const invalidMutation = sealMutation({
+      mutationId,
+      operation: 'create',
+      payload: {
+        jobId,
+        floorId,
+        sealNumber: `${SEAL_PREFIX}7`,
+        system: 'Sync test',
+        construction: 'Stena',
+        location: 'Chodba',
+        fireRating: 'EI 60',
+      },
+    });
+
+    const first = await push(workerToken, [invalidMutation]);
+    expect(first.body.results[0].status).toBe('error');
+
+    const stored = await prisma.syncMutation.findUnique({ where: { mutationId } });
+    expect(stored.processedAt).toBeNull();
+    expect(stored.result.status).toBe('error');
+
+    const second = await push(workerToken, [invalidMutation]);
+    expect(second.body.results[0].status).toBe('error');
+  });
+
+  it('pull returns tombstones for deleted seals', async () => {
+    const sealNumber = `${SEAL_PREFIX}8`;
+    const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, sealNumber),
+      }),
+    ]);
+    const sealId = createRes.body.results[0].entityId;
+    const since = new Date(Date.now() - 1000);
+
+    await request(app)
+      .delete(`/api/seals/${sealId}`)
+      .set('Authorization', `Bearer ${workerToken}`)
+      .expect(200);
+
+    const pullRes = await pull(workerToken, since);
+    expect(pullRes.status).toBe(200);
+    expect(pullRes.body.deleted).toBeTruthy();
+    expect(pullRes.body.deleted.seals).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: sealId,
+          jobId,
+          floorId,
+        }),
+      ]),
+    );
   });
 
   it('rejects worker update on invoiced (locked) seal', async () => {

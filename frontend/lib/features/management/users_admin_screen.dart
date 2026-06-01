@@ -77,23 +77,27 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
               children: [
                 TextField(
                   controller: userCtrl,
-                  decoration: const InputDecoration(labelText: 'Přihlašovací jméno'),
+                  decoration:
+                      const InputDecoration(labelText: 'Přihlašovací jméno'),
                 ),
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Zobrazované jméno'),
+                  decoration:
+                      const InputDecoration(labelText: 'Zobrazované jméno'),
                 ),
                 TextField(
                   controller: pinCtrl,
-                  decoration: const InputDecoration(labelText: 'PIN (4–8 znaků)'),
+                  decoration:
+                      const InputDecoration(labelText: 'PIN (4–8 znaků)'),
                   obscureText: true,
                   keyboardType: TextInputType.number,
                 ),
                 DropdownButtonFormField<String>(
-                  value: role,
+                  initialValue: role,
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: _assignableRoles
-                      .map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r))))
+                      .map((r) =>
+                          DropdownMenuItem(value: r, child: Text(roleLabel(r))))
                       .toList(),
                   onChanged: (v) {
                     if (v != null) setDialog(() => role = v);
@@ -103,8 +107,12 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-            TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Vytvořit')),
+            TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Zrušit')),
+            TextButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Vytvořit')),
           ],
         ),
       ),
@@ -128,12 +136,16 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Deaktivovat účet'),
-        content: Text('Opravdu chcete deaktivovat účet „$username“? Uživatel se nebude moci přihlásit.'),
+        content: Text(
+            'Opravdu chcete deaktivovat účet „$username“? Uživatel se nebude moci přihlásit.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
           TextButton(
             onPressed: () => Navigator.pop(c, true),
-            style: TextButton.styleFrom(foregroundColor: Theme.of(c).colorScheme.error),
+            style: TextButton.styleFrom(
+                foregroundColor: Theme.of(c).colorScheme.error),
             child: const Text('Deaktivovat'),
           ),
         ],
@@ -147,11 +159,14 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
       _showError('Vedení nemůže upravovat administrátorské účty');
       return;
     }
-    final nameCtrl = TextEditingController(text: user['displayName'] as String? ?? '');
+    final nameCtrl =
+        TextEditingController(text: user['displayName'] as String? ?? '');
     final pinCtrl = TextEditingController();
     var role = user['role'] as String;
     var isActive = user['isActive'] != false;
-    final roles = _assignableRoles.contains(role) ? _assignableRoles : [role, ..._assignableRoles];
+    final roles = _assignableRoles.contains(role)
+        ? _assignableRoles
+        : [role, ..._assignableRoles];
     final userId = user['id'] as String;
     final username = user['username'] as String;
     final isSelf = userId == _currentUserId;
@@ -167,19 +182,22 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
               children: [
                 TextField(
                   controller: nameCtrl,
-                  decoration: const InputDecoration(labelText: 'Zobrazované jméno'),
+                  decoration:
+                      const InputDecoration(labelText: 'Zobrazované jméno'),
                 ),
                 TextField(
                   controller: pinCtrl,
-                  decoration: const InputDecoration(labelText: 'Nový PIN (volitelně)'),
+                  decoration:
+                      const InputDecoration(labelText: 'Nový PIN (volitelně)'),
                   obscureText: true,
                   keyboardType: TextInputType.number,
                 ),
                 DropdownButtonFormField<String>(
-                  value: roles.contains(role) ? role : roles.first,
+                  initialValue: roles.contains(role) ? role : roles.first,
                   decoration: const InputDecoration(labelText: 'Role'),
                   items: roles
-                      .map((r) => DropdownMenuItem(value: r, child: Text(roleLabel(r))))
+                      .map((r) =>
+                          DropdownMenuItem(value: r, child: Text(roleLabel(r))))
                       .toList(),
                   onChanged: (v) {
                     if (v != null) setDialog(() => role = v);
@@ -188,7 +206,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 SwitchListTile(
                   title: const Text('Účet aktivní'),
                   value: isActive,
-                  onChanged: isSelf ? null : (v) => setDialog(() => isActive = v),
+                  onChanged:
+                      isSelf ? null : (v) => setDialog(() => isActive = v),
                 ),
                 if (isActive && !isSelf) ...[
                   const SizedBox(height: 8),
@@ -211,8 +230,12 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-            TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Uložit')),
+            TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('Zrušit')),
+            TextButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('Uložit')),
           ],
         ),
       ),
@@ -257,9 +280,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                   ),
                   title: Text(u['displayName'] as String? ?? ''),
                   subtitle: Text('${u['username']} · ${roleLabel(role)}'),
-                  trailing: active
-                      ? null
-                      : const Chip(label: Text('neaktivní')),
+                  trailing:
+                      active ? null : const Chip(label: Text('neaktivní')),
                   onTap: () => _editUser(u),
                 );
               },

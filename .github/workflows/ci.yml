@@ -127,6 +127,8 @@ jobs:
           JWT_SECRET: ci-jwt-secret-not-for-production
           NODE_ENV: production
           PORT: "3000"
+          CORS_ORIGIN: http://localhost:3000
+          PUBLIC_UPLOADS: "false"
         run: |
           npm ci
           npx prisma generate

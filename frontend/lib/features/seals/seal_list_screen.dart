@@ -62,10 +62,12 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     }
   }
 
-  Future<void> _cacheSealsFromApi(AppDatabase db, List<Map<String, dynamic>> apiList) async {
+  Future<void> _cacheSealsFromApi(
+      AppDatabase db, List<Map<String, dynamic>> apiList) async {
     for (final m in apiList) {
       final id = m['id'] as String;
-      final existing = await (db.select(db.localSeals)..where((s) => s.id.equals(id)))
+      final existing = await (db.select(db.localSeals)
+            ..where((s) => s.id.equals(id)))
           .getSingleOrNull();
 
       await db.into(db.localSeals).insertOnConflictUpdate(
@@ -82,7 +84,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
               version: Value(m['version'] as int? ?? 1),
               isSynced: const Value(true),
               syncConflict: const Value(false),
-              updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ?? DateTime.now(),
+              updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                  DateTime.now(),
             ),
           );
     }
@@ -94,7 +97,10 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
   ) async {
     final apiIds = apiList.map((e) => e['id'] as String).toSet();
     final pending = await (db.select(db.localSeals)
-          ..where((s) => s.floorId.equals(widget.floorId) & s.isSynced.equals(false)))
+          ..where((s) =>
+              s.floorId.equals(widget.floorId) &
+              s.isSynced.equals(false) &
+              s.deletedAt.isNull()))
         .get();
 
     final merged = [...apiList];
@@ -103,13 +109,15 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
         merged.add(_mapLocalSealRow(row));
       }
     }
-    merged.sort((a, b) => (a['sealNumber'] as String).compareTo(b['sealNumber'] as String));
+    merged.sort((a, b) =>
+        (a['sealNumber'] as String).compareTo(b['sealNumber'] as String));
     return merged;
   }
 
   Future<void> _loadFromDrift(AppDatabase db) async {
     final rows = await (db.select(db.localSeals)
-          ..where((s) => s.floorId.equals(widget.floorId))
+          ..where(
+              (s) => s.floorId.equals(widget.floorId) & s.deletedAt.isNull())
           ..orderBy([(s) => OrderingTerm.asc(s.sealNumber)]))
         .get();
 
@@ -168,7 +176,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}'),
+        onPressed: () => context
+            .push('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}'),
         icon: const Icon(Icons.add),
         label: const Text('Nová'),
       ),
@@ -185,7 +194,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                     ),
                     leading: const Icon(Icons.cloud_off),
                     actions: [
-                      TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+                      TextButton(
+                          onPressed: _load, child: const Text('Zkusit znovu')),
                     ],
                   ),
                 if (_seals.isEmpty)
@@ -201,7 +211,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                   Expanded(
                     child: GridView.builder(
                       padding: const EdgeInsets.all(12),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 4,
                         childAspectRatio: 1.2,
                         crossAxisSpacing: 8,
@@ -214,18 +225,22 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                         final hasConflict = _conflictSealIds.contains(s['id']);
                         return InkWell(
                           onTap: () {
-                            context.push('/seal/${s['id']}').then((_) => _load());
+                            context
+                                .push('/seal/${s['id']}')
+                                .then((_) => _load());
                           },
                           child: Card(
                             color: hasConflict
                                 ? Colors.orange.shade100
-                                : AppTheme.statusColor(status).withValues(alpha: 0.2),
+                                : AppTheme.statusColor(status)
+                                    .withValues(alpha: 0.2),
                             child: Center(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   if (hasConflict)
-                                    const Icon(Icons.warning_amber, color: Colors.orange, size: 22)
+                                    const Icon(Icons.warning_amber,
+                                        color: Colors.orange, size: 22)
                                   else
                                     Container(
                                       width: 12,

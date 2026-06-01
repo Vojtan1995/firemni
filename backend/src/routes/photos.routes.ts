@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { NextFunction, Request, Response, Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { config } from '../config.js';
-import { forbidden, notFound } from '../lib/errors.js';
+import { AppError, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertSealEditable } from '../services/seal.service.js';
 import { logActivity } from '../services/audit.service.js';
 import { UserRole } from '@prisma/client';
@@ -14,6 +14,7 @@ import { paramId } from '../lib/params.js';
 
 const router = Router();
 router.use(authMiddleware);
+const maxPhotoSizeBytes = 15 * 1024 * 1024;
 
 if (!fs.existsSync(config.uploadPath)) {
   fs.mkdirSync(config.uploadPath, { recursive: true });
@@ -29,19 +30,45 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: maxPhotoSizeBytes },
   fileFilter: (_req, file, cb) => {
     const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
     if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(new Error('Nepodporovaný formát souboru'));
+    else cb(badRequest('Nepodporovaný formát souboru'));
   },
 });
 
-router.post('/seals/:sealId/photos', upload.single('photo'), async (req, res, next) => {
+const uploadSinglePhoto = upload.single('photo');
+
+function removeFileIfExists(filePath: string | undefined) {
+  if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+}
+
+function resolveUploadFilePath(fileName: string) {
+  const uploadRoot = path.resolve(config.uploadPath);
+  const filePath = path.resolve(uploadRoot, fileName);
+  if (!filePath.startsWith(uploadRoot + path.sep) && filePath !== uploadRoot) {
+    throw forbidden('Neplatna cesta souboru');
+  }
+  return filePath;
+}
+
+function photoUploadMiddleware(req: Request, res: Response, next: NextFunction) {
+  uploadSinglePhoto(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof AppError) return next(err);
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError(413, 'UPLOAD_TOO_LARGE', `Fotka nesmí být větší než ${maxPhotoSizeBytes} B`));
+    }
+    return next(badRequest('Fotku se nepodařilo nahrát'));
+  });
+}
+
+router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, next) => {
+  let outputPath: string | undefined;
   try {
     const sealId = paramId(req.params.sealId);
     if (!req.file) {
-      const { badRequest } = await import('../lib/errors.js');
       throw badRequest('Soubor photo je povinný');
     }
 
@@ -53,14 +80,18 @@ router.post('/seals/:sealId/photos', upload.single('photo'), async (req, res, ne
     }
 
     const outputName = `${path.parse(req.file.filename).name}.webp`;
-    const outputPath = path.join(config.uploadPath, outputName);
+    outputPath = resolveUploadFilePath(outputName);
 
-    await sharp(req.file.path)
-      .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 85 })
-      .toFile(outputPath);
-
-    fs.unlinkSync(req.file.path);
+    try {
+      await sharp(req.file.path)
+        .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+        .webp({ quality: 85 })
+        .toFile(outputPath);
+    } catch {
+      throw badRequest('Soubor není platný obrázek');
+    } finally {
+      removeFileIfExists(req.file.path);
+    }
 
     const stats = fs.statSync(outputPath);
     const photo = await prisma.sealPhoto.create({
@@ -77,7 +108,28 @@ router.post('/seals/:sealId/photos', upload.single('photo'), async (req, res, ne
     res.status(201).json({
       ...photo,
       url: `/uploads/${outputName}`,
+      authUrl: `/api/photos/${photo.id}/file`,
     });
+  } catch (e) {
+    removeFileIfExists(req.file?.path);
+    removeFileIfExists(outputPath);
+    next(e);
+  }
+});
+
+router.get('/photos/:photoId/file', async (req, res, next) => {
+  try {
+    const photo = await prisma.sealPhoto.findUnique({
+      where: { id: paramId(req.params.photoId) },
+      include: { seal: true },
+    });
+    if (!photo || photo.seal.deletedAt) throw notFound('Fotka nenalezena');
+
+    const filePath = resolveUploadFilePath(photo.filePath);
+    if (!fs.existsSync(filePath)) throw notFound('Soubor fotky nenalezen');
+
+    res.type(photo.mimeType);
+    res.sendFile(filePath);
   } catch (e) {
     next(e);
   }
@@ -91,8 +143,7 @@ router.delete('/photos/:photoId', async (req, res, next) => {
     const photo = await prisma.sealPhoto.findUnique({ where: { id: paramId(req.params.photoId) } });
     if (!photo) throw notFound('Fotka nenalezena');
 
-    const filePath = path.join(config.uploadPath, photo.filePath);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    removeFileIfExists(resolveUploadFilePath(photo.filePath));
 
     await prisma.sealPhoto.delete({ where: { id: photo.id } });
     await logActivity(req.user!.id, 'photo_delete', 'seal', photo.sealId);

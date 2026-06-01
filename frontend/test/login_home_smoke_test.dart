@@ -10,6 +10,7 @@ import 'package:ucpavky/core/router.dart';
 import 'package:ucpavky/core/theme.dart';
 import 'package:ucpavky/database/database.dart';
 import 'package:ucpavky/database/database_provider.dart';
+import 'package:ucpavky/features/auth/auth_provider.dart';
 import 'package:ucpavky/features/auth/login_screen.dart';
 import 'package:ucpavky/features/sync/sync_service.dart';
 
@@ -26,7 +27,8 @@ class _NoopSyncService extends SyncService {
   _NoopSyncService(super.ref);
 
   @override
-  Future<SyncResult> syncAll({bool force = true}) async => SyncResult(success: true);
+  Future<SyncResult> syncAll({bool force = true}) async =>
+      SyncResult(success: true);
 }
 
 Future<bool> _backendReachable() async {
@@ -93,7 +95,8 @@ void main() {
       expect(
         backendUp,
         isTrue,
-        reason: 'Backend must run at ${AppConfig.apiBaseUrl} (same as runtime_verification_test)',
+        reason:
+            'Backend must run at ${AppConfig.apiBaseUrl} (same as runtime_verification_test)',
       );
 
       await tester.pumpWidget(_smokeApp());
@@ -101,7 +104,8 @@ void main() {
 
       expect(find.byKey(const Key('login_username')), findsOneWidget);
 
-      await tester.enterText(find.byKey(const Key('login_username')), 'worker1');
+      await tester.enterText(
+          find.byKey(const Key('login_username')), 'worker1');
       await tester.enterText(find.byKey(const Key('login_pin')), '1234');
       await tester.tap(find.byKey(const Key('login_submit')));
       await tester.pump();
@@ -110,6 +114,28 @@ void main() {
       expect(find.text('Hlavní menu'), findsOneWidget);
       expect(find.text('Stavba'), findsOneWidget);
       expect(find.text('Neplatné přihlašovací údaje'), findsNothing);
+    });
+    testWidgets('mustChangePin user is routed to PIN change screen',
+        (tester) async {
+      await tester.pumpWidget(
+        _smokeApp(
+          extraOverrides: [
+            authUserProvider.overrideWith(
+              (ref) => {
+                'id': 'user-1',
+                'username': 'worker1',
+                'displayName': 'Worker One',
+                'role': 'worker',
+                'mustChangePin': true,
+              },
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('change_pin_submit')), findsOneWidget);
+      expect(find.text('HlavnĂ­ menu'), findsNothing);
     });
   });
 }

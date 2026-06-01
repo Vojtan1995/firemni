@@ -1,4 +1,4 @@
-package com.example.ucpavky
+package cz.unifast.ucpavky
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -36,13 +36,53 @@ void main() {
         );
 
     final rows = await (db.select(db.localSeals)
-          ..where((s) => s.floorId.equals('floor-1'))
+          ..where((s) => s.floorId.equals('floor-1') & s.deletedAt.isNull())
           ..orderBy([(s) => OrderingTerm.asc(s.sealNumber)]))
         .get();
 
     expect(rows.length, 2);
     expect(rows.first.sealNumber, '1');
     expect(rows.last.sealNumber, '2');
+  });
+
+  test('deleted seal tombstone is excluded from offline list query', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-active',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '1',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-deleted',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '2',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            deletedAt: Value(DateTime.now()),
+            updatedAt: DateTime.now(),
+          ),
+        );
+
+    final rows = await (db.select(db.localSeals)
+          ..where((s) => s.floorId.equals('floor-1') & s.deletedAt.isNull()))
+        .get();
+
+    expect(rows.length, 1);
+    expect(rows.single.id, 'seal-active');
   });
 
   test('pending outbox rows are not removed when caching seals', () async {
@@ -80,7 +120,9 @@ void main() {
     expect(outbox.length, 1);
     expect(outbox.first.status, 'pending');
 
-    final seals = await (db.select(db.localSeals)..where((s) => s.floorId.equals('floor-1'))).get();
+    final seals = await (db.select(db.localSeals)
+          ..where((s) => s.floorId.equals('floor-1')))
+        .get();
     expect(seals.length, 1);
     expect(seals.first.isSynced, false);
   });

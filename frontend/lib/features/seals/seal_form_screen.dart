@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
@@ -9,7 +8,6 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
-import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../sync/sync_service.dart';
@@ -108,7 +106,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const Text('Fotky *', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+          const Text('Fotky *',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
           const SizedBox(height: 4),
           Text(
             'Minimálně 1 fotka před uložením',
@@ -123,7 +122,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             children: [
               Expanded(
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  style:
+                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
                   onPressed: () => _addPhotoFromSource(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Vyfotit'),
@@ -132,7 +132,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  style:
+                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
                   onPressed: () => _addPhotoFromSource(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library),
                   label: const Text('Galerie'),
@@ -196,26 +197,31 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         _construction == null ||
         _location == null ||
         _fireRating == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vyplňte povinná pole')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Vyplňte povinná pole')));
       return;
     }
     if (!_sealNumberPattern.hasMatch(sealNumber)) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Číslo ucpávky musí obsahovat jen číslice')),
+        const SnackBar(
+            content: Text('Číslo ucpávky musí obsahovat jen číslice')),
       );
       return;
     }
     if (_entries.any((e) => e.materials.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Každý prostup potřebuje materiál')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Každý prostup potřebuje materiál')));
       return;
     }
     if (_entries.any((e) => e.dimension.trim().isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
       return;
     }
     if (_photoPaths.isEmpty) {
       setState(() => _showPhotoWarning = true);
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Přidejte alespoň jednu fotku')));
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Přidejte alespoň jednu fotku')));
       return;
     }
 
@@ -231,67 +237,51 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _location,
       'fireRating': _fireRating,
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-      'entries': _entries.map((e) => {
-        'entryType': e.entryType,
-        'dimension': e.dimension,
-        'quantity': e.quantity,
-        'insulation': e.insulation,
-        'materials': e.materials,
-      }).toList(),
+      'entries': _entries
+          .map((e) => {
+                'entryType': e.entryType,
+                'dimension': e.dimension,
+                'quantity': e.quantity,
+                'insulation': e.insulation,
+                'materials': e.materials,
+              })
+          .toList(),
     };
 
     try {
       final db = ref.read(databaseProvider);
       await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
-        id: sealId,
-        jobId: widget.jobId,
-        floorId: widget.floorId,
-        sealNumber: sealNumber,
-        system: _system!,
-        construction: _construction!,
-        location: _location!,
-        fireRating: _fireRating!,
-        note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-        status: const Value('draft'),
-        isSynced: const Value(false),
-        jsonPayload: Value(jsonEncode(payload)),
-        updatedAt: DateTime.now(),
-      ));
+            id: sealId,
+            jobId: widget.jobId,
+            floorId: widget.floorId,
+            sealNumber: sealNumber,
+            system: _system!,
+            construction: _construction!,
+            location: _location!,
+            fireRating: _fireRating!,
+            note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+            status: const Value('draft'),
+            isSynced: const Value(false),
+            jsonPayload: Value(jsonEncode(payload)),
+            updatedAt: DateTime.now(),
+          ));
 
       for (final path in _photoPaths) {
         await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
-          id: const Uuid().v4(),
-          sealId: sealId,
-          localPath: path,
-          createdAt: DateTime.now(),
-        ));
+              id: const Uuid().v4(),
+              sealId: sealId,
+              localPath: path,
+              createdAt: DateTime.now(),
+            ));
       }
 
       await ref.read(syncServiceProvider).enqueueMutation(
-        entityType: 'seal',
-        operation: 'create',
-        payload: payload,
-      );
+            entityType: 'seal',
+            operation: 'create',
+            payload: payload,
+          );
 
-      try {
-        final dio = ref.read(dioProvider);
-        final res = await dio.post('/api/seals', data: {
-          ...payload,
-          'entries': payload['entries'],
-        });
-        final serverId = (res.data as Map)['id'] as String;
-        await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
-          LocalSealsCompanion(id: Value(serverId), isSynced: const Value(true)),
-        );
-        for (final path in _photoPaths) {
-          final formData = FormData.fromMap({
-            'photo': await MultipartFile.fromFile(path, filename: 'photo.webp'),
-          });
-          await dio.post('/api/seals/$serverId/photos', data: formData);
-        }
-      } catch (_) {
-        await ref.read(syncServiceProvider).syncAll();
-      }
+      await ref.read(syncServiceProvider).syncAll();
 
       if (!mounted) return;
       await showDialog(
@@ -303,7 +293,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             TextButton(
               onPressed: () {
                 Navigator.pop(c);
-                context.go('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+                context.go(
+                    '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
               },
               child: const Text('Přidat další'),
             ),
@@ -319,7 +310,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Chyba: $e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Chyba: $e')));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -358,13 +350,13 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             ),
             const SizedBox(height: 16),
             ..._entries.asMap().entries.map((i) => _EntryEditor(
-              index: i.key,
-              entry: i.value,
-              system: _system,
-              canRemove: _entries.length > 1,
-              onRemove: () => _removeEntry(i.key),
-              onChanged: () => setState(() {}),
-            )),
+                  index: i.key,
+                  entry: i.value,
+                  system: _system,
+                  canRemove: _entries.length > 1,
+                  onRemove: () => _removeEntry(i.key),
+                  onChanged: () => setState(() {}),
+                )),
             TextButton.icon(
               onPressed: () => setState(() => _entries.add(_EntryDraft())),
               icon: const Icon(Icons.add),
@@ -396,13 +388,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             const SizedBox(height: 16),
             TextField(
               controller: _noteCtrl,
-              decoration: const InputDecoration(labelText: 'Poznámka', border: OutlineInputBorder()),
+              decoration: const InputDecoration(
+                  labelText: 'Poznámka', border: OutlineInputBorder()),
               maxLines: 2,
             ),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _saving ? null : _save,
-              child: _saving ? const CircularProgressIndicator() : const Text('Uložit'),
+              child: _saving
+                  ? const CircularProgressIndicator()
+                  : const Text('Uložit'),
             ),
           ],
         ),
@@ -480,7 +475,8 @@ class _EntryEditorState extends State<_EntryEditor> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Průměr trubky (mm)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const Text('Průměr trubky (mm)',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -496,12 +492,14 @@ class _EntryEditorState extends State<_EntryEditor> {
                 ),
               ),
               const SizedBox(width: 8),
-              FilledButton(onPressed: _applyOcelDiameter, child: const Text('Použít')),
+              FilledButton(
+                  onPressed: _applyOcelDiameter, child: const Text('Použít')),
             ],
           ),
           if (entry.dimension.isNotEmpty) ...[
             const SizedBox(height: 4),
-            Text('Rozměr: ${entry.dimension}', style: Theme.of(context).textTheme.bodySmall),
+            Text('Rozměr: ${entry.dimension}',
+                style: Theme.of(context).textTheme.bodySmall),
           ],
         ],
       );
@@ -523,14 +521,16 @@ class _EntryEditorState extends State<_EntryEditor> {
         ),
         if (entry.entryType == 'VZT') ...[
           const SizedBox(height: 8),
-          const Text('Vlastní rozměr VZT (mm)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const Text('Vlastní rozměr VZT (mm)',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 8),
           Row(
             children: [
               Expanded(
                 child: TextField(
                   controller: _vztWidthCtrl,
-                  decoration: const InputDecoration(labelText: 'Šířka', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                      labelText: 'Šířka', border: OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                 ),
               ),
@@ -538,7 +538,8 @@ class _EntryEditorState extends State<_EntryEditor> {
               Expanded(
                 child: TextField(
                   controller: _vztLengthCtrl,
-                  decoration: const InputDecoration(labelText: 'Délka', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                      labelText: 'Délka', border: OutlineInputBorder()),
                   keyboardType: TextInputType.number,
                 ),
               ),
@@ -546,7 +547,9 @@ class _EntryEditorState extends State<_EntryEditor> {
           ),
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton(onPressed: _applyVztCustomSize, child: const Text('Použít vlastní rozměr')),
+            child: TextButton(
+                onPressed: _applyVztCustomSize,
+                child: const Text('Použít vlastní rozměr')),
           ),
         ],
       ],
@@ -565,7 +568,8 @@ class _EntryEditorState extends State<_EntryEditor> {
             Row(
               children: [
                 Expanded(
-                  child: Text('Prostup ${widget.index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                  child: Text('Prostup ${widget.index + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                 ),
                 if (widget.canRemove)
                   IconButton(

@@ -41,6 +41,12 @@ class $LocalJobsTable extends LocalJobs
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_archived" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -49,7 +55,7 @@ class $LocalJobsTable extends LocalJobs
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
   List<GeneratedColumn> get $columns =>
-      [id, projectNumber, name, address, isArchived, updatedAt];
+      [id, projectNumber, name, address, isArchived, deletedAt, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -89,6 +95,10 @@ class $LocalJobsTable extends LocalJobs
           isArchived.isAcceptableOrUnknown(
               data['is_archived']!, _isArchivedMeta));
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -114,6 +124,8 @@ class $LocalJobsTable extends LocalJobs
           .read(DriftSqlType.string, data['${effectivePrefix}address']),
       isArchived: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_archived'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -131,6 +143,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
   final String name;
   final String? address;
   final bool isArchived;
+  final DateTime? deletedAt;
   final DateTime updatedAt;
   const LocalJob(
       {required this.id,
@@ -138,6 +151,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       required this.name,
       this.address,
       required this.isArchived,
+      this.deletedAt,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -149,6 +163,9 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       map['address'] = Variable<String>(address);
     }
     map['is_archived'] = Variable<bool>(isArchived);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -162,6 +179,9 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           ? const Value.absent()
           : Value(address),
       isArchived: Value(isArchived),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -175,6 +195,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       name: serializer.fromJson<String>(json['name']),
       address: serializer.fromJson<String?>(json['address']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -187,6 +208,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       'name': serializer.toJson<String>(name),
       'address': serializer.toJson<String?>(address),
       'isArchived': serializer.toJson<bool>(isArchived),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -197,6 +219,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           String? name,
           Value<String?> address = const Value.absent(),
           bool? isArchived,
+          Value<DateTime?> deletedAt = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalJob(
         id: id ?? this.id,
@@ -204,6 +227,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
         name: name ?? this.name,
         address: address.present ? address.value : this.address,
         isArchived: isArchived ?? this.isArchived,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalJob copyWithCompanion(LocalJobsCompanion data) {
@@ -216,6 +240,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       address: data.address.present ? data.address.value : this.address,
       isArchived:
           data.isArchived.present ? data.isArchived.value : this.isArchived,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -228,14 +253,15 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           ..write('name: $name, ')
           ..write('address: $address, ')
           ..write('isArchived: $isArchived, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, projectNumber, name, address, isArchived, updatedAt);
+  int get hashCode => Object.hash(
+      id, projectNumber, name, address, isArchived, deletedAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -245,6 +271,7 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           other.name == this.name &&
           other.address == this.address &&
           other.isArchived == this.isArchived &&
+          other.deletedAt == this.deletedAt &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -254,6 +281,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
   final Value<String> name;
   final Value<String?> address;
   final Value<bool> isArchived;
+  final Value<DateTime?> deletedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalJobsCompanion({
@@ -262,6 +290,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     this.name = const Value.absent(),
     this.address = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -271,6 +300,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     required String name,
     this.address = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -283,6 +313,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     Expression<String>? name,
     Expression<String>? address,
     Expression<bool>? isArchived,
+    Expression<DateTime>? deletedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -292,6 +323,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       if (name != null) 'name': name,
       if (address != null) 'address': address,
       if (isArchived != null) 'is_archived': isArchived,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -303,6 +335,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       Value<String>? name,
       Value<String?>? address,
       Value<bool>? isArchived,
+      Value<DateTime?>? deletedAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalJobsCompanion(
@@ -311,6 +344,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       name: name ?? this.name,
       address: address ?? this.address,
       isArchived: isArchived ?? this.isArchived,
+      deletedAt: deletedAt ?? this.deletedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -334,6 +368,9 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     if (isArchived.present) {
       map['is_archived'] = Variable<bool>(isArchived.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -351,6 +388,7 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
           ..write('name: $name, ')
           ..write('address: $address, ')
           ..write('isArchived: $isArchived, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -387,6 +425,12 @@ class $LocalFloorsTable extends LocalFloors
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(0));
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -394,7 +438,8 @@ class $LocalFloorsTable extends LocalFloors
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns => [id, jobId, name, sortOrder, updatedAt];
+  List<GeneratedColumn> get $columns =>
+      [id, jobId, name, sortOrder, deletedAt, updatedAt];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -426,6 +471,10 @@ class $LocalFloorsTable extends LocalFloors
       context.handle(_sortOrderMeta,
           sortOrder.isAcceptableOrUnknown(data['sort_order']!, _sortOrderMeta));
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -449,6 +498,8 @@ class $LocalFloorsTable extends LocalFloors
           .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
       sortOrder: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sort_order'])!,
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -465,12 +516,14 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
   final String jobId;
   final String name;
   final int sortOrder;
+  final DateTime? deletedAt;
   final DateTime updatedAt;
   const LocalFloor(
       {required this.id,
       required this.jobId,
       required this.name,
       required this.sortOrder,
+      this.deletedAt,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -479,6 +532,9 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
     map['job_id'] = Variable<String>(jobId);
     map['name'] = Variable<String>(name);
     map['sort_order'] = Variable<int>(sortOrder);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -489,6 +545,9 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
       jobId: Value(jobId),
       name: Value(name),
       sortOrder: Value(sortOrder),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -501,6 +560,7 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
       jobId: serializer.fromJson<String>(json['jobId']),
       name: serializer.fromJson<String>(json['name']),
       sortOrder: serializer.fromJson<int>(json['sortOrder']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -512,6 +572,7 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
       'jobId': serializer.toJson<String>(jobId),
       'name': serializer.toJson<String>(name),
       'sortOrder': serializer.toJson<int>(sortOrder),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -521,12 +582,14 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
           String? jobId,
           String? name,
           int? sortOrder,
+          Value<DateTime?> deletedAt = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalFloor(
         id: id ?? this.id,
         jobId: jobId ?? this.jobId,
         name: name ?? this.name,
         sortOrder: sortOrder ?? this.sortOrder,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalFloor copyWithCompanion(LocalFloorsCompanion data) {
@@ -535,6 +598,7 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
       jobId: data.jobId.present ? data.jobId.value : this.jobId,
       name: data.name.present ? data.name.value : this.name,
       sortOrder: data.sortOrder.present ? data.sortOrder.value : this.sortOrder,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -546,13 +610,15 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
           ..write('jobId: $jobId, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, jobId, name, sortOrder, updatedAt);
+  int get hashCode =>
+      Object.hash(id, jobId, name, sortOrder, deletedAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -561,6 +627,7 @@ class LocalFloor extends DataClass implements Insertable<LocalFloor> {
           other.jobId == this.jobId &&
           other.name == this.name &&
           other.sortOrder == this.sortOrder &&
+          other.deletedAt == this.deletedAt &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -569,6 +636,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
   final Value<String> jobId;
   final Value<String> name;
   final Value<int> sortOrder;
+  final Value<DateTime?> deletedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalFloorsCompanion({
@@ -576,6 +644,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
     this.jobId = const Value.absent(),
     this.name = const Value.absent(),
     this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -584,6 +653,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
     required String jobId,
     required String name,
     this.sortOrder = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -595,6 +665,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
     Expression<String>? jobId,
     Expression<String>? name,
     Expression<int>? sortOrder,
+    Expression<DateTime>? deletedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -603,6 +674,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
       if (jobId != null) 'job_id': jobId,
       if (name != null) 'name': name,
       if (sortOrder != null) 'sort_order': sortOrder,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -613,6 +685,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
       Value<String>? jobId,
       Value<String>? name,
       Value<int>? sortOrder,
+      Value<DateTime?>? deletedAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalFloorsCompanion(
@@ -620,6 +693,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
       jobId: jobId ?? this.jobId,
       name: name ?? this.name,
       sortOrder: sortOrder ?? this.sortOrder,
+      deletedAt: deletedAt ?? this.deletedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -640,6 +714,9 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
     if (sortOrder.present) {
       map['sort_order'] = Variable<int>(sortOrder.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -656,6 +733,7 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
           ..write('jobId: $jobId, ')
           ..write('name: $name, ')
           ..write('sortOrder: $sortOrder, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -760,6 +838,12 @@ class $LocalSealsTable extends LocalSeals
   late final GeneratedColumn<String> jsonPayload = GeneratedColumn<String>(
       'json_payload', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _deletedAtMeta =
+      const VerificationMeta('deletedAt');
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+      'deleted_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -782,6 +866,7 @@ class $LocalSealsTable extends LocalSeals
         syncConflict,
         isSynced,
         jsonPayload,
+        deletedAt,
         updatedAt
       ];
   @override
@@ -875,6 +960,10 @@ class $LocalSealsTable extends LocalSeals
           jsonPayload.isAcceptableOrUnknown(
               data['json_payload']!, _jsonPayloadMeta));
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(_deletedAtMeta,
+          deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -918,6 +1007,8 @@ class $LocalSealsTable extends LocalSeals
           .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
       jsonPayload: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}json_payload']),
+      deletedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -944,6 +1035,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
   final bool syncConflict;
   final bool isSynced;
   final String? jsonPayload;
+  final DateTime? deletedAt;
   final DateTime updatedAt;
   const LocalSeal(
       {required this.id,
@@ -960,6 +1052,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       required this.syncConflict,
       required this.isSynced,
       this.jsonPayload,
+      this.deletedAt,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -981,6 +1074,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
     map['is_synced'] = Variable<bool>(isSynced);
     if (!nullToAbsent || jsonPayload != null) {
       map['json_payload'] = Variable<String>(jsonPayload);
+    }
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
     }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -1004,6 +1100,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       jsonPayload: jsonPayload == null && nullToAbsent
           ? const Value.absent()
           : Value(jsonPayload),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
       updatedAt: Value(updatedAt),
     );
   }
@@ -1026,6 +1125,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       syncConflict: serializer.fromJson<bool>(json['syncConflict']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
       jsonPayload: serializer.fromJson<String?>(json['jsonPayload']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -1047,6 +1147,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       'syncConflict': serializer.toJson<bool>(syncConflict),
       'isSynced': serializer.toJson<bool>(isSynced),
       'jsonPayload': serializer.toJson<String?>(jsonPayload),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -1066,6 +1167,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           bool? syncConflict,
           bool? isSynced,
           Value<String?> jsonPayload = const Value.absent(),
+          Value<DateTime?> deletedAt = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalSeal(
         id: id ?? this.id,
@@ -1082,6 +1184,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
         syncConflict: syncConflict ?? this.syncConflict,
         isSynced: isSynced ?? this.isSynced,
         jsonPayload: jsonPayload.present ? jsonPayload.value : this.jsonPayload,
+        deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalSeal copyWithCompanion(LocalSealsCompanion data) {
@@ -1107,6 +1210,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
       jsonPayload:
           data.jsonPayload.present ? data.jsonPayload.value : this.jsonPayload,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -1128,6 +1232,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           ..write('syncConflict: $syncConflict, ')
           ..write('isSynced: $isSynced, ')
           ..write('jsonPayload: $jsonPayload, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -1149,6 +1254,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       syncConflict,
       isSynced,
       jsonPayload,
+      deletedAt,
       updatedAt);
   @override
   bool operator ==(Object other) =>
@@ -1168,6 +1274,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           other.syncConflict == this.syncConflict &&
           other.isSynced == this.isSynced &&
           other.jsonPayload == this.jsonPayload &&
+          other.deletedAt == this.deletedAt &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -1186,6 +1293,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
   final Value<bool> syncConflict;
   final Value<bool> isSynced;
   final Value<String?> jsonPayload;
+  final Value<DateTime?> deletedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalSealsCompanion({
@@ -1203,6 +1311,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.syncConflict = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.jsonPayload = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1221,6 +1330,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.syncConflict = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.jsonPayload = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : id = Value(id),
@@ -1247,6 +1357,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     Expression<bool>? syncConflict,
     Expression<bool>? isSynced,
     Expression<String>? jsonPayload,
+    Expression<DateTime>? deletedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -1265,6 +1376,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       if (syncConflict != null) 'sync_conflict': syncConflict,
       if (isSynced != null) 'is_synced': isSynced,
       if (jsonPayload != null) 'json_payload': jsonPayload,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1285,6 +1397,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       Value<bool>? syncConflict,
       Value<bool>? isSynced,
       Value<String?>? jsonPayload,
+      Value<DateTime?>? deletedAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalSealsCompanion(
@@ -1302,6 +1415,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       syncConflict: syncConflict ?? this.syncConflict,
       isSynced: isSynced ?? this.isSynced,
       jsonPayload: jsonPayload ?? this.jsonPayload,
+      deletedAt: deletedAt ?? this.deletedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1352,6 +1466,9 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     if (jsonPayload.present) {
       map['json_payload'] = Variable<String>(jsonPayload.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -1378,6 +1495,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
           ..write('syncConflict: $syncConflict, ')
           ..write('isSynced: $isSynced, ')
           ..write('jsonPayload: $jsonPayload, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -2776,6 +2894,7 @@ typedef $$LocalJobsTableCreateCompanionBuilder = LocalJobsCompanion Function({
   required String name,
   Value<String?> address,
   Value<bool> isArchived,
+  Value<DateTime?> deletedAt,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -2785,6 +2904,7 @@ typedef $$LocalJobsTableUpdateCompanionBuilder = LocalJobsCompanion Function({
   Value<String> name,
   Value<String?> address,
   Value<bool> isArchived,
+  Value<DateTime?> deletedAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -2812,6 +2932,9 @@ class $$LocalJobsTableFilterComposer
 
   ColumnFilters<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -2842,6 +2965,9 @@ class $$LocalJobsTableOrderingComposer
   ColumnOrderings<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -2869,6 +2995,9 @@ class $$LocalJobsTableAnnotationComposer
 
   GeneratedColumn<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -2902,6 +3031,7 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             Value<String> name = const Value.absent(),
             Value<String?> address = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2911,6 +3041,7 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             name: name,
             address: address,
             isArchived: isArchived,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -2920,6 +3051,7 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             required String name,
             Value<String?> address = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -2929,6 +3061,7 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             name: name,
             address: address,
             isArchived: isArchived,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -2957,6 +3090,7 @@ typedef $$LocalFloorsTableCreateCompanionBuilder = LocalFloorsCompanion
   required String jobId,
   required String name,
   Value<int> sortOrder,
+  Value<DateTime?> deletedAt,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -2966,6 +3100,7 @@ typedef $$LocalFloorsTableUpdateCompanionBuilder = LocalFloorsCompanion
   Value<String> jobId,
   Value<String> name,
   Value<int> sortOrder,
+  Value<DateTime?> deletedAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -2990,6 +3125,9 @@ class $$LocalFloorsTableFilterComposer
 
   ColumnFilters<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -3016,6 +3154,9 @@ class $$LocalFloorsTableOrderingComposer
   ColumnOrderings<int> get sortOrder => $composableBuilder(
       column: $table.sortOrder, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -3040,6 +3181,9 @@ class $$LocalFloorsTableAnnotationComposer
 
   GeneratedColumn<int> get sortOrder =>
       $composableBuilder(column: $table.sortOrder, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -3072,6 +3216,7 @@ class $$LocalFloorsTableTableManager extends RootTableManager<
             Value<String> jobId = const Value.absent(),
             Value<String> name = const Value.absent(),
             Value<int> sortOrder = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -3080,6 +3225,7 @@ class $$LocalFloorsTableTableManager extends RootTableManager<
             jobId: jobId,
             name: name,
             sortOrder: sortOrder,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -3088,6 +3234,7 @@ class $$LocalFloorsTableTableManager extends RootTableManager<
             required String jobId,
             required String name,
             Value<int> sortOrder = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -3096,6 +3243,7 @@ class $$LocalFloorsTableTableManager extends RootTableManager<
             jobId: jobId,
             name: name,
             sortOrder: sortOrder,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -3133,6 +3281,7 @@ typedef $$LocalSealsTableCreateCompanionBuilder = LocalSealsCompanion Function({
   Value<bool> syncConflict,
   Value<bool> isSynced,
   Value<String?> jsonPayload,
+  Value<DateTime?> deletedAt,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -3151,6 +3300,7 @@ typedef $$LocalSealsTableUpdateCompanionBuilder = LocalSealsCompanion Function({
   Value<bool> syncConflict,
   Value<bool> isSynced,
   Value<String?> jsonPayload,
+  Value<DateTime?> deletedAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -3205,6 +3355,9 @@ class $$LocalSealsTableFilterComposer
 
   ColumnFilters<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -3263,6 +3416,9 @@ class $$LocalSealsTableOrderingComposer
   ColumnOrderings<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+      column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -3318,6 +3474,9 @@ class $$LocalSealsTableAnnotationComposer
   GeneratedColumn<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
 }
@@ -3359,6 +3518,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<bool> syncConflict = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
             Value<String?> jsonPayload = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -3377,6 +3537,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             syncConflict: syncConflict,
             isSynced: isSynced,
             jsonPayload: jsonPayload,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -3395,6 +3556,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<bool> syncConflict = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
             Value<String?> jsonPayload = const Value.absent(),
+            Value<DateTime?> deletedAt = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -3413,6 +3575,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             syncConflict: syncConflict,
             isSynced: isSynced,
             jsonPayload: jsonPayload,
+            deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
           ),

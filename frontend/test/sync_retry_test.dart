@@ -12,7 +12,8 @@ void main() {
     expect(syncRetryDelayForCount(10), const Duration(minutes: 5));
   });
 
-  test('pending row is due for retry immediately when nextRetryAt is null', () async {
+  test('pending row is due for retry immediately when nextRetryAt is null',
+      () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
     await db.into(db.localOutbox).insert(
@@ -27,7 +28,9 @@ void main() {
             createdAt: DateTime.now(),
           ),
         );
-    final row = await (db.select(db.localOutbox)..where((o) => o.id.equals('out-pending'))).getSingle();
+    final row = await (db.select(db.localOutbox)
+          ..where((o) => o.id.equals('out-pending')))
+        .getSingle();
     expect(outboxIsDueForRetry(row, DateTime.now()), isTrue);
   });
 
@@ -49,9 +52,13 @@ void main() {
             createdAt: now,
           ),
         );
-    final row = await (db.select(db.localOutbox)..where((o) => o.id.equals('out-failed'))).getSingle();
-    expect(outboxIsDueForRetry(row, now.add(const Duration(minutes: 1))), isFalse);
-    expect(outboxIsDueForRetry(row, now.add(const Duration(minutes: 5))), isTrue);
+    final row = await (db.select(db.localOutbox)
+          ..where((o) => o.id.equals('out-failed')))
+        .getSingle();
+    expect(
+        outboxIsDueForRetry(row, now.add(const Duration(minutes: 1))), isFalse);
+    expect(
+        outboxIsDueForRetry(row, now.add(const Duration(minutes: 5))), isTrue);
   });
 
   test('conflict row is never due for automatic retry', () async {
@@ -69,11 +76,14 @@ void main() {
             createdAt: DateTime.now(),
           ),
         );
-    final row = await (db.select(db.localOutbox)..where((o) => o.id.equals('out-conflict'))).getSingle();
+    final row = await (db.select(db.localOutbox)
+          ..where((o) => o.id.equals('out-conflict')))
+        .getSingle();
     expect(outboxIsDueForRetry(row, DateTime.now()), isFalse);
   });
 
-  test('markOutboxSyncFailure increments retry_count and stores last_error', () async {
+  test('markOutboxSyncFailure increments retry_count and stores last_error',
+      () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
     final now = DateTime(2026, 5, 27, 10, 0);
@@ -100,7 +110,9 @@ void main() {
       now: now,
     );
 
-    final row = await (db.select(db.localOutbox)..where((o) => o.id.equals('out-1'))).getSingle();
+    final row = await (db.select(db.localOutbox)
+          ..where((o) => o.id.equals('out-1')))
+        .getSingle();
     expect(row.status, 'failed');
     expect(row.retryCount, 1);
     expect(row.lastError, 'network error');
@@ -129,11 +141,44 @@ void main() {
 
     await markOutboxSyncSuccess(db, 'out-2');
 
-    final row = await (db.select(db.localOutbox)..where((o) => o.id.equals('out-2'))).getSingle();
+    final row = await (db.select(db.localOutbox)
+          ..where((o) => o.id.equals('out-2')))
+        .getSingle();
     expect(row.status, 'done');
     expect(row.retryCount, 0);
     expect(row.lastError, isNull);
     expect(row.nextRetryAt, isNull);
+  });
+
+  test(
+      'markPhotoSyncSuccess stores serverPath when upload returns file metadata',
+      () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-1',
+            sealId: 'seal-1',
+            localPath: 'local.webp',
+            status: const Value('failed'),
+            retryCount: const Value(2),
+            lastError: const Value('old upload error'),
+            nextRetryAt: Value(DateTime.now().add(const Duration(minutes: 5))),
+            createdAt: DateTime.now(),
+          ),
+        );
+
+    await markPhotoSyncSuccess(db, 'photo-1', serverPath: 'server-photo.webp');
+
+    final row = await (db.select(db.localPhotos)
+          ..where((p) => p.id.equals('photo-1')))
+        .getSingle();
+    expect(row.status, 'done');
+    expect(row.retryCount, 0);
+    expect(row.lastError, isNull);
+    expect(row.nextRetryAt, isNull);
+    expect(row.serverPath, 'server-photo.webp');
   });
 
   test('hasDueSyncWork ignores failed outbox before nextRetryAt', () async {
@@ -157,6 +202,7 @@ void main() {
         );
 
     expect(await hasDueSyncWork(db, now), isFalse);
-    expect(await hasDueSyncWork(db, now.add(const Duration(minutes: 2))), isTrue);
+    expect(
+        await hasDueSyncWork(db, now.add(const Duration(minutes: 2))), isTrue);
   });
 }

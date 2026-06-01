@@ -10,7 +10,6 @@ import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
-import '../../core/config.dart';
 import '../../core/theme.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
@@ -20,9 +19,12 @@ import '../auth/auth_provider.dart';
 enum SealDetailDataSource { online, offline }
 
 /// Uloží detail ucpávky z API do Drift (sloupce + jsonPayload + metadata fotek).
-Future<void> cacheSealDetailFromApi(AppDatabase db, Map<String, dynamic> seal) async {
+Future<void> cacheSealDetailFromApi(
+    AppDatabase db, Map<String, dynamic> seal) async {
   final id = seal['id'] as String;
-  final existing = await (db.select(db.localSeals)..where((s) => s.id.equals(id))).getSingleOrNull();
+  final existing = await (db.select(db.localSeals)
+        ..where((s) => s.id.equals(id)))
+      .getSingleOrNull();
 
   await db.into(db.localSeals).insertOnConflictUpdate(
         LocalSealsCompanion.insert(
@@ -40,7 +42,8 @@ Future<void> cacheSealDetailFromApi(AppDatabase db, Map<String, dynamic> seal) a
           isSynced: Value(existing?.isSynced == false ? false : true),
           syncConflict: Value(existing?.syncConflict ?? false),
           jsonPayload: Value(jsonEncode(seal)),
-          updatedAt: DateTime.tryParse(seal['updatedAt'] as String? ?? '') ?? DateTime.now(),
+          updatedAt: DateTime.tryParse(seal['updatedAt'] as String? ?? '') ??
+              DateTime.now(),
         ),
       );
 
@@ -55,14 +58,16 @@ Future<void> cacheSealDetailFromApi(AppDatabase db, Map<String, dynamic> seal) a
             localPath: filePath,
             serverPath: Value(filePath),
             status: const Value('done'),
-            createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ?? DateTime.now(),
+            createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??
+                DateTime.now(),
           ),
         );
   }
 }
 
 /// Sestaví mapu detailu pro UI z lokálního řádku a fotek (bez síťových volání).
-Map<String, dynamic>? sealDetailFromLocal(LocalSeal row, List<LocalPhoto> photos) {
+Map<String, dynamic>? sealDetailFromLocal(
+    LocalSeal row, List<LocalPhoto> photos) {
   Map<String, dynamic> seal;
   if (row.jsonPayload != null && row.jsonPayload!.isNotEmpty) {
     seal = Map<String, dynamic>.from(jsonDecode(row.jsonPayload!) as Map);
@@ -88,7 +93,8 @@ Map<String, dynamic>? sealDetailFromLocal(LocalSeal row, List<LocalPhoto> photos
   final photoMaps = <Map<String, dynamic>>[];
 
   for (final p in photos) {
-    final hasLocalFile = p.localPath.isNotEmpty && File(p.localPath).existsSync();
+    final hasLocalFile =
+        p.localPath.isNotEmpty && File(p.localPath).existsSync();
     if (hasLocalFile) {
       photoMaps.add({
         'id': p.id,
@@ -165,7 +171,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   }
 
   Future<void> _loadFromDrift(AppDatabase db) async {
-    final row = await (db.select(db.localSeals)..where((s) => s.id.equals(widget.sealId)))
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(widget.sealId)))
         .getSingleOrNull();
 
     if (row == null) {
@@ -180,7 +187,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       return;
     }
 
-    final photos = await (db.select(db.localPhotos)..where((p) => p.sealId.equals(widget.sealId))).get();
+    final photos = await (db.select(db.localPhotos)
+          ..where((p) => p.sealId.equals(widget.sealId)))
+        .get();
     final seal = sealDetailFromLocal(row, photos);
     final hasDetail = row.jsonPayload != null && row.jsonPayload!.isNotEmpty;
 
@@ -197,7 +206,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
   Future<void> _changeStatus(String status) async {
     if (_dataSource == SealDetailDataSource.offline) return;
-    await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {'status': status});
+    await ref
+        .read(dioProvider)
+        .patch('/api/seals/${widget.sealId}/status', data: {'status': status});
     await _load();
   }
 
@@ -241,9 +252,12 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       if (online) {
         try {
           final formData = FormData.fromMap({
-            'photo': await MultipartFile.fromFile(compressed.path, filename: 'photo.webp'),
+            'photo': await MultipartFile.fromFile(compressed.path,
+                filename: 'photo.webp'),
           });
-          await ref.read(dioProvider).post('/api/seals/${widget.sealId}/photos', data: formData);
+          await ref
+              .read(dioProvider)
+              .post('/api/seals/${widget.sealId}/photos', data: formData);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Fotka nahrána')),
@@ -291,27 +305,49 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
   Widget _photoTile(Map<String, dynamic> m) {
     final localPath = m['localPath'] as String?;
-    if (localPath != null && localPath.isNotEmpty && File(localPath).existsSync()) {
+    if (localPath != null &&
+        localPath.isNotEmpty &&
+        File(localPath).existsSync()) {
       return Image.file(File(localPath), height: 200, fit: BoxFit.cover);
     }
 
-    final filePath = m['filePath'] as String?;
-    if (_dataSource == SealDetailDataSource.online && filePath != null) {
-      final url = '${AppConfig.apiBaseUrl}/uploads/$filePath';
-      return Image.network(
-        url,
-        height: 200,
-        fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => const Icon(Icons.broken_image, size: 100),
+    final id = m['id'] as String?;
+    if (_dataSource == SealDetailDataSource.online && id != null) {
+      return FutureBuilder<Response<List<int>>>(
+        future: ref.read(dioProvider).get<List<int>>(
+              '/api/photos/$id/file',
+              options: Options(responseType: ResponseType.bytes),
+            ),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return Container(
+              height: 200,
+              color: Colors.grey.shade200,
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          final bytes = snapshot.data?.data;
+          if (snapshot.hasError || bytes == null || bytes.isEmpty) {
+            return const SizedBox(
+              height: 120,
+              child: Center(child: Icon(Icons.broken_image, size: 100)),
+            );
+          }
+          return Image.memory(Uint8List.fromList(bytes),
+              height: 200, fit: BoxFit.cover);
+        },
       );
     }
 
+    final filePath = m['filePath'] as String?;
     return Container(
       height: 120,
       color: Colors.grey.shade200,
       child: Center(
         child: Text(
-          filePath != null ? 'Foto: $filePath\n(načtení vyžaduje síť)' : 'Lokální foto',
+          filePath != null
+              ? 'Foto: $filePath\n(načtení vyžaduje síť)'
+              : 'Lokální foto',
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.bodySmall,
         ),
@@ -380,7 +416,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               Container(
                 width: 16,
                 height: 16,
-                decoration: BoxDecoration(color: AppTheme.statusColor(status), shape: BoxShape.circle),
+                decoration: BoxDecoration(
+                    color: AppTheme.statusColor(status),
+                    shape: BoxShape.circle),
               ),
               const SizedBox(width: 8),
               Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -405,7 +443,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               final materials = m['materials'] as List?;
               final matText = materials == null
                   ? ''
-                  : materials.map((x) => x is Map ? x['material'] : x.toString()).join(', ');
+                  : materials
+                      .map((x) => x is Map ? x['material'] : x.toString())
+                      .join(', ');
               return ListTile(
                 title: Text('${m['entryType']} – ${m['dimension']}'),
                 subtitle: Text('${m['quantity']} ks, ${m['insulation']}'),
@@ -420,7 +460,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               children: [
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _uploadingPhoto ? null : () => _addPhotoFromSource(ImageSource.camera),
+                    onPressed: _uploadingPhoto
+                        ? null
+                        : () => _addPhotoFromSource(ImageSource.camera),
                     icon: const Icon(Icons.camera_alt),
                     label: const Text('Vyfotit'),
                   ),
@@ -428,7 +470,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: OutlinedButton.icon(
-                    onPressed: _uploadingPhoto ? null : () => _addPhotoFromSource(ImageSource.gallery),
+                    onPressed: _uploadingPhoto
+                        ? null
+                        : () => _addPhotoFromSource(ImageSource.gallery),
                     icon: const Icon(Icons.photo_library),
                     label: const Text('Galerie'),
                   ),
@@ -457,10 +501,16 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           if (auth.isManagement && !offline) ...[
             const SizedBox(height: 16),
             if (status == 'draft')
-              ElevatedButton(onPressed: () => _changeStatus('checked'), child: const Text('Zkontrolovat')),
+              ElevatedButton(
+                  onPressed: () => _changeStatus('checked'),
+                  child: const Text('Zkontrolovat')),
             if (status == 'checked') ...[
-              ElevatedButton(onPressed: () => _changeStatus('invoiced'), child: const Text('Fakturovat')),
-              OutlinedButton(onPressed: () => _changeStatus('draft'), child: const Text('Vrátit na rozpracováno')),
+              ElevatedButton(
+                  onPressed: () => _changeStatus('invoiced'),
+                  child: const Text('Fakturovat')),
+              OutlinedButton(
+                  onPressed: () => _changeStatus('draft'),
+                  child: const Text('Vrátit na rozpracováno')),
             ],
           ],
         ],

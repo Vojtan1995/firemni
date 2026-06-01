@@ -94,7 +94,7 @@ Detailní postup: [RUNNING.md](RUNNING.md).
 | Lokální / LAN backend | IT musí zajistit běžící server a firewall |
 | HTTP (cleartext) | Pouze v důvěryhodné síti; ne pro internet |
 | Nepodepsaný Windows exe | SmartScreen – „Spustit přesto“ |
-| Android debug signing | APK není z Play Store |
+| Android debug signing | Pro pilotní distribuci vytvořit `frontend/android/key.properties` podle `key.properties.example`; bez něj je release APK jen debug-signed |
 | Fyzický telefon | Nutná IP PC + stejná Wi‑Fi |
 | Automatický sync na Androidu v pozadí | Spolehnout se na ruční Sync |
 | Export CSV/PDF na Androidu | Soubor v app documents; cesta ve SnackBar |

@@ -10,6 +10,11 @@ const loginSchema = z.object({
   pin: z.string().min(4).max(8),
 });
 
+const changePinSchema = z.object({
+  currentPin: z.string().min(4).max(8),
+  newPin: z.string().min(4).max(8),
+});
+
 router.post('/login', async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
@@ -36,6 +41,17 @@ router.post('/logout', authMiddleware, async (req, res, next) => {
 router.get('/me', authMiddleware, async (req, res, next) => {
   try {
     const user = await authService.getMe(req.user!.id);
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/change-pin', authMiddleware, async (req, res, next) => {
+  try {
+    const body = changePinSchema.parse(req.body);
+    const token = req.headers.authorization!.slice(7);
+    const user = await authService.changeOwnPin(req.user!.id, body.currentPin, body.newPin, token);
     res.json(user);
   } catch (e) {
     next(e);

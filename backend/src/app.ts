@@ -4,6 +4,7 @@ import path from 'path';
 import { pinoHttp } from 'pino-http';
 import { config } from './config.js';
 import { logger } from './lib/logger.js';
+import { prisma } from './lib/prisma.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import authRoutes from './routes/auth.routes.js';
 import jobsRoutes from './routes/jobs.routes.js';
@@ -31,7 +32,18 @@ export function createApp() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
-  app.use('/uploads', express.static(path.resolve(config.uploadPath)));
+  app.get('/ready', async (_req, res, next) => {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      res.json({ status: 'ready', database: 'ok', timestamp: new Date().toISOString() });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  if (config.publicUploads) {
+    app.use('/uploads', express.static(path.resolve(config.uploadPath)));
+  }
 
   app.use('/api/auth', authRoutes);
   app.use('/api/jobs', jobsRoutes);

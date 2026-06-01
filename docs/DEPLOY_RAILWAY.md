@@ -33,17 +33,20 @@ Nastavte:
 - `NODE_ENV=production`
 - `DATABASE_URL=${{Postgres.DATABASE_URL}}`
 - `JWT_SECRET=<silny_secret>` (vytvořit v Railway ručně)
-- `CORS_ORIGIN=*` pro uzavřenou demo betu (pro ostrý provoz whitelist)
+- `CORS_ORIGIN=https://<frontend-nebo-app-domain>` pro ostrý provoz whitelist
+- `PUBLIC_UPLOADS=false`
 - `UPLOAD_PATH=./uploads`
+
+Pro uzavrenou demo betu lze docasne pouzit `CORS_ORIGIN=*`, ale jen pokud je v Railway explicitne nastaveno `ALLOW_WILDCARD_CORS=true`.
 
 Poznámka:
 - `PORT` dodává Railway automaticky.
 
 ## 4) Build/start/migrate/seed
 
-- Build: `npm ci && npm run build`
-- Start: `npm run start`
-- Migrace: `npx prisma migrate deploy` (nebo `npm run prisma:migrate:deploy`)
+- Build: `npm ci && npx prisma generate && npm run build`
+- Start: `npx prisma migrate deploy && npm run start`
+- Migrace: Railway je spousti pred startem; rucne lze pouzit `npx prisma migrate deploy` (nebo `npm run prisma:migrate:deploy`)
 - Seed (volitelně demo data): `npx prisma db seed` (nebo `npm run prisma:seed`)
 
 ## 5) Ruční nasazení krok za krokem
@@ -52,12 +55,12 @@ Poznámka:
 3. Přidejte PostgreSQL service.
 4. Nastavte variables dle sekce 3.
 5. Spusťte deploy.
-6. Po prvním deployi spusťte migrace:
-   - `npx prisma migrate deploy`
+6. Migrace probehnou automaticky pred startem backendu podle `backend/railway.toml`.
 7. Volitelně spusťte seed:
    - `npx prisma db seed`
 8. Ověřte:
    - `GET https://<backend-domain>/health`
+   - `GET https://<backend-domain>/ready`
    - `POST https://<backend-domain>/api/auth/login`
 
 ## 6) Android APK na veřejnou URL

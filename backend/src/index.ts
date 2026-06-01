@@ -1,7 +1,8 @@
 import { createApp } from './app.js';
-import { config } from './config.js';
+import { config, validateConfig } from './config.js';
 import { logger } from './lib/logger.js';
 
+validateConfig();
 const app = createApp();
 
 app.listen(config.port, () => {

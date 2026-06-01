@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/auth_provider.dart';
+import '../features/auth/change_pin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/jobs/job_number_screen.dart';
@@ -24,12 +25,22 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final loggedIn = authUser != null;
       final onLogin = state.matchedLocation == '/login';
+      final onChangePin = state.matchedLocation == '/change-pin';
       if (!loggedIn && !onLogin) return '/login';
       if (loggedIn && onLogin) return '/';
       if (loggedIn) {
+        final mustChangePin = authUser['mustChangePin'] == true;
+        if (mustChangePin && !onChangePin) return '/change-pin';
+        if (!mustChangePin && onChangePin) return '/';
         final role = authUser['role'] as String?;
         final isManagement = role == 'management' || role == 'admin';
-        const managementOnly = ['/reports', '/jobs-admin', '/users-admin', '/logs', '/management'];
+        const managementOnly = [
+          '/reports',
+          '/jobs-admin',
+          '/users-admin',
+          '/logs',
+          '/management'
+        ];
         if (!isManagement && managementOnly.contains(state.matchedLocation)) {
           return '/';
         }
@@ -41,12 +52,17 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/change-pin', builder: (_, __) => const ChangePinScreen()),
       GoRoute(
         path: '/',
         builder: (_, __) => const HomeScreen(),
         routes: [
-          GoRoute(path: 'job-number', builder: (_, __) => const JobNumberScreen()),
-          GoRoute(path: 'floors/:jobId', builder: (c, s) => FloorListScreen(jobId: s.pathParameters['jobId']!)),
+          GoRoute(
+              path: 'job-number', builder: (_, __) => const JobNumberScreen()),
+          GoRoute(
+              path: 'floors/:jobId',
+              builder: (c, s) =>
+                  FloorListScreen(jobId: s.pathParameters['jobId']!)),
           GoRoute(
             path: 'seals/:floorId',
             builder: (c, s) => SealListScreen(
@@ -61,11 +77,19 @@ final routerProvider = Provider<GoRouter>((ref) {
               floorId: s.uri.queryParameters['floorId'] ?? '',
             ),
           ),
-          GoRoute(path: 'seal/:id', builder: (c, s) => SealDetailScreen(sealId: s.pathParameters['id']!)),
+          GoRoute(
+              path: 'seal/:id',
+              builder: (c, s) =>
+                  SealDetailScreen(sealId: s.pathParameters['id']!)),
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
-          GoRoute(path: 'management', builder: (_, __) => const ManagementHomeScreen()),
-          GoRoute(path: 'jobs-admin', builder: (_, __) => const JobsAdminScreen()),
-          GoRoute(path: 'users-admin', builder: (_, __) => const UsersAdminScreen()),
+          GoRoute(
+              path: 'management',
+              builder: (_, __) => const ManagementHomeScreen()),
+          GoRoute(
+              path: 'jobs-admin', builder: (_, __) => const JobsAdminScreen()),
+          GoRoute(
+              path: 'users-admin',
+              builder: (_, __) => const UsersAdminScreen()),
           GoRoute(path: 'reports', builder: (_, __) => const ReportsScreen()),
           GoRoute(path: 'logs', builder: (_, __) => const LogsScreen()),
           GoRoute(path: 'trash', builder: (_, __) => const AdminTrashScreen()),

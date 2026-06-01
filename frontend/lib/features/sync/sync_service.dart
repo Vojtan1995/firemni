@@ -60,17 +60,17 @@ class SyncService {
   }) async {
     final deviceId = await _deviceId();
     await _db.into(_db.localOutbox).insert(LocalOutboxCompanion.insert(
-      id: _uuid.v4(),
-      mutationId: _uuid.v4(),
-      deviceId: deviceId,
-      entityType: entityType,
-      operation: operation,
-      payload: jsonEncode(payload),
-      baseVersion: Value(baseVersion),
-      status: const Value('pending'),
-      retryCount: const Value(0),
-      createdAt: DateTime.now(),
-    ));
+          id: _uuid.v4(),
+          mutationId: _uuid.v4(),
+          deviceId: deviceId,
+          entityType: entityType,
+          operation: operation,
+          payload: jsonEncode(payload),
+          baseVersion: Value(baseVersion),
+          status: const Value('pending'),
+          retryCount: const Value(0),
+          createdAt: DateTime.now(),
+        ));
   }
 
   /// [force] true = ruční sync (ignoruje nextRetryAt); false = automatický retry timer.
@@ -86,8 +86,8 @@ class SyncService {
     }
 
     try {
-      await _uploadPendingPhotos(force: force, now: now);
       await _pushOutbox(force: force, now: now);
+      await _uploadPendingPhotos(force: force, now: now);
       await _pullChanges();
       return SyncResult(success: true);
     } on DioException catch (e) {
@@ -95,7 +95,8 @@ class SyncService {
     }
   }
 
-  Future<List<LocalOutboxData>> _dueOutboxRows({required bool force, required DateTime now}) async {
+  Future<List<LocalOutboxData>> _dueOutboxRows(
+      {required bool force, required DateTime now}) async {
     final rows = await (_db.select(_db.localOutbox)
           ..where((o) => o.status.isIn(['pending', 'failed'])))
         .get();
@@ -108,18 +109,21 @@ class SyncService {
     if (pending.isEmpty) return;
 
     final deviceId = await _deviceId();
-    final mutations = pending.map((o) => {
-      'mutationId': o.mutationId,
-      'deviceId': deviceId,
-      'entityType': o.entityType,
-      'operation': o.operation,
-      'payload': jsonDecode(o.payload) as Map<String, dynamic>,
-      if (o.baseVersion != null) 'baseVersion': o.baseVersion,
-    }).toList();
+    final mutations = pending
+        .map((o) => {
+              'mutationId': o.mutationId,
+              'deviceId': deviceId,
+              'entityType': o.entityType,
+              'operation': o.operation,
+              'payload': jsonDecode(o.payload) as Map<String, dynamic>,
+              if (o.baseVersion != null) 'baseVersion': o.baseVersion,
+            })
+        .toList();
 
     List<Map<String, dynamic>> results;
     try {
-      final res = await _dio.post('/api/sync/push', data: {'mutations': mutations});
+      final res =
+          await _dio.post('/api/sync/push', data: {'mutations': mutations});
       results = (res.data['results'] as List).cast<Map<String, dynamic>>();
     } catch (e) {
       for (final row in pending) {
@@ -142,17 +146,29 @@ class SyncService {
         final localSealId = await resolveSealIdForOutbox(_db, pending[i]);
         final serverId = r['entityId'] as String?;
         if (localSealId != null && serverId != null) {
-          await (_db.update(_db.localSeals)..where((s) => s.id.equals(localSealId))).write(
+          await (_db.update(_db.localSeals)
+                ..where((s) => s.id.equals(localSealId)))
+              .write(
             LocalSealsCompanion(
               id: Value(serverId),
               isSynced: const Value(true),
               syncConflict: const Value(false),
             ),
           );
+          if (localSealId != serverId) {
+            await (_db.update(_db.localPhotos)
+                  ..where((p) => p.sealId.equals(localSealId)))
+                .write(
+              LocalPhotosCompanion(sealId: Value(serverId)),
+            );
+          }
         }
       } else if (status == 'conflict') {
-        final conflictMsg = r['conflict'] as String? ?? 'Konflikt při synchronizaci';
-        await (_db.update(_db.localOutbox)..where((o) => o.id.equals(pending[i].id))).write(
+        final conflictMsg =
+            r['conflict'] as String? ?? 'Konflikt při synchronizaci';
+        await (_db.update(_db.localOutbox)
+              ..where((o) => o.id.equals(pending[i].id)))
+            .write(
           LocalOutboxCompanion(
             status: const Value('conflict'),
             conflictMessage: Value(conflictMsg),
@@ -160,12 +176,14 @@ class SyncService {
         );
         final sealId = await resolveSealIdForOutbox(_db, pending[i]);
         if (sealId != null) {
-          await (_db.update(_db.localSeals)..where((s) => s.id.equals(sealId))).write(
+          await (_db.update(_db.localSeals)..where((s) => s.id.equals(sealId)))
+              .write(
             const LocalSealsCompanion(syncConflict: Value(true)),
           );
         }
       } else {
-        final err = r['error'] as String? ?? r['conflict'] as String? ?? 'Sync selhal';
+        final err =
+            r['error'] as String? ?? r['conflict'] as String? ?? 'Sync selhal';
         await markOutboxSyncFailure(
           _db,
           pending[i].id,
@@ -178,7 +196,9 @@ class SyncService {
   }
 
   Future<void> _pullChanges() async {
-    final cursor = await (_db.select(_db.syncCursor)..where((c) => c.key.equals('last_pull'))).getSingleOrNull();
+    final cursor = await (_db.select(_db.syncCursor)
+          ..where((c) => c.key.equals('last_pull')))
+        .getSingleOrNull();
     final since = cursor?.lastPull ?? DateTime.fromMillisecondsSinceEpoch(0);
 
     final res = await _dio.get('/api/sync/pull', queryParameters: {
@@ -188,65 +208,143 @@ class SyncService {
 
     for (final j in (data['jobs'] as List? ?? [])) {
       final m = j as Map<String, dynamic>;
-      await _db.into(_db.localJobs).insertOnConflictUpdate(LocalJobsCompanion.insert(
-        id: m['id'] as String,
-        projectNumber: m['projectNumber'] as String,
-        name: m['name'] as String,
-        address: Value(m['address'] as String?),
-        isArchived: Value(m['isArchived'] as bool? ?? false),
-        updatedAt: DateTime.parse(m['updatedAt'] as String),
-      ));
+      await _db
+          .into(_db.localJobs)
+          .insertOnConflictUpdate(LocalJobsCompanion.insert(
+            id: m['id'] as String,
+            projectNumber: m['projectNumber'] as String,
+            name: m['name'] as String,
+            address: Value(m['address'] as String?),
+            isArchived: Value(m['isArchived'] as bool? ?? false),
+            deletedAt: const Value(null),
+            updatedAt: DateTime.parse(m['updatedAt'] as String),
+          ));
     }
 
     for (final f in (data['floors'] as List? ?? [])) {
       final m = f as Map<String, dynamic>;
-      await _db.into(_db.localFloors).insertOnConflictUpdate(LocalFloorsCompanion.insert(
-        id: m['id'] as String,
-        jobId: m['jobId'] as String,
-        name: m['name'] as String,
-        sortOrder: Value(m['sortOrder'] as int? ?? 0),
-        updatedAt: DateTime.parse(m['updatedAt'] as String),
-      ));
+      await _db
+          .into(_db.localFloors)
+          .insertOnConflictUpdate(LocalFloorsCompanion.insert(
+            id: m['id'] as String,
+            jobId: m['jobId'] as String,
+            name: m['name'] as String,
+            sortOrder: Value(m['sortOrder'] as int? ?? 0),
+            deletedAt: const Value(null),
+            updatedAt: DateTime.parse(m['updatedAt'] as String),
+          ));
     }
 
     for (final s in (data['seals'] as List? ?? [])) {
       final m = s as Map<String, dynamic>;
-      await _db.into(_db.localSeals).insertOnConflictUpdate(LocalSealsCompanion.insert(
-        id: m['id'] as String,
-        jobId: m['jobId'] as String,
-        floorId: m['floorId'] as String,
-        sealNumber: m['sealNumber'] as String,
-        system: m['system'] as String,
-        construction: m['construction'] as String,
-        location: m['location'] as String,
-        fireRating: m['fireRating'] as String,
-        note: Value(m['note'] as String?),
-        status: Value(m['status'] as String? ?? 'draft'),
-        version: Value(m['version'] as int? ?? 1),
-        isSynced: const Value(true),
-        syncConflict: const Value(false),
-        updatedAt: DateTime.parse(m['updatedAt'] as String),
-      ));
+      await _db
+          .into(_db.localSeals)
+          .insertOnConflictUpdate(LocalSealsCompanion.insert(
+            id: m['id'] as String,
+            jobId: m['jobId'] as String,
+            floorId: m['floorId'] as String,
+            sealNumber: m['sealNumber'] as String,
+            system: m['system'] as String,
+            construction: m['construction'] as String,
+            location: m['location'] as String,
+            fireRating: m['fireRating'] as String,
+            note: Value(m['note'] as String?),
+            status: Value(m['status'] as String? ?? 'draft'),
+            version: Value(m['version'] as int? ?? 1),
+            isSynced: const Value(true),
+            syncConflict: const Value(false),
+            deletedAt: const Value(null),
+            updatedAt: DateTime.parse(m['updatedAt'] as String),
+          ));
+    }
+
+    final deleted = data['deleted'] as Map<String, dynamic>? ?? const {};
+    for (final j in (deleted['jobs'] as List? ?? [])) {
+      final m = j as Map<String, dynamic>;
+      await (_db.update(_db.localJobs)
+            ..where((row) => row.id.equals(m['id'] as String)))
+          .write(
+        LocalJobsCompanion(
+          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+              DateTime.now()),
+          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+              DateTime.now()),
+        ),
+      );
+    }
+    for (final f in (deleted['floors'] as List? ?? [])) {
+      final m = f as Map<String, dynamic>;
+      await (_db.update(_db.localFloors)
+            ..where((row) => row.id.equals(m['id'] as String)))
+          .write(
+        LocalFloorsCompanion(
+          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+              DateTime.now()),
+          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+              DateTime.now()),
+        ),
+      );
+    }
+    for (final s in (deleted['seals'] as List? ?? [])) {
+      final m = s as Map<String, dynamic>;
+      await (_db.update(_db.localSeals)
+            ..where((row) => row.id.equals(m['id'] as String)))
+          .write(
+        LocalSealsCompanion(
+          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+              DateTime.now()),
+          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+              DateTime.now()),
+        ),
+      );
+    }
+
+    final archived = data['archived'] as Map<String, dynamic>? ?? const {};
+    for (final j in (archived['jobs'] as List? ?? [])) {
+      final m = j as Map<String, dynamic>;
+      await (_db.update(_db.localJobs)
+            ..where((row) => row.id.equals(m['id'] as String)))
+          .write(
+        LocalJobsCompanion(
+          isArchived: const Value(true),
+          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+              DateTime.now()),
+        ),
+      );
     }
 
     await _db.into(_db.syncCursor).insertOnConflictUpdate(
-      SyncCursorCompanion.insert(key: 'last_pull', lastPull: DateTime.now()),
-    );
+          SyncCursorCompanion.insert(
+              key: 'last_pull', lastPull: DateTime.now()),
+        );
   }
 
-  Future<void> _uploadPendingPhotos({required bool force, required DateTime now}) async {
+  Future<void> _uploadPendingPhotos(
+      {required bool force, required DateTime now}) async {
     final all = await (_db.select(_db.localPhotos)
           ..where((p) => p.status.isIn(['pending', 'failed'])))
         .get();
-    final pending = force ? all : all.where((p) => photoIsDueForRetry(p, now)).toList();
+    final pending =
+        force ? all : all.where((p) => photoIsDueForRetry(p, now)).toList();
 
     for (final photo in pending) {
       try {
+        final seal = await (_db.select(_db.localSeals)
+              ..where((s) => s.id.equals(photo.sealId)))
+            .getSingleOrNull();
+        if (seal == null || !seal.isSynced || seal.syncConflict) {
+          continue;
+        }
+
         final formData = FormData.fromMap({
-          'photo': await MultipartFile.fromFile(photo.localPath, filename: 'photo.webp'),
+          'photo': await MultipartFile.fromFile(photo.localPath,
+              filename: 'photo.webp'),
         });
-        await _dio.post('/api/seals/${photo.sealId}/photos', data: formData);
-        await markPhotoSyncSuccess(_db, photo.id);
+        final res = await _dio.post('/api/seals/${photo.sealId}/photos',
+            data: formData);
+        final data = res.data is Map ? res.data as Map : const {};
+        await markPhotoSyncSuccess(_db, photo.id,
+            serverPath: data['filePath'] as String?);
       } catch (e) {
         await markPhotoSyncFailure(
           _db,

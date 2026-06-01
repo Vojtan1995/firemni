@@ -85,12 +85,32 @@ describe('Users admin (management / admin)', () => {
     expect(created.status).toBe(201);
     createdUserId = created.body.id;
     expect(created.body.role).toBe('worker');
+    expect(created.body.mustChangePin).toBe(true);
 
     const login = await request(app)
       .post('/api/auth/login')
       .send({ username, pin: '9999' });
     expect(login.status).toBe(200);
     expect(login.body.user.username).toBe(username);
+    expect(login.body.user.mustChangePin).toBe(true);
+
+    const changed = await request(app)
+      .post('/api/auth/change-pin')
+      .set('Authorization', `Bearer ${login.body.token}`)
+      .send({ currentPin: '9999', newPin: '7777' });
+    expect(changed.status).toBe(200);
+    expect(changed.body.mustChangePin).toBe(false);
+
+    const me = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${login.body.token}`);
+    expect(me.status).toBe(200);
+    expect(me.body.mustChangePin).toBe(false);
+
+    const oldPinLogin = await request(app)
+      .post('/api/auth/login')
+      .send({ username, pin: '9999' });
+    expect(oldPinLogin.status).toBe(401);
   });
 
   it('management can PATCH pin on worker', async () => {
@@ -99,6 +119,7 @@ describe('Users admin (management / admin)', () => {
       .set('Authorization', `Bearer ${managementToken}`)
       .send({ pin: '8888' });
     expect(res.status).toBe(200);
+    expect(res.body.mustChangePin).toBe(true);
 
     const login = await request(app)
       .post('/api/auth/login')

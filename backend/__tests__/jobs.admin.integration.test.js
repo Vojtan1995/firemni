@@ -7,8 +7,8 @@ describe('Jobs and floors admin (management)', () => {
   const app = createApp();
   let managementToken;
   let workerToken;
-  let seedJobId;
-  let seedFloorId;
+  let adminJobId;
+  let adminFloorId;
 
   beforeAll(async () => {
     const mgmt = await request(app)
@@ -21,20 +21,34 @@ describe('Jobs and floors admin (management)', () => {
       .send({ username: 'worker1', pin: '1234' });
     workerToken = worker.body.token;
 
+    const adminJobNumber = `7${Date.now().toString().slice(-7)}`;
     const jobRes = await request(app)
-      .get('/api/jobs/by-number/12345678')
-      .set('Authorization', `Bearer ${managementToken}`);
-    seedJobId = jobRes.body.id;
-    seedFloorId = jobRes.body.floors[0].id;
+      .post('/api/jobs')
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ projectNumber: adminJobNumber, name: 'Admin test stavba' });
+    expect(jobRes.status).toBe(201);
+    adminJobId = jobRes.body.id;
+
+    const floorRes = await request(app)
+      .post(`/api/jobs/${adminJobId}/floors`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ name: 'Admin test patro' });
+    expect(floorRes.status).toBe(201);
+    adminFloorId = floorRes.body.id;
   });
 
   afterAll(async () => {
+    if (adminJobId) {
+      await prisma.seal.deleteMany({ where: { jobId: adminJobId } });
+      await prisma.jobFloor.deleteMany({ where: { jobId: adminJobId } });
+      await prisma.job.deleteMany({ where: { id: adminJobId } });
+    }
     await prisma.$disconnect();
   });
 
   it('worker cannot PATCH job', async () => {
     const res = await request(app)
-      .patch(`/api/jobs/${seedJobId}`)
+      .patch(`/api/jobs/${adminJobId}`)
       .set('Authorization', `Bearer ${workerToken}`)
       .send({ name: 'X' });
     expect(res.status).toBe(403);
@@ -42,7 +56,7 @@ describe('Jobs and floors admin (management)', () => {
 
   it('management can PATCH job name', async () => {
     const res = await request(app)
-      .patch(`/api/jobs/${seedJobId}`)
+      .patch(`/api/jobs/${adminJobId}`)
       .set('Authorization', `Bearer ${managementToken}`)
       .send({ name: 'Testovací stavba' });
     expect(res.status).toBe(200);
@@ -51,13 +65,13 @@ describe('Jobs and floors admin (management)', () => {
 
   it('management can archive and unarchive job', async () => {
     const archived = await request(app)
-      .patch(`/api/jobs/${seedJobId}/archive`)
+      .patch(`/api/jobs/${adminJobId}/archive`)
       .set('Authorization', `Bearer ${managementToken}`);
     expect(archived.status).toBe(200);
     expect(archived.body.isArchived).toBe(true);
 
     const unarchived = await request(app)
-      .patch(`/api/jobs/${seedJobId}/unarchive`)
+      .patch(`/api/jobs/${adminJobId}/unarchive`)
       .set('Authorization', `Bearer ${managementToken}`);
     expect(unarchived.status).toBe(200);
     expect(unarchived.body.isArchived).toBe(false);
@@ -65,16 +79,16 @@ describe('Jobs and floors admin (management)', () => {
 
   it('management can PATCH floor name', async () => {
     const res = await request(app)
-      .patch(`/api/jobs/${seedJobId}/floors/${seedFloorId}`)
+      .patch(`/api/jobs/${adminJobId}/floors/${adminFloorId}`)
       .set('Authorization', `Bearer ${managementToken}`)
       .send({ name: '1. NP upraveno' });
     expect(res.status).toBe(200);
     expect(res.body.name).toBe('1. NP upraveno');
 
     await request(app)
-      .patch(`/api/jobs/${seedJobId}/floors/${seedFloorId}`)
+      .patch(`/api/jobs/${adminJobId}/floors/${adminFloorId}`)
       .set('Authorization', `Bearer ${managementToken}`)
-      .send({ name: '1. NP' });
+      .send({ name: 'Admin test patro' });
   });
 
   it('cannot delete job with active seals (409)', async () => {

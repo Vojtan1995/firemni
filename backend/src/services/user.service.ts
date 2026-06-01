@@ -13,6 +13,7 @@ export type PublicUser = {
   displayName: string;
   role: UserRole;
   isActive: boolean;
+  mustChangePin: boolean;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -24,6 +25,7 @@ export function toPublicUser(user: User): PublicUser {
     displayName: user.displayName,
     role: user.role,
     isActive: user.isActive,
+    mustChangePin: user.mustChangePin,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
@@ -64,6 +66,7 @@ export async function createUser(
       displayName: data.displayName,
       pinHash,
       role: data.role,
+      mustChangePin: true,
     },
   });
   return toPublicUser(user);
@@ -93,6 +96,7 @@ export async function updateUser(
     pinHash?: string;
     role?: UserRole;
     isActive?: boolean;
+    mustChangePin?: boolean;
   } = {};
 
   if (data.displayName !== undefined) updateData.displayName = data.displayName;
@@ -100,6 +104,7 @@ export async function updateUser(
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
   if (data.pin !== undefined) {
     updateData.pinHash = await bcrypt.hash(data.pin, 10);
+    updateData.mustChangePin = true;
   }
 
   if (Object.keys(updateData).length === 0) {

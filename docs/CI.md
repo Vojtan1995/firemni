@@ -63,6 +63,14 @@ test/login_home_smoke_test.dart
 
 API URL: `--dart-define=API_BASE_URL=http://localhost:3000` (výchozí stejné jako lokálně).
 
+Backend v runtime jobu běží s produkčními config guardy, proto CI nastavuje i:
+
+```text
+JWT_SECRET=ci-jwt-secret-not-for-production
+CORS_ORIGIN=http://localhost:3000
+PUBLIC_UPLOADS=false
+```
+
 ---
 
 ## Lokální ekvivalent

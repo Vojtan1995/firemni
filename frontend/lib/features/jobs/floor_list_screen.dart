@@ -56,7 +56,8 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     }
   }
 
-  Future<void> _cacheFloorsFromApi(AppDatabase db, List<Map<String, dynamic>> apiList) async {
+  Future<void> _cacheFloorsFromApi(
+      AppDatabase db, List<Map<String, dynamic>> apiList) async {
     for (final m in apiList) {
       await db.into(db.localFloors).insertOnConflictUpdate(
             LocalFloorsCompanion.insert(
@@ -64,7 +65,8 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
               jobId: widget.jobId,
               name: m['name'] as String,
               sortOrder: Value(m['sortOrder'] as int? ?? 0),
-              updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ?? DateTime.now(),
+              updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                  DateTime.now(),
             ),
           );
     }
@@ -72,8 +74,11 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
 
   Future<void> _loadFromDrift(AppDatabase db) async {
     final rows = await (db.select(db.localFloors)
-          ..where((f) => f.jobId.equals(widget.jobId))
-          ..orderBy([(f) => OrderingTerm.asc(f.sortOrder), (f) => OrderingTerm.asc(f.name)]))
+          ..where((f) => f.jobId.equals(widget.jobId) & f.deletedAt.isNull())
+          ..orderBy([
+            (f) => OrderingTerm.asc(f.sortOrder),
+            (f) => OrderingTerm.asc(f.name)
+          ]))
         .get();
 
     if (!mounted) return;
@@ -126,14 +131,16 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
                     ),
                     leading: const Icon(Icons.cloud_off),
                     actions: [
-                      TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+                      TextButton(
+                          onPressed: _load, child: const Text('Zkusit znovu')),
                     ],
                   ),
                 if (_floors.isEmpty)
                   Expanded(
                     child: Center(
                       child: Text(
-                        _offlineHint ?? 'Pro tuto stavbu nejsou k dispozici žádná patra.',
+                        _offlineHint ??
+                            'Pro tuto stavbu nejsou k dispozici žádná patra.',
                         textAlign: TextAlign.center,
                       ),
                     ),
@@ -145,9 +152,11 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
                       itemBuilder: (_, i) {
                         final f = _floors[i];
                         return ListTile(
-                          title: Text(f['name'] as String, style: const TextStyle(fontSize: 20)),
+                          title: Text(f['name'] as String,
+                              style: const TextStyle(fontSize: 20)),
                           trailing: const Icon(Icons.chevron_right),
-                          onTap: () => context.push('/seals/${f['id']}?jobId=${widget.jobId}'),
+                          onTap: () => context
+                              .push('/seals/${f['id']}?jobId=${widget.jobId}'),
                         );
                       },
                     ),

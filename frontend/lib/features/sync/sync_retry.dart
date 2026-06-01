@@ -13,19 +13,24 @@ DateTime syncNextRetryAt(int retryCountAfterFailure, DateTime from) {
   return from.add(syncRetryDelayForCount(retryCountAfterFailure));
 }
 
-bool syncIsDueForRetry({required String status, DateTime? nextRetryAt, required DateTime now}) {
-  if (status == 'conflict' || status == 'done' || status == 'sending') return false;
+bool syncIsDueForRetry(
+    {required String status, DateTime? nextRetryAt, required DateTime now}) {
+  if (status == 'conflict' || status == 'done' || status == 'sending') {
+    return false;
+  }
   if (status != 'pending' && status != 'failed') return false;
   if (nextRetryAt == null) return true;
   return !nextRetryAt.isAfter(now);
 }
 
 bool outboxIsDueForRetry(LocalOutboxData row, DateTime now) {
-  return syncIsDueForRetry(status: row.status, nextRetryAt: row.nextRetryAt, now: now);
+  return syncIsDueForRetry(
+      status: row.status, nextRetryAt: row.nextRetryAt, now: now);
 }
 
 bool photoIsDueForRetry(LocalPhoto row, DateTime now) {
-  return syncIsDueForRetry(status: row.status, nextRetryAt: row.nextRetryAt, now: now);
+  return syncIsDueForRetry(
+      status: row.status, nextRetryAt: row.nextRetryAt, now: now);
 }
 
 Future<void> markOutboxSyncSuccess(AppDatabase db, String outboxId) async {
@@ -58,13 +63,15 @@ Future<void> markOutboxSyncFailure(
   );
 }
 
-Future<void> markPhotoSyncSuccess(AppDatabase db, String photoId) async {
+Future<void> markPhotoSyncSuccess(AppDatabase db, String photoId,
+    {String? serverPath}) async {
   await (db.update(db.localPhotos)..where((p) => p.id.equals(photoId))).write(
-    const LocalPhotosCompanion(
-      status: Value('done'),
-      retryCount: Value(0),
-      lastError: Value(null),
-      nextRetryAt: Value(null),
+    LocalPhotosCompanion(
+      status: const Value('done'),
+      retryCount: const Value(0),
+      lastError: const Value(null),
+      nextRetryAt: const Value(null),
+      serverPath: serverPath == null ? const Value.absent() : Value(serverPath),
     ),
   );
 }

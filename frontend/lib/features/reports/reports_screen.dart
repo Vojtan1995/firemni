@@ -64,12 +64,13 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() => _loading = true);
     try {
       final res = await ref.read(dioProvider).get(
-        '/api/reports/work-summary',
-        queryParameters: _queryParams,
-      );
+            '/api/reports/work-summary',
+            queryParameters: _queryParams,
+          );
       if (!mounted) return;
       setState(() {
-        _rows = ((res.data as Map)['rows'] as List).cast<Map<String, dynamic>>();
+        _rows =
+            ((res.data as Map)['rows'] as List).cast<Map<String, dynamic>>();
         _loading = false;
       });
     } on DioException catch (e) {
@@ -106,16 +107,17 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() => _exporting = true);
     try {
       final res = await ref.read(dioProvider).get(
-        path,
-        queryParameters: _queryParams,
-        options: Options(responseType: ResponseType.bytes),
-      );
+            path,
+            queryParameters: _queryParams,
+            options: Options(responseType: ResponseType.bytes),
+          );
       final bytes = res.data;
       if (bytes == null || bytes.isEmpty) {
         throw StateError('Export vrátil prázdný soubor');
       }
 
-      final dir = await getDownloadsDirectory() ?? await getApplicationDocumentsDirectory();
+      final dir = await getDownloadsDirectory() ??
+          await getApplicationDocumentsDirectory();
       final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final filePath = p.join(dir.path, 'soupis_praci_$date.$extension');
       await File(filePath).writeAsBytes(bytes, flush: true);
@@ -160,7 +162,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<String?>(
-                  value: _filterJobId,
+                  initialValue: _filterJobId,
                   decoration: const InputDecoration(
                     labelText: 'Stavba',
                     border: OutlineInputBorder(),
@@ -181,7 +183,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterStatus,
+                  initialValue: _filterStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: OutlineInputBorder(),
@@ -220,7 +222,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.download),
                         label: const Text('Export CSV'),
@@ -234,7 +237,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                             ? const SizedBox(
                                 width: 18,
                                 height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2),
+                                child:
+                                    CircularProgressIndicator(strokeWidth: 2),
                               )
                             : const Icon(Icons.picture_as_pdf),
                         label: const Text('Export PDF'),

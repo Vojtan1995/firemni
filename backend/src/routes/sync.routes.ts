@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { Prisma, SealStatus, UserRole } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
-import { conflict, forbidden } from '../lib/errors.js';
+import { AppError, conflict, forbidden } from '../lib/errors.js';
 import {
   checkDuplicateSealNumber,
   canWorkerEdit,
@@ -26,6 +26,27 @@ const pushSchema = z.object({
   mutations: z.array(mutationSchema),
 });
 
+const sealEntryPayloadSchema = z.object({
+  entryType: z.string().min(1),
+  dimension: z.string().min(1),
+  quantity: z.number().int().positive(),
+  insulation: z.string().min(1),
+  materials: z.array(z.string().min(1)).min(1),
+});
+
+const sealCreatePayloadSchema = z.object({
+  id: z.string().uuid().optional(),
+  jobId: z.string().uuid(),
+  floorId: z.string().uuid(),
+  sealNumber: z.string().regex(/^\d+$/),
+  system: z.string().min(1),
+  construction: z.string().min(1),
+  location: z.string().min(1),
+  fireRating: z.string().min(1),
+  note: z.string().nullable().optional(),
+  entries: z.array(sealEntryPayloadSchema).min(1),
+});
+
 router.post('/push', async (req, res, next) => {
   try {
     const { mutations } = pushSchema.parse(req.body);
@@ -36,12 +57,26 @@ router.post('/push', async (req, res, next) => {
         where: { mutationId: mut.mutationId },
       });
       if (existing?.processedAt) {
-        results.push({ mutationId: mut.mutationId, status: 'already_processed', entityId: (existing.result as { entityId?: string })?.entityId });
+        const stored = existing.result as { status?: string; entityId?: string; error?: string } | null;
+        if (stored?.status === 'conflict') {
+          results.push({
+            mutationId: mut.mutationId,
+            status: 'conflict',
+            conflict: stored.error ?? 'Konflikt',
+          });
+        } else {
+          results.push({
+            mutationId: mut.mutationId,
+            status: 'already_processed',
+            entityId: stored?.entityId,
+          });
+        }
         continue;
       }
 
       try {
         const result = await processMutation(mut, req.user!.id, req.user!.role);
+        const storedResult = { status: 'ok', ...result };
         await prisma.syncMutation.upsert({
           where: { mutationId: mut.mutationId },
           create: {
@@ -51,15 +86,17 @@ router.post('/push', async (req, res, next) => {
             entityType: mut.entityType,
             operation: mut.operation,
             payload: mut.payload as Prisma.InputJsonValue,
-            result,
+            result: storedResult,
             processedAt: new Date(),
           },
-          update: { result, processedAt: new Date() },
+          update: { result: storedResult, processedAt: new Date() },
         });
         results.push({ mutationId: mut.mutationId, status: 'ok', entityId: result.entityId });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'conflict';
-        const code = (e as { code?: string }).code === 'CONFLICT' ? 'conflict' : 'error';
+        const isBusinessError = e instanceof AppError;
+        const code = isBusinessError ? 'conflict' : 'error';
+        const storedResult = { status: code, error: msg };
         await prisma.syncMutation.upsert({
           where: { mutationId: mut.mutationId },
           create: {
@@ -69,10 +106,13 @@ router.post('/push', async (req, res, next) => {
             entityType: mut.entityType,
             operation: mut.operation,
             payload: mut.payload as Prisma.InputJsonValue,
-            result: { error: msg },
-            processedAt: new Date(),
+            result: storedResult,
+            processedAt: isBusinessError ? new Date() : null,
           },
-          update: { result: { error: msg }, processedAt: new Date() },
+          update: {
+            result: storedResult,
+            ...(isBusinessError ? { processedAt: new Date() } : {}),
+          },
         });
         results.push({ mutationId: mut.mutationId, status: code, conflict: msg });
       }
@@ -93,25 +133,45 @@ async function processMutation(
     const p = mut.payload as Record<string, string | number | unknown>;
 
     if (mut.operation === 'create') {
-      const jobId = p.jobId as string;
-      const floorId = p.floorId as string;
-      const sealNumber = p.sealNumber as string;
-      await checkDuplicateSealNumber(jobId, floorId, sealNumber);
+      const createPayload = sealCreatePayloadSchema.parse(mut.payload);
+      await checkDuplicateSealNumber(
+        createPayload.jobId,
+        createPayload.floorId,
+        createPayload.sealNumber,
+      );
 
-      const seal = await prisma.seal.create({
-        data: {
-          jobId,
-          floorId,
-          sealNumber,
-          system: p.system as string,
-          construction: p.construction as string,
-          location: p.location as string,
-          fireRating: p.fireRating as string,
-          note: (p.note as string) || null,
-          createdById: userId,
-          updatedById: userId,
-        },
-      });
+      const seal = await prisma.$transaction((tx) =>
+        tx.seal.create({
+          data: {
+            ...(createPayload.id ? { id: createPayload.id } : {}),
+            jobId: createPayload.jobId,
+            floorId: createPayload.floorId,
+            sealNumber: createPayload.sealNumber,
+            system: createPayload.system,
+            construction: createPayload.construction,
+            location: createPayload.location,
+            fireRating: createPayload.fireRating,
+            note: createPayload.note ?? null,
+            createdById: userId,
+            updatedById: userId,
+            entries: {
+              create: createPayload.entries.map((entry, i) => ({
+                entryType: entry.entryType,
+                dimension: entry.dimension,
+                quantity: entry.quantity,
+                insulation: entry.insulation,
+                sortOrder: i,
+                materials: {
+                  create: entry.materials.map((material, j) => ({
+                    material,
+                    sortOrder: j,
+                  })),
+                },
+              })),
+            },
+          },
+        }),
+      );
       return { entityId: seal.id };
     }
 
@@ -188,11 +248,38 @@ router.get('/pull', async (req, res, next) => {
       }),
     ]);
 
+    const [deletedJobs, deletedFloors, deletedSeals, archivedJobs] = await Promise.all([
+      prisma.job.findMany({
+        where: { updatedAt: { gt: since }, deletedAt: { not: null } },
+        select: { id: true, deletedAt: true, updatedAt: true },
+      }),
+      prisma.jobFloor.findMany({
+        where: { updatedAt: { gt: since }, deletedAt: { not: null } },
+        select: { id: true, jobId: true, deletedAt: true, updatedAt: true },
+      }),
+      prisma.seal.findMany({
+        where: { updatedAt: { gt: since }, deletedAt: { not: null }, ...(jobId ? { jobId } : {}) },
+        select: { id: true, jobId: true, floorId: true, deletedAt: true, updatedAt: true },
+      }),
+      prisma.job.findMany({
+        where: { updatedAt: { gt: since }, deletedAt: null, isArchived: true },
+        select: { id: true, updatedAt: true },
+      }),
+    ]);
+
     res.json({
       serverTime: new Date().toISOString(),
       jobs,
       floors,
       seals,
+      deleted: {
+        jobs: deletedJobs,
+        floors: deletedFloors,
+        seals: deletedSeals,
+      },
+      archived: {
+        jobs: archivedJobs,
+      },
     });
   } catch (e) {
     next(e);

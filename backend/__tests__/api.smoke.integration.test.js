@@ -34,6 +34,14 @@ describe('API smoke (integration)', () => {
     expect(res.body.timestamp).toBeDefined();
   });
 
+  it('GET /ready -> 200 ready with database check', async () => {
+    const res = await request(app).get('/ready');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ready');
+    expect(res.body.database).toBe('ok');
+    expect(res.body.timestamp).toBeDefined();
+  });
+
   it('POST /api/auth/login → token + role', async () => {
     const res = await request(app)
       .post('/api/auth/login')

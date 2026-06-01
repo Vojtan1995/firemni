@@ -1,7 +1,7 @@
 [build]
-buildCommand = "npm ci && npm run build"
+buildCommand = "npm ci && npx prisma generate && npm run build"
 
 [deploy]
-startCommand = "npm run start"
-healthcheckPath = "/health"
+startCommand = "npx prisma migrate deploy && npm run start"
+healthcheckPath = "/ready"
 healthcheckTimeout = 120
