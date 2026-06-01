@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../../core/api/api_client.dart';
+import 'reports_query.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({super.key});
@@ -18,10 +20,16 @@ class ReportsScreen extends ConsumerStatefulWidget {
 class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   List<Map<String, dynamic>> _rows = [];
   List<Map<String, dynamic>> _jobs = [];
+  List<Map<String, dynamic>> _workers = [];
+  List<Map<String, dynamic>> _floors = [];
   bool _loading = false;
   bool _exporting = false;
   String? _filterJobId;
   String? _filterStatus;
+  String? _filterWorkerId;
+  String? _filterFloorId;
+  DateTime? _filterFrom;
+  DateTime? _filterTo;
 
   static const _statusOptions = <String?, String>{
     null: 'Všechny statusy',
@@ -30,21 +38,20 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     'invoiced': 'Vyfakturováno',
   };
 
-  Map<String, String> get _queryParams {
-    final params = <String, String>{};
-    if (_filterJobId != null && _filterJobId!.isNotEmpty) {
-      params['jobId'] = _filterJobId!;
-    }
-    if (_filterStatus != null && _filterStatus!.isNotEmpty) {
-      params['status'] = _filterStatus!;
-    }
-    return params;
-  }
+  Map<String, String> get _queryParams => buildReportsQueryParams(
+        jobId: _filterJobId,
+        status: _filterStatus,
+        workerId: _filterWorkerId,
+        floorId: _filterFloorId,
+        from: _filterFrom,
+        to: _filterTo,
+      );
 
   @override
   void initState() {
     super.initState();
     _loadJobs();
+    _loadWorkers();
   }
 
   Future<void> _loadJobs() async {
@@ -58,6 +65,68 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     } on DioException catch (e) {
       _showError(_dioMessage(e, 'Nepodařilo se načíst stavby'));
     }
+  }
+
+  Future<void> _loadWorkers() async {
+    try {
+      final res = await ref.read(dioProvider).get('/api/users');
+      if (!mounted) return;
+      final all = (res.data as List).cast<Map<String, dynamic>>();
+      setState(() {
+        _workers = all.where((u) => u['role'] == 'worker').toList();
+      });
+    } on DioException catch (e) {
+      _showError(_dioMessage(e, 'Nepodařilo se načíst pracovníky'));
+    }
+  }
+
+  Future<void> _loadFloorsForJob(String? jobId) async {
+    if (jobId == null || jobId.isEmpty) {
+      setState(() {
+        _floors = [];
+        _filterFloorId = null;
+      });
+      return;
+    }
+    try {
+      final res =
+          await ref.read(dioProvider).get('/api/jobs/$jobId/floors');
+      if (!mounted) return;
+      setState(() {
+        _floors = (res.data as List).cast<Map<String, dynamic>>();
+        if (_filterFloorId != null &&
+            !_floors.any((f) => f['id'] == _filterFloorId)) {
+          _filterFloorId = null;
+        }
+      });
+    } on DioException catch (e) {
+      _showError(_dioMessage(e, 'Nepodařilo se načíst patra'));
+    }
+  }
+
+  Future<void> _pickDate({required bool isFrom}) async {
+    final initial = isFrom
+        ? (_filterFrom ?? DateTime.now())
+        : (_filterTo ?? DateTime.now());
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (isFrom) {
+        _filterFrom = picked;
+      } else {
+        _filterTo = picked;
+      }
+    });
+  }
+
+  String _formatFilterDate(DateTime? d) {
+    if (d == null) return '—';
+    return DateFormat('d.M.yyyy').format(d);
   }
 
   Future<void> _load() async {
@@ -162,7 +231,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<String?>(
-                  initialValue: _filterJobId,
+                  value: _filterJobId,
                   decoration: const InputDecoration(
                     labelText: 'Stavba',
                     border: OutlineInputBorder(),
@@ -179,11 +248,58 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       ),
                     ),
                   ],
-                  onChanged: (v) => setState(() => _filterJobId = v),
+                  onChanged: (v) {
+                    setState(() => _filterJobId = v);
+                    _loadFloorsForJob(v);
+                  },
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  initialValue: _filterStatus,
+                  value: _filterFloorId,
+                  decoration: const InputDecoration(
+                    labelText: 'Patro',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Všechna patra'),
+                    ),
+                    ..._floors.map(
+                      (f) => DropdownMenuItem<String?>(
+                        value: f['id'] as String,
+                        child: Text(f['name'] as String),
+                      ),
+                    ),
+                  ],
+                  onChanged: _filterJobId == null
+                      ? null
+                      : (v) => setState(() => _filterFloorId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: _filterWorkerId,
+                  decoration: const InputDecoration(
+                    labelText: 'Pracovník',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Všichni pracovníci'),
+                    ),
+                    ..._workers.map(
+                      (w) => DropdownMenuItem<String?>(
+                        value: w['id'] as String,
+                        child: Text(w['displayName'] as String? ?? w['username'] as String),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _filterWorkerId = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: _filterStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: OutlineInputBorder(),
@@ -197,6 +313,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       )
                       .toList(),
                   onChanged: (v) => setState(() => _filterStatus = v),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickDate(isFrom: true),
+                        child: Text('Od: ${_formatFilterDate(_filterFrom)}'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _pickDate(isFrom: false),
+                        child: Text('Do: ${_formatFilterDate(_filterTo)}'),
+                      ),
+                    ),
+                  ],
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: _filterFrom == null && _filterTo == null
+                        ? null
+                        : () => setState(() {
+                              _filterFrom = null;
+                              _filterTo = null;
+                            }),
+                    child: const Text('Vymazat období'),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 SizedBox(

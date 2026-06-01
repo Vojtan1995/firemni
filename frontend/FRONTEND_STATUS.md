@@ -13,6 +13,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T5 photo upload gate | hotovo | počítadlo + sync přeskočí fotky u nesynced seal |
 | T7 iOS camera permissions | hotovo | `Info.plist` privacy keys |
 | T8 prostupy materials UX | hotovo | materiály jen u hlavního prostupu |
+| T9 export filters UI | hotovo | pracovník, patro, období |
 
 ### Ověření testů (2026-05-27)
 
