@@ -24,6 +24,10 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Aplikace potřebuje fotoaparát pro pořízení fotek ucpávek.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Aplikace potřebuje přístup ke galerii pro výběr fotek ucpávek.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
