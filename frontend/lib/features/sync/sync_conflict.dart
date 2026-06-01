@@ -132,6 +132,39 @@ Future<SyncConflictView> _toConflictView(AppDatabase db, LocalOutboxData row) as
   );
 }
 
+/// Seal IDs with outbox rows that still need sync attention (T1 / S2).
+Future<Set<String>> loadSealIdsWithActiveSyncOutbox(AppDatabase db) async {
+  final rows = await (db.select(db.localOutbox)
+        ..where((o) =>
+            o.status.isIn(['pending', 'failed', 'conflict']) &
+            o.dismissedAt.isNull()))
+      .get();
+  final ids = <String>{};
+  for (final row in rows) {
+    if (row.entityType != 'seal') continue;
+    final sealId = await resolveSealIdForOutbox(db, row);
+    if (sealId != null) ids.add(sealId);
+  }
+  return ids;
+}
+
+/// Flags for pull upsert — mirrors [cacheSealDetailFromApi] preservation rules.
+({bool isSynced, bool syncConflict}) pullSealSyncFlags({
+  required LocalSeal? existing,
+  required bool hasActiveOutbox,
+}) {
+  final preserve = hasActiveOutbox ||
+      existing?.isSynced == false ||
+      (existing?.syncConflict ?? false);
+  if (!preserve) {
+    return (isSynced: true, syncConflict: false);
+  }
+  return (
+    isSynced: existing?.isSynced ?? false,
+    syncConflict: existing?.syncConflict ?? false,
+  );
+}
+
 Future<String?> resolveSealIdForOutbox(AppDatabase db, LocalOutboxData row) async {
   final payload = jsonDecode(row.payload) as Map<String, dynamic>;
   final explicit = payload['id'] ?? payload['sealId'];

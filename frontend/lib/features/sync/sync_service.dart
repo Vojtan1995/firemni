@@ -235,12 +235,22 @@ class SyncService {
           ));
     }
 
+    final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(_db);
+
     for (final s in (data['seals'] as List? ?? [])) {
       final m = s as Map<String, dynamic>;
+      final sealId = m['id'] as String;
+      final existing = await (_db.select(_db.localSeals)
+            ..where((row) => row.id.equals(sealId)))
+          .getSingleOrNull();
+      final syncFlags = pullSealSyncFlags(
+        existing: existing,
+        hasActiveOutbox: activeOutboxSealIds.contains(sealId),
+      );
       await _db
           .into(_db.localSeals)
           .insertOnConflictUpdate(LocalSealsCompanion.insert(
-            id: m['id'] as String,
+            id: sealId,
             jobId: m['jobId'] as String,
             floorId: m['floorId'] as String,
             sealNumber: m['sealNumber'] as String,
@@ -251,8 +261,8 @@ class SyncService {
             note: Value(m['note'] as String?),
             status: Value(m['status'] as String? ?? 'draft'),
             version: Value(m['version'] as int? ?? 1),
-            isSynced: const Value(true),
-            syncConflict: const Value(false),
+            isSynced: Value(syncFlags.isSynced),
+            syncConflict: Value(syncFlags.syncConflict),
             deletedAt: const Value(null),
             updatedAt: DateTime.parse(m['updatedAt'] as String),
           ));

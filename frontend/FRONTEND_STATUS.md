@@ -2,6 +2,14 @@
 
 Stabilizační audit po Admin restore UI. Backend musí běžet na `http://localhost:3000`.
 
+### Bugfix V1.1 (2026-06-01)
+
+| Task | Stav | Poznámka |
+|------|------|----------|
+| T1 pull preserve flags | hotovo | `pullSealSyncFlags`, `loadSealIdsWithActiveSyncOutbox` |
+| T2 list merge after sync | — | |
+| T3 push results loop | — | |
+
 ### Ověření testů (2026-05-27)
 
 | Příkaz | Výsledek |
