@@ -222,6 +222,42 @@ void main() {
     expect(await countDueSyncItems(db, now), 1);
   });
 
+  test('countDueSyncItems skips photos blocked by unsynced seal (T5)', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+    final now = DateTime(2026, 5, 27, 10, 0);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-local',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '1',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            isSynced: const Value(false),
+            updatedAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-1',
+            sealId: 'seal-local',
+            localPath: 'local.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+
+    expect(await countDueSyncItems(db, now), 0);
+    expect(isPhotoUploadBlockedBySeal(
+      await (db.select(db.localSeals)..where((s) => s.id.equals('seal-local')))
+          .getSingle(),
+    ), isTrue);
+  });
+
   test('hasDueSyncWork ignores failed outbox before nextRetryAt', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);

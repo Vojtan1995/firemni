@@ -104,7 +104,12 @@ Future<void> markPhotoSyncFailure(
   );
 }
 
-/// Count of outbox rows and photos ready for sync now (T4 / S3).
+/// Whether upload must wait until the seal is synced (T5 / P1).
+bool isPhotoUploadBlockedBySeal(LocalSeal? seal) {
+  return seal == null || !seal.isSynced || seal.syncConflict;
+}
+
+/// Count of outbox rows and photos ready for sync now (T4 / S3, T5 photos).
 Future<int> countDueSyncItems(AppDatabase db, DateTime now) async {
   final outbox = await (db.select(db.localOutbox)
         ..where((o) => o.status.isIn(['pending', 'failed'])))
@@ -114,7 +119,13 @@ Future<int> countDueSyncItems(AppDatabase db, DateTime now) async {
   final photos = await (db.select(db.localPhotos)
         ..where((p) => p.status.isIn(['pending', 'failed'])))
       .get();
-  count += photos.where((p) => photoIsDueForRetry(p, now)).length;
+  for (final photo in photos) {
+    if (!photoIsDueForRetry(photo, now)) continue;
+    final seal = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(photo.sealId)))
+        .getSingleOrNull();
+    if (!isPhotoUploadBlockedBySeal(seal)) count++;
+  }
   return count;
 }
 

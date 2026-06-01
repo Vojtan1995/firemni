@@ -346,7 +346,7 @@ class SyncService {
         final seal = await (_db.select(_db.localSeals)
               ..where((s) => s.id.equals(photo.sealId)))
             .getSingleOrNull();
-        if (seal == null || !seal.isSynced || seal.syncConflict) {
+        if (isPhotoUploadBlockedBySeal(seal)) {
           continue;
         }
 
