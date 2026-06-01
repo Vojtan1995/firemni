@@ -33,6 +33,15 @@ bool photoIsDueForRetry(LocalPhoto row, DateTime now) {
       status: row.status, nextRetryAt: row.nextRetryAt, now: now);
 }
 
+/// Indices in [pending] with no matching push result (T3 / S7).
+List<int> pushResultGapIndices(int pendingLength, int resultsLength) {
+  if (resultsLength >= pendingLength) return const [];
+  return List.generate(
+    pendingLength - resultsLength,
+    (i) => resultsLength + i,
+  );
+}
+
 Future<void> markOutboxSyncSuccess(AppDatabase db, String outboxId) async {
   await (db.update(db.localOutbox)..where((o) => o.id.equals(outboxId))).write(
     const LocalOutboxCompanion(

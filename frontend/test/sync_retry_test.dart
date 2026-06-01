@@ -12,6 +12,12 @@ void main() {
     expect(syncRetryDelayForCount(10), const Duration(minutes: 5));
   });
 
+  test('pushResultGapIndices marks tail when server returns fewer results (T3)', () {
+    expect(pushResultGapIndices(5, 5), isEmpty);
+    expect(pushResultGapIndices(5, 3), [3, 4]);
+    expect(pushResultGapIndices(1, 0), [0]);
+  });
+
   test('pending row is due for retry immediately when nextRetryAt is null',
       () async {
     final db = AppDatabase.forTesting();

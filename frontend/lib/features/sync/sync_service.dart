@@ -138,7 +138,17 @@ class SyncService {
       rethrow;
     }
 
-    for (var i = 0; i < pending.length && i < results.length; i++) {
+    for (var i = 0; i < pending.length; i++) {
+      if (i >= results.length) {
+        await markOutboxSyncFailure(
+          _db,
+          pending[i].id,
+          currentRetryCount: pending[i].retryCount,
+          error: 'Neúplná odpověď serveru při synchronizaci',
+          now: now,
+        );
+        continue;
+      }
       final r = results[i];
       final status = r['status'] as String;
       if (status == 'ok' || status == 'already_processed') {
