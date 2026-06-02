@@ -2,9 +2,11 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../seals/seal_duplicate_local.dart';
 
 /// Zobrazení jednoho sync konfliktu (FE-03).
 class SyncConflictView {
@@ -69,6 +71,77 @@ Future<List<SyncConflictView>> loadActiveSyncConflicts(AppDatabase db) async {
     views.add(await _toConflictView(db, row));
   }
   return views;
+}
+
+/// After duplicate conflict: new number, new mutationId, re-queue for sync (T12 / D1).
+Future<String?> fixDuplicateSealNumberAndRequeue(
+  AppDatabase db, {
+  required String outboxId,
+  required String newSealNumber,
+}) async {
+  final row = await (db.select(db.localOutbox)
+        ..where((o) => o.id.equals(outboxId)))
+      .getSingleOrNull();
+  if (row == null || row.entityType != 'seal') return 'Konflikt nenalezen';
+
+  final payload = Map<String, dynamic>.from(
+    jsonDecode(row.payload) as Map<String, dynamic>,
+  );
+  final jobId = payload['jobId'] as String?;
+  final floorId = payload['floorId'] as String?;
+  if (jobId == null || floorId == null) {
+    return 'Chybí stavba nebo patro v konfliktu';
+  }
+
+  final duplicate = await findLocalDuplicateSeal(
+    db,
+    jobId: jobId,
+    floorId: floorId,
+    sealNumber: newSealNumber,
+    excludeSealId: await resolveSealIdForOutbox(db, row),
+  );
+  if (duplicate != null) {
+    return duplicateSealNumberMessage;
+  }
+
+  payload['sealNumber'] = newSealNumber;
+  final sealId = await resolveSealIdForOutbox(db, row);
+
+  if (sealId != null) {
+    final seal = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(sealId)))
+        .getSingleOrNull();
+    var jsonPayload = seal?.jsonPayload;
+    if (jsonPayload != null && jsonPayload.isNotEmpty) {
+      final decoded =
+          Map<String, dynamic>.from(jsonDecode(jsonPayload) as Map);
+      decoded['sealNumber'] = newSealNumber;
+      jsonPayload = jsonEncode(decoded);
+    }
+    await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
+      LocalSealsCompanion(
+        sealNumber: Value(newSealNumber),
+        syncConflict: const Value(false),
+        jsonPayload: jsonPayload != null ? Value(jsonPayload) : const Value.absent(),
+      ),
+    );
+  }
+
+  const uuid = Uuid();
+  await (db.update(db.localOutbox)..where((o) => o.id.equals(outboxId))).write(
+    LocalOutboxCompanion(
+      mutationId: Value(uuid.v4()),
+      payload: Value(jsonEncode(payload)),
+      status: const Value('pending'),
+      conflictMessage: const Value(null),
+      dismissedAt: const Value(null),
+      retryCount: const Value(0),
+      nextRetryAt: const Value(null),
+      lastError: const Value(null),
+    ),
+  );
+
+  return null;
 }
 
 Future<void> dismissSyncConflict(AppDatabase db, String outboxId) async {

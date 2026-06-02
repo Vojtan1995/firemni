@@ -14,6 +14,7 @@ import '../sync/sync_service.dart';
 import 'chip_selector.dart';
 import 'multi_chip_selector.dart';
 import 'seal_constants.dart';
+import 'seal_duplicate_local.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
 
@@ -225,6 +226,21 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       return;
     }
 
+    final db = ref.read(databaseProvider);
+    final duplicate = await findLocalDuplicateSeal(
+      db,
+      jobId: widget.jobId,
+      floorId: widget.floorId,
+      sealNumber: sealNumber,
+    );
+    if (duplicate != null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text(duplicateSealNumberMessage)),
+      );
+      return;
+    }
+
     setState(() => _saving = true);
     final sealId = const Uuid().v4();
     final payload = {
@@ -251,7 +267,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     };
 
     try {
-      final db = ref.read(databaseProvider);
       await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
             id: sealId,
             jobId: widget.jobId,

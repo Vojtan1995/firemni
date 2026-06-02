@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../database/database_provider.dart';
+import '../seals/seal_duplicate_local.dart';
 import 'sync_conflict.dart';
 import 'sync_service.dart';
+
+final _sealNumberPattern = RegExp(r'^\d+$');
 
 class SyncScreen extends ConsumerStatefulWidget {
   const SyncScreen({super.key});
@@ -27,6 +30,86 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
       _syncing = false;
       _message = result.offline ? 'Offline – data zůstávají lokálně' : 'Synchronizace dokončena';
     });
+  }
+
+  Future<void> _fixDuplicateNumber(SyncConflictView conflict) async {
+    final controller = TextEditingController(text: conflict.sealNumber ?? '');
+    final newNumber = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Opravit číslo ucpávky'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            if (conflict.jobLabel != null)
+              Text('Stavba: ${conflict.jobLabel}',
+                  style: Theme.of(ctx).textTheme.bodySmall),
+            if (conflict.floorName != null)
+              Text('Patro: ${conflict.floorName}',
+                  style: Theme.of(ctx).textTheme.bodySmall),
+            const SizedBox(height: 12),
+            TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                labelText: 'Nové číslo ucpávky',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              autofocus: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Zrušit'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Uložit a synchronizovat'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (newNumber == null || newNumber.isEmpty) return;
+    if (!_sealNumberPattern.hasMatch(newNumber)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Číslo ucpávky musí obsahovat jen číslice')),
+      );
+      return;
+    }
+
+    final db = ref.read(databaseProvider);
+    final error = await fixDuplicateSealNumberAndRequeue(
+      db,
+      outboxId: conflict.outboxId,
+      newSealNumber: newNumber,
+    );
+    if (!mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+      return;
+    }
+
+    final result = await ref.read(syncServiceProvider).syncAll();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          result.success
+              ? 'Číslo upraveno, synchronizace dokončena'
+              : (result.offline
+                  ? 'Číslo upraveno – synchronizace proběhne po připojení'
+                  : 'Číslo upraveno – synchronizace selhala'),
+        ),
+      ),
+    );
   }
 
   Future<void> _dismissConflict(String outboxId) async {
@@ -133,13 +216,22 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           const SizedBox(height: 8),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton.icon(
-                              onPressed: () => _dismissConflict(c.outboxId),
-                              icon: const Icon(Icons.visibility_off),
-                              label: const Text('Skrýt upozornění'),
-                            ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              if (c.entityType == 'seal' &&
+                                  isDuplicateConflictMessage(c.conflictMessage))
+                                TextButton.icon(
+                                  onPressed: () => _fixDuplicateNumber(c),
+                                  icon: const Icon(Icons.edit),
+                                  label: const Text('Opravit číslo'),
+                                ),
+                              TextButton.icon(
+                                onPressed: () => _dismissConflict(c.outboxId),
+                                icon: const Icon(Icons.visibility_off),
+                                label: const Text('Skrýt'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
