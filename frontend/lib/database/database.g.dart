@@ -1520,6 +1520,11 @@ class $LocalOutboxTable extends LocalOutbox
   late final GeneratedColumn<String> mutationId = GeneratedColumn<String>(
       'mutation_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _deviceIdMeta =
       const VerificationMeta('deviceId');
   @override
@@ -1599,6 +1604,7 @@ class $LocalOutboxTable extends LocalOutbox
   List<GeneratedColumn> get $columns => [
         id,
         mutationId,
+        userId,
         deviceId,
         entityType,
         operation,
@@ -1634,6 +1640,10 @@ class $LocalOutboxTable extends LocalOutbox
               data['mutation_id']!, _mutationIdMeta));
     } else if (isInserting) {
       context.missing(_mutationIdMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
     }
     if (data.containsKey('device_id')) {
       context.handle(_deviceIdMeta,
@@ -1718,6 +1728,8 @@ class $LocalOutboxTable extends LocalOutbox
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
       mutationId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}mutation_id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
       deviceId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}device_id'])!,
       entityType: attachedDatabase.typeMapping
@@ -1754,6 +1766,7 @@ class $LocalOutboxTable extends LocalOutbox
 class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   final String id;
   final String mutationId;
+  final String? userId;
   final String deviceId;
   final String entityType;
   final String operation;
@@ -1769,6 +1782,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   const LocalOutboxData(
       {required this.id,
       required this.mutationId,
+      this.userId,
       required this.deviceId,
       required this.entityType,
       required this.operation,
@@ -1786,6 +1800,9 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['mutation_id'] = Variable<String>(mutationId);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
     map['device_id'] = Variable<String>(deviceId);
     map['entity_type'] = Variable<String>(entityType);
     map['operation'] = Variable<String>(operation);
@@ -1815,6 +1832,8 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     return LocalOutboxCompanion(
       id: Value(id),
       mutationId: Value(mutationId),
+      userId:
+          userId == null && nullToAbsent ? const Value.absent() : Value(userId),
       deviceId: Value(deviceId),
       entityType: Value(entityType),
       operation: Value(operation),
@@ -1846,6 +1865,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     return LocalOutboxData(
       id: serializer.fromJson<String>(json['id']),
       mutationId: serializer.fromJson<String>(json['mutationId']),
+      userId: serializer.fromJson<String?>(json['userId']),
       deviceId: serializer.fromJson<String>(json['deviceId']),
       entityType: serializer.fromJson<String>(json['entityType']),
       operation: serializer.fromJson<String>(json['operation']),
@@ -1866,6 +1886,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'mutationId': serializer.toJson<String>(mutationId),
+      'userId': serializer.toJson<String?>(userId),
       'deviceId': serializer.toJson<String>(deviceId),
       'entityType': serializer.toJson<String>(entityType),
       'operation': serializer.toJson<String>(operation),
@@ -1884,6 +1905,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   LocalOutboxData copyWith(
           {String? id,
           String? mutationId,
+          Value<String?> userId = const Value.absent(),
           String? deviceId,
           String? entityType,
           String? operation,
@@ -1899,6 +1921,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       LocalOutboxData(
         id: id ?? this.id,
         mutationId: mutationId ?? this.mutationId,
+        userId: userId.present ? userId.value : this.userId,
         deviceId: deviceId ?? this.deviceId,
         entityType: entityType ?? this.entityType,
         operation: operation ?? this.operation,
@@ -1919,6 +1942,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       id: data.id.present ? data.id.value : this.id,
       mutationId:
           data.mutationId.present ? data.mutationId.value : this.mutationId,
+      userId: data.userId.present ? data.userId.value : this.userId,
       deviceId: data.deviceId.present ? data.deviceId.value : this.deviceId,
       entityType:
           data.entityType.present ? data.entityType.value : this.entityType,
@@ -1946,6 +1970,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
     return (StringBuffer('LocalOutboxData(')
           ..write('id: $id, ')
           ..write('mutationId: $mutationId, ')
+          ..write('userId: $userId, ')
           ..write('deviceId: $deviceId, ')
           ..write('entityType: $entityType, ')
           ..write('operation: $operation, ')
@@ -1966,6 +1991,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
   int get hashCode => Object.hash(
       id,
       mutationId,
+      userId,
       deviceId,
       entityType,
       operation,
@@ -1984,6 +2010,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
       (other is LocalOutboxData &&
           other.id == this.id &&
           other.mutationId == this.mutationId &&
+          other.userId == this.userId &&
           other.deviceId == this.deviceId &&
           other.entityType == this.entityType &&
           other.operation == this.operation &&
@@ -2001,6 +2028,7 @@ class LocalOutboxData extends DataClass implements Insertable<LocalOutboxData> {
 class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   final Value<String> id;
   final Value<String> mutationId;
+  final Value<String?> userId;
   final Value<String> deviceId;
   final Value<String> entityType;
   final Value<String> operation;
@@ -2017,6 +2045,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   const LocalOutboxCompanion({
     this.id = const Value.absent(),
     this.mutationId = const Value.absent(),
+    this.userId = const Value.absent(),
     this.deviceId = const Value.absent(),
     this.entityType = const Value.absent(),
     this.operation = const Value.absent(),
@@ -2034,6 +2063,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   LocalOutboxCompanion.insert({
     required String id,
     required String mutationId,
+    this.userId = const Value.absent(),
     required String deviceId,
     required String entityType,
     required String operation,
@@ -2057,6 +2087,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   static Insertable<LocalOutboxData> custom({
     Expression<String>? id,
     Expression<String>? mutationId,
+    Expression<String>? userId,
     Expression<String>? deviceId,
     Expression<String>? entityType,
     Expression<String>? operation,
@@ -2074,6 +2105,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (mutationId != null) 'mutation_id': mutationId,
+      if (userId != null) 'user_id': userId,
       if (deviceId != null) 'device_id': deviceId,
       if (entityType != null) 'entity_type': entityType,
       if (operation != null) 'operation': operation,
@@ -2093,6 +2125,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
   LocalOutboxCompanion copyWith(
       {Value<String>? id,
       Value<String>? mutationId,
+      Value<String?>? userId,
       Value<String>? deviceId,
       Value<String>? entityType,
       Value<String>? operation,
@@ -2109,6 +2142,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     return LocalOutboxCompanion(
       id: id ?? this.id,
       mutationId: mutationId ?? this.mutationId,
+      userId: userId ?? this.userId,
       deviceId: deviceId ?? this.deviceId,
       entityType: entityType ?? this.entityType,
       operation: operation ?? this.operation,
@@ -2133,6 +2167,9 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     }
     if (mutationId.present) {
       map['mutation_id'] = Variable<String>(mutationId.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
     }
     if (deviceId.present) {
       map['device_id'] = Variable<String>(deviceId.value);
@@ -2181,6 +2218,7 @@ class LocalOutboxCompanion extends UpdateCompanion<LocalOutboxData> {
     return (StringBuffer('LocalOutboxCompanion(')
           ..write('id: $id, ')
           ..write('mutationId: $mutationId, ')
+          ..write('userId: $userId, ')
           ..write('deviceId: $deviceId, ')
           ..write('entityType: $entityType, ')
           ..write('operation: $operation, ')
@@ -3602,6 +3640,7 @@ typedef $$LocalOutboxTableCreateCompanionBuilder = LocalOutboxCompanion
     Function({
   required String id,
   required String mutationId,
+  Value<String?> userId,
   required String deviceId,
   required String entityType,
   required String operation,
@@ -3620,6 +3659,7 @@ typedef $$LocalOutboxTableUpdateCompanionBuilder = LocalOutboxCompanion
     Function({
   Value<String> id,
   Value<String> mutationId,
+  Value<String?> userId,
   Value<String> deviceId,
   Value<String> entityType,
   Value<String> operation,
@@ -3649,6 +3689,9 @@ class $$LocalOutboxTableFilterComposer
 
   ColumnFilters<String> get mutationId => $composableBuilder(
       column: $table.mutationId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnFilters(column));
@@ -3703,6 +3746,9 @@ class $$LocalOutboxTableOrderingComposer
   ColumnOrderings<String> get mutationId => $composableBuilder(
       column: $table.mutationId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get deviceId => $composableBuilder(
       column: $table.deviceId, builder: (column) => ColumnOrderings(column));
 
@@ -3755,6 +3801,9 @@ class $$LocalOutboxTableAnnotationComposer
 
   GeneratedColumn<String> get mutationId => $composableBuilder(
       column: $table.mutationId, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
 
   GeneratedColumn<String> get deviceId =>
       $composableBuilder(column: $table.deviceId, builder: (column) => column);
@@ -3821,6 +3870,7 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
             Value<String> mutationId = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
             Value<String> deviceId = const Value.absent(),
             Value<String> entityType = const Value.absent(),
             Value<String> operation = const Value.absent(),
@@ -3838,6 +3888,7 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
               LocalOutboxCompanion(
             id: id,
             mutationId: mutationId,
+            userId: userId,
             deviceId: deviceId,
             entityType: entityType,
             operation: operation,
@@ -3855,6 +3906,7 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
           createCompanionCallback: ({
             required String id,
             required String mutationId,
+            Value<String?> userId = const Value.absent(),
             required String deviceId,
             required String entityType,
             required String operation,
@@ -3872,6 +3924,7 @@ class $$LocalOutboxTableTableManager extends RootTableManager<
               LocalOutboxCompanion.insert(
             id: id,
             mutationId: mutationId,
+            userId: userId,
             deviceId: deviceId,
             entityType: entityType,
             operation: operation,

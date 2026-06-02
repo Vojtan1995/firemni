@@ -6,7 +6,9 @@ import 'package:uuid/uuid.dart';
 
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../auth/auth_provider.dart';
 import '../seals/seal_duplicate_local.dart';
+import 'sync_outbox_user.dart';
 
 /// Zobrazení jednoho sync konfliktu (FE-03).
 class SyncConflictView {
@@ -50,8 +52,9 @@ class SyncConflictView {
 
 final syncConflictsProvider = StreamProvider<List<SyncConflictView>>((ref) async* {
   final db = ref.watch(databaseProvider);
+  final userId = ref.watch(currentUserIdProvider);
   while (true) {
-    yield await loadActiveSyncConflicts(db);
+    yield await loadActiveSyncConflicts(db, userId: userId);
     await Future.delayed(const Duration(seconds: 3));
   }
 });
@@ -60,11 +63,17 @@ final syncConflictCountProvider = Provider<AsyncValue<int>>((ref) {
   return ref.watch(syncConflictsProvider).whenData((list) => list.length);
 });
 
-Future<List<SyncConflictView>> loadActiveSyncConflicts(AppDatabase db) async {
-  final rows = await (db.select(db.localOutbox)
-        ..where((o) => o.status.equals('conflict') & o.dismissedAt.isNull())
-        ..orderBy([(o) => OrderingTerm.desc(o.createdAt)]))
-      .get();
+Future<List<SyncConflictView>> loadActiveSyncConflicts(
+  AppDatabase db, {
+  String? userId,
+}) async {
+  final rows = filterOutboxForUser(
+    await (db.select(db.localOutbox)
+          ..where((o) => o.status.equals('conflict') & o.dismissedAt.isNull())
+          ..orderBy([(o) => OrderingTerm.desc(o.createdAt)]))
+        .get(),
+    userId,
+  );
 
   final views = <SyncConflictView>[];
   for (final row in rows) {
@@ -206,12 +215,18 @@ Future<SyncConflictView> _toConflictView(AppDatabase db, LocalOutboxData row) as
 }
 
 /// Seal IDs with outbox rows that still need sync attention (T1 / S2).
-Future<Set<String>> loadSealIdsWithActiveSyncOutbox(AppDatabase db) async {
-  final rows = await (db.select(db.localOutbox)
-        ..where((o) =>
-            o.status.isIn(['pending', 'failed', 'conflict']) &
-            o.dismissedAt.isNull()))
-      .get();
+Future<Set<String>> loadSealIdsWithActiveSyncOutbox(
+  AppDatabase db, {
+  String? userId,
+}) async {
+  final rows = filterOutboxForUser(
+    await (db.select(db.localOutbox)
+          ..where((o) =>
+              o.status.isIn(['pending', 'failed', 'conflict']) &
+              o.dismissedAt.isNull()))
+        .get(),
+    userId,
+  );
   final ids = <String>{};
   for (final row in rows) {
     if (row.entityType != 'seal') continue;

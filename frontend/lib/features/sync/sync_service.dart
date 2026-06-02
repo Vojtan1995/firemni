@@ -8,15 +8,18 @@ import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../auth/auth_provider.dart';
 import 'sync_conflict.dart';
+import 'sync_outbox_user.dart';
 import 'sync_retry.dart';
 
 final syncServiceProvider = Provider((ref) => SyncService(ref));
 
 final syncPendingCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
+  final userId = ref.watch(currentUserIdProvider);
   while (true) {
-    yield await countDueSyncItems(db, DateTime.now());
+    yield await countDueSyncItems(db, DateTime.now(), userId: userId);
     await Future.delayed(const Duration(seconds: 5));
   }
 });
@@ -53,9 +56,11 @@ class SyncService {
     int? baseVersion,
   }) async {
     final deviceId = await _deviceId();
+    final userId = _ref.read(currentUserIdProvider);
     await _db.into(_db.localOutbox).insert(LocalOutboxCompanion.insert(
           id: _uuid.v4(),
           mutationId: _uuid.v4(),
+          userId: Value(userId),
           deviceId: deviceId,
           entityType: entityType,
           operation: operation,
@@ -75,7 +80,8 @@ class SyncService {
     }
 
     final now = DateTime.now();
-    if (!force && !await hasDueSyncWork(_db, now)) {
+    final userId = _ref.read(currentUserIdProvider);
+    if (!force && !await hasDueSyncWork(_db, now, userId: userId)) {
       return SyncResult(success: true, skipped: true);
     }
 
@@ -91,9 +97,13 @@ class SyncService {
 
   Future<List<LocalOutboxData>> _dueOutboxRows(
       {required bool force, required DateTime now}) async {
-    final rows = await (_db.select(_db.localOutbox)
-          ..where((o) => o.status.isIn(['pending', 'failed'])))
-        .get();
+    final userId = _ref.read(currentUserIdProvider);
+    final rows = filterOutboxForUser(
+      await (_db.select(_db.localOutbox)
+            ..where((o) => o.status.isIn(['pending', 'failed'])))
+          .get(),
+      userId,
+    );
     if (force) return rows;
     return rows.where((o) => outboxIsDueForRetry(o, now)).toList();
   }
@@ -239,7 +249,10 @@ class SyncService {
           ));
     }
 
-    final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(_db);
+    final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(
+      _db,
+      userId: _ref.read(currentUserIdProvider),
+    );
 
     for (final s in (data['seals'] as List? ?? [])) {
       final m = s as Map<String, dynamic>;

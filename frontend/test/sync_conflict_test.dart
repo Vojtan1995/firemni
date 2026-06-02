@@ -46,6 +46,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-conflict',
             mutationId: 'mut-1',
+            userId: const Value('user-1'),
             deviceId: 'dev-1',
             entityType: 'seal',
             operation: 'create',
@@ -60,7 +61,7 @@ void main() {
           ),
         );
 
-    final conflicts = await loadActiveSyncConflicts(db);
+    final conflicts = await loadActiveSyncConflicts(db, userId: 'user-1');
     expect(conflicts.length, 1);
     expect(conflicts.first.sealNumber, '42');
     expect(conflicts.first.jobLabel, contains('12345678'));
@@ -92,6 +93,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-2',
             mutationId: 'mut-2',
+            userId: const Value('user-1'),
             deviceId: 'dev-1',
             entityType: 'seal',
             operation: 'update',
@@ -106,6 +108,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-pending',
             mutationId: 'mut-3',
+            userId: const Value('user-1'),
             deviceId: 'dev-1',
             entityType: 'seal',
             operation: 'create',
@@ -117,7 +120,7 @@ void main() {
 
     await dismissSyncConflict(db, 'out-2');
 
-    final active = await loadActiveSyncConflicts(db);
+    final active = await loadActiveSyncConflicts(db, userId: 'user-1');
     expect(active, isEmpty);
 
     final outbox = await db.select(db.localOutbox).get();

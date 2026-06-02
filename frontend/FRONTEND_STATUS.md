@@ -16,6 +16,8 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T9 export filters UI | hotovo | pracovník, patro, období |
 | T10 export save path picker | hotovo | `file_picker` save dialog |
 | T12 duplicate UX / precheck | hotovo | lokální kontrola + oprava čísla v sync |
+| T6 outbox per user | hotovo | `local_outbox.user_id`, filtrování sync UI |
+| T11 seal edit screen | hotovo | `/seal/:id/edit`, outbox `update` |
 
 ### Ověření testů (2026-05-27)
 

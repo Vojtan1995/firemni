@@ -53,6 +53,7 @@ class LocalSeals extends Table {
 class LocalOutbox extends Table {
   TextColumn get id => text()();
   TextColumn get mutationId => text()();
+  TextColumn get userId => text().nullable()();
   TextColumn get deviceId => text()();
   TextColumn get entityType => text()();
   TextColumn get operation => text()();
@@ -105,7 +106,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -125,6 +126,9 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(localJobs, localJobs.deletedAt);
             await migrator.addColumn(localFloors, localFloors.deletedAt);
             await migrator.addColumn(localSeals, localSeals.deletedAt);
+          }
+          if (from < 5) {
+            await migrator.addColumn(localOutbox, localOutbox.userId);
           }
         },
       );

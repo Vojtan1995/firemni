@@ -26,6 +26,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-pending',
             mutationId: 'mut',
+            userId: const Value('user-1'),
             deviceId: 'dev',
             entityType: 'seal',
             operation: 'create',
@@ -196,6 +197,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-due',
             mutationId: 'mut-due',
+            userId: const Value('user-1'),
             deviceId: 'dev',
             entityType: 'seal',
             operation: 'create',
@@ -219,7 +221,7 @@ void main() {
           ),
         );
 
-    expect(await countDueSyncItems(db, now), 1);
+    expect(await countDueSyncItems(db, now, userId: 'user-1'), 1);
   });
 
   test('countDueSyncItems skips photos blocked by unsynced seal (T5)', () async {
@@ -267,6 +269,7 @@ void main() {
           LocalOutboxCompanion.insert(
             id: 'out-3',
             mutationId: 'mut-3',
+            userId: const Value('user-1'),
             deviceId: 'dev',
             entityType: 'seal',
             operation: 'create',
@@ -278,8 +281,10 @@ void main() {
           ),
         );
 
-    expect(await hasDueSyncWork(db, now), isFalse);
+    expect(await hasDueSyncWork(db, now, userId: 'user-1'), isFalse);
     expect(
-        await hasDueSyncWork(db, now.add(const Duration(minutes: 2))), isTrue);
+        await hasDueSyncWork(db, now.add(const Duration(minutes: 2)),
+            userId: 'user-1'),
+        isTrue);
   });
 }

@@ -15,6 +15,11 @@ final authTokenProvider = StateProvider<String?>((ref) => null);
 
 final authUserProvider = StateProvider<Map<String, dynamic>?>((ref) => null);
 
+/// Current session user id for scoped offline sync (T6).
+final currentUserIdProvider = Provider<String?>((ref) {
+  return ref.watch(authUserProvider)?['id'] as String?;
+});
+
 final authServiceProvider = Provider((ref) => AuthService(ref));
 
 class AuthService {

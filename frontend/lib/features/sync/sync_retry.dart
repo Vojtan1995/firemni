@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart';
 
 import '../../database/database.dart';
+import 'sync_outbox_user.dart';
 
 /// Intervaly dle [docs/SYNC.md]: 30 s → 2 min → 5 min (poté držet 5 min).
 Duration syncRetryDelayForCount(int retryCount) {
@@ -110,10 +111,17 @@ bool isPhotoUploadBlockedBySeal(LocalSeal? seal) {
 }
 
 /// Count of outbox rows and photos ready for sync now (T4 / S3, T5 photos).
-Future<int> countDueSyncItems(AppDatabase db, DateTime now) async {
-  final outbox = await (db.select(db.localOutbox)
-        ..where((o) => o.status.isIn(['pending', 'failed'])))
-      .get();
+Future<int> countDueSyncItems(
+  AppDatabase db,
+  DateTime now, {
+  String? userId,
+}) async {
+  final outbox = filterOutboxForUser(
+    await (db.select(db.localOutbox)
+          ..where((o) => o.status.isIn(['pending', 'failed'])))
+        .get(),
+    userId,
+  );
   var count = outbox.where((o) => outboxIsDueForRetry(o, now)).length;
 
   final photos = await (db.select(db.localPhotos)
@@ -129,6 +137,10 @@ Future<int> countDueSyncItems(AppDatabase db, DateTime now) async {
   return count;
 }
 
-Future<bool> hasDueSyncWork(AppDatabase db, DateTime now) async {
-  return (await countDueSyncItems(db, now)) > 0;
+Future<bool> hasDueSyncWork(
+  AppDatabase db,
+  DateTime now, {
+  String? userId,
+}) async {
+  return (await countDueSyncItems(db, now, userId: userId)) > 0;
 }
