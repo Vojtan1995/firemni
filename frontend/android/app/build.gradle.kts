@@ -15,7 +15,8 @@ if (hasReleaseKeystore) {
 
 android {
     namespace = "cz.unifast.ucpavky"
-    compileSdk = flutter.compileSdkVersion
+    // file_picker / flutter_plugin_android_lifecycle require compileSdk 36+
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
