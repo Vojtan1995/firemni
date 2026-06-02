@@ -78,6 +78,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
           GoRoute(
+            path: 'seal/:id/edit',
+            builder: (c, s) => SealFormScreen(
+              sealId: s.pathParameters['id'],
+              jobId: s.uri.queryParameters['jobId'] ?? '',
+              floorId: s.uri.queryParameters['floorId'] ?? '',
+            ),
+          ),
+          GoRoute(
               path: 'seal/:id',
               builder: (c, s) =>
                   SealDetailScreen(sealId: s.pathParameters['id']!)),

@@ -6,6 +6,7 @@ import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
@@ -430,6 +431,20 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           Text('Umístění: ${seal['location']}'),
           Text('Odolnost: ${seal['fireRating']}'),
           if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
+          if (status == 'draft') ...[
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: () {
+                final jobId = seal['jobId'] as String? ?? '';
+                final floorId = seal['floorId'] as String? ?? '';
+                context.push(
+                  '/seal/${widget.sealId}/edit?jobId=$jobId&floorId=$floorId',
+                );
+              },
+              icon: const Icon(Icons.edit),
+              label: const Text('Upravit ucpávku'),
+            ),
+          ],
           const Divider(),
           const Text('Prostupy', style: TextStyle(fontWeight: FontWeight.bold)),
           if ((seal['entries'] as List? ?? []).isEmpty)

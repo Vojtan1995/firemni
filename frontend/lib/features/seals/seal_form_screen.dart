@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
+import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../sync/sync_service.dart';
@@ -15,24 +16,26 @@ import 'chip_selector.dart';
 import 'multi_chip_selector.dart';
 import 'seal_constants.dart';
 import 'seal_duplicate_local.dart';
+import 'seal_detail_screen.dart';
+import 'seal_form_loader.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
 
 class SealFormScreen extends ConsumerStatefulWidget {
-  const SealFormScreen({super.key, required this.jobId, required this.floorId});
+  const SealFormScreen({
+    super.key,
+    required this.jobId,
+    required this.floorId,
+    this.sealId,
+  });
   final String jobId;
   final String floorId;
+  final String? sealId;
+
+  bool get isEdit => sealId != null;
 
   @override
   ConsumerState<SealFormScreen> createState() => _SealFormScreenState();
-}
-
-class _EntryDraft {
-  String entryType = 'EL.V.';
-  String dimension = defaultDimensionForEntry('EL.V.', 'žádná');
-  int quantity = 1;
-  String insulation = 'žádná';
-  List<String> materials = [];
 }
 
 class _SealFormScreenState extends ConsumerState<SealFormScreen> {
@@ -42,10 +45,73 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   String? _construction;
   String? _location;
   String? _fireRating;
-  final _entries = [_EntryDraft()];
+  final _entries = <SealEntryDraftData>[SealEntryDraftData()];
   final _photoPaths = <String>[];
   bool _saving = false;
+  bool _loadingInitial = false;
   bool _showPhotoWarning = false;
+  int _baseVersion = 1;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.isEdit) {
+      _loadingInitial = true;
+      _loadForEdit();
+    }
+  }
+
+  Future<void> _loadForEdit() async {
+    final db = ref.read(databaseProvider);
+    Map<String, dynamic>? seal;
+    try {
+      final res =
+          await ref.read(dioProvider).get('/api/seals/${widget.sealId}');
+      seal = (res.data as Map).cast<String, dynamic>();
+      await cacheSealDetailFromApi(db, seal);
+    } catch (_) {
+      final row = await (db.select(db.localSeals)
+            ..where((s) => s.id.equals(widget.sealId!)))
+          .getSingleOrNull();
+      if (row?.jsonPayload != null && row!.jsonPayload!.isNotEmpty) {
+        seal = Map<String, dynamic>.from(
+            jsonDecode(row.jsonPayload!) as Map<dynamic, dynamic>);
+      }
+    }
+
+    if (!mounted) return;
+    if (seal == null) {
+      setState(() => _loadingInitial = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ucpávku se nepodařilo načíst')),
+      );
+      context.pop();
+      return;
+    }
+
+    if (seal['status'] != 'draft') {
+      setState(() => _loadingInitial = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Lze upravovat pouze rozpracované (draft) ucpávky')),
+      );
+      context.pop();
+      return;
+    }
+
+    _numberCtrl.text = seal['sealNumber'] as String? ?? '';
+    _system = seal['system'] as String?;
+    _construction = seal['construction'] as String?;
+    _location = seal['location'] as String?;
+    _fireRating = seal['fireRating'] as String?;
+    _noteCtrl.text = seal['note'] as String? ?? '';
+    _baseVersion = seal['version'] as int? ?? 1;
+    _entries
+      ..clear()
+      ..addAll(entryDraftsFromSealMap(seal));
+
+    setState(() => _loadingInitial = false);
+  }
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
     try {
@@ -219,7 +285,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
       return;
     }
-    if (_photoPaths.isEmpty) {
+    if (!widget.isEdit && _photoPaths.isEmpty) {
       setState(() => _showPhotoWarning = true);
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Přidejte alespoň jednu fotku')));
@@ -232,6 +298,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       jobId: widget.jobId,
       floorId: widget.floorId,
       sealNumber: sealNumber,
+      excludeSealId: widget.sealId,
     );
     if (duplicate != null) {
       if (!mounted) return;
@@ -242,6 +309,39 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
 
     setState(() => _saving = true);
+    final entriesPayload = sealEntriesWithSharedMaterials(
+      _entries
+          .map((e) => {
+                'entryType': e.entryType,
+                'dimension': e.dimension,
+                'quantity': e.quantity,
+                'insulation': e.insulation,
+                'materials': e.materials,
+              })
+          .toList(),
+    );
+
+    try {
+      if (widget.isEdit) {
+        await _saveEdit(db, sealNumber, entriesPayload);
+      } else {
+        await _saveCreate(db, sealNumber, entriesPayload);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Chyba: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _saveCreate(
+    AppDatabase db,
+    String sealNumber,
+    List<Map<String, dynamic>> entriesPayload,
+  ) async {
     final sealId = const Uuid().v4();
     final payload = {
       'id': sealId,
@@ -253,86 +353,117 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _location,
       'fireRating': _fireRating,
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-      'entries': sealEntriesWithSharedMaterials(
-        _entries
-            .map((e) => {
-                  'entryType': e.entryType,
-                  'dimension': e.dimension,
-                  'quantity': e.quantity,
-                  'insulation': e.insulation,
-                  'materials': e.materials,
-                })
-            .toList(),
-      ),
+      'entries': entriesPayload,
     };
 
-    try {
-      await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
-            id: sealId,
-            jobId: widget.jobId,
-            floorId: widget.floorId,
-            sealNumber: sealNumber,
-            system: _system!,
-            construction: _construction!,
-            location: _location!,
-            fireRating: _fireRating!,
-            note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-            status: const Value('draft'),
-            isSynced: const Value(false),
-            jsonPayload: Value(jsonEncode(payload)),
-            updatedAt: DateTime.now(),
+    await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
+          id: sealId,
+          jobId: widget.jobId,
+          floorId: widget.floorId,
+          sealNumber: sealNumber,
+          system: _system!,
+          construction: _construction!,
+          location: _location!,
+          fireRating: _fireRating!,
+          note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+          status: const Value('draft'),
+          isSynced: const Value(false),
+          jsonPayload: Value(jsonEncode(payload)),
+          updatedAt: DateTime.now(),
+        ));
+
+    for (final path in _photoPaths) {
+      await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
+            id: const Uuid().v4(),
+            sealId: sealId,
+            localPath: path,
+            createdAt: DateTime.now(),
           ));
-
-      for (final path in _photoPaths) {
-        await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
-              id: const Uuid().v4(),
-              sealId: sealId,
-              localPath: path,
-              createdAt: DateTime.now(),
-            ));
-      }
-
-      await ref.read(syncServiceProvider).enqueueMutation(
-            entityType: 'seal',
-            operation: 'create',
-            payload: payload,
-          );
-
-      await ref.read(syncServiceProvider).syncAll();
-
-      if (!mounted) return;
-      await showDialog(
-        context: context,
-        builder: (c) => AlertDialog(
-          title: const Text('Uloženo'),
-          content: const Text('Ucpávka byla uložena lokálně.'),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(c);
-                context.go(
-                    '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
-              },
-              child: const Text('Přidat další'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(c);
-                context.pop();
-              },
-              child: const Text('Zpět na seznam'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Chyba: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
+
+    await ref.read(syncServiceProvider).enqueueMutation(
+          entityType: 'seal',
+          operation: 'create',
+          payload: payload,
+        );
+
+    await ref.read(syncServiceProvider).syncAll();
+
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Uloženo'),
+        content: const Text('Ucpávka byla uložena lokálně.'),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(c);
+              context.go(
+                  '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+            },
+            child: const Text('Přidat další'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(c);
+              context.pop();
+            },
+            child: const Text('Zpět na seznam'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _saveEdit(
+    AppDatabase db,
+    String sealNumber,
+    List<Map<String, dynamic>> entriesPayload,
+  ) async {
+    final sealId = widget.sealId!;
+    final payload = {
+      'id': sealId,
+      'jobId': widget.jobId,
+      'floorId': widget.floorId,
+      'sealNumber': sealNumber,
+      'system': _system,
+      'construction': _construction,
+      'location': _location,
+      'fireRating': _fireRating,
+      'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
+      'entries': entriesPayload,
+    };
+
+    await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
+      LocalSealsCompanion(
+        sealNumber: Value(sealNumber),
+        system: Value(_system!),
+        construction: Value(_construction!),
+        location: Value(_location!),
+        fireRating: Value(_fireRating!),
+        note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+        isSynced: const Value(false),
+        syncConflict: const Value(false),
+        jsonPayload: Value(jsonEncode(payload)),
+        updatedAt: Value(DateTime.now()),
+      ),
+    );
+
+    await ref.read(syncServiceProvider).enqueueMutation(
+          entityType: 'seal',
+          operation: 'update',
+          payload: payload,
+          baseVersion: _baseVersion,
+        );
+
+    await ref.read(syncServiceProvider).syncAll();
+
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Ucpávka uložena')),
+    );
+    context.go('/seal/$sealId');
   }
 
   void _removeEntry(int index) {
@@ -342,8 +473,19 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_loadingInitial) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Nová ucpávka')),
+      appBar: AppBar(
+        title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -375,7 +517,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   onChanged: () => setState(() {}),
                 )),
             TextButton.icon(
-              onPressed: () => setState(() => _entries.add(_EntryDraft())),
+              onPressed: () => setState(() => _entries.add(SealEntryDraftData())),
               icon: const Icon(Icons.add),
               label: const Text('Přidat prostup'),
             ),
@@ -400,9 +542,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               selected: _fireRating,
               onSelected: (v) => setState(() => _fireRating = v),
             ),
-            const SizedBox(height: 16),
-            _photosSection(),
-            const SizedBox(height: 16),
+            if (!widget.isEdit) ...[
+              const SizedBox(height: 16),
+              _photosSection(),
+              const SizedBox(height: 16),
+            ],
             TextField(
               controller: _noteCtrl,
               decoration: const InputDecoration(
@@ -433,7 +577,7 @@ class _EntryEditor extends StatefulWidget {
     this.onRemove,
   });
   final int index;
-  final _EntryDraft entry;
+  final SealEntryDraftData entry;
   final String? system;
   final VoidCallback onChanged;
   final bool canRemove;
@@ -448,7 +592,7 @@ class _EntryEditorState extends State<_EntryEditor> {
   final _vztWidthCtrl = TextEditingController();
   final _vztLengthCtrl = TextEditingController();
 
-  _EntryDraft get entry => widget.entry;
+  SealEntryDraftData get entry => widget.entry;
 
   @override
   void dispose() {

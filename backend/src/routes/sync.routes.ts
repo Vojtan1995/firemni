@@ -191,6 +191,35 @@ async function processMutation(
       if (p.sealNumber && p.sealNumber !== seal.sealNumber) {
         await checkDuplicateSealNumber(seal.jobId, seal.floorId, p.sealNumber as string, seal.id);
       }
+      const entries = p.entries as z.infer<typeof sealEntryPayloadSchema>[] | undefined;
+      if (entries?.length) {
+        await prisma.$transaction(async (tx) => {
+          await tx.sealEntry.updateMany({
+            where: { sealId },
+            data: { deletedAt: new Date() },
+          });
+          for (let i = 0; i < entries.length; i++) {
+            const e = sealEntryPayloadSchema.parse(entries[i]);
+            const entry = await tx.sealEntry.create({
+              data: {
+                sealId,
+                entryType: e.entryType,
+                dimension: e.dimension,
+                quantity: e.quantity,
+                insulation: e.insulation,
+                sortOrder: i,
+              },
+            });
+            await tx.sealEntryMaterial.createMany({
+              data: e.materials.map((material, j) => ({
+                entryId: entry.id,
+                material,
+                sortOrder: j,
+              })),
+            });
+          }
+        });
+      }
       await prisma.seal.update({
         where: { id: sealId },
         data: {
