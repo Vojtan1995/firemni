@@ -62,6 +62,7 @@ Future<void> cacheSealDetailFromApi(
           location: seal['location'] as String,
           fireRating: seal['fireRating'] as String,
           note: Value(seal['note'] as String?),
+          internalNote: Value(seal['internalNote'] as String?),
           status: Value(seal['status'] as String? ?? 'draft'),
           version: Value(seal['version'] as int? ?? 1),
           isSynced: Value(existing?.isSynced == false ? false : true),
@@ -548,6 +549,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           Text('Umístění: ${seal['location']}'),
           Text('Odolnost: ${seal['fireRating']}'),
           if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
+          if (seal['internalNote'] != null)
+            Text('Interní poznámka: ${seal['internalNote']}'),
           if (status == 'draft' || status == 'checked') ...[
             const SizedBox(height: 12),
             FilledButton.icon(

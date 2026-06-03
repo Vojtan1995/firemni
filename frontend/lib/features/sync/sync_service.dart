@@ -299,6 +299,7 @@ class SyncService {
             location: m['location'] as String,
             fireRating: m['fireRating'] as String,
             note: Value(m['note'] as String?),
+            internalNote: Value(m['internalNote'] as String?),
             status: Value(m['status'] as String? ?? 'draft'),
             version: Value(m['version'] as int? ?? 1),
             isSynced: Value(syncFlags.isSynced),

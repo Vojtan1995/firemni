@@ -103,6 +103,7 @@ model Seal {
   location      String
   fireRating    String     @map("fire_rating")
   note          String?
+  internalNote  String?    @map("internal_note")
   status        SealStatus @default(draft)
   version       Int        @default(1)
   createdById   String     @map("created_by_id")

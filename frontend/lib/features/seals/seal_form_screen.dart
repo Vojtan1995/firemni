@@ -40,6 +40,7 @@ class SealFormScreen extends ConsumerStatefulWidget {
 class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _numberCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
+  final _internalNoteCtrl = TextEditingController();
   String? _system;
   String? _construction;
   String? _location;
@@ -88,11 +89,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       return;
     }
 
-    if (seal['status'] != 'draft') {
+    if (seal['status'] != 'draft' && seal['status'] != 'checked') {
       setState(() => _loadingInitial = false);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content: Text('Lze upravovat pouze rozpracované (draft) ucpávky')),
+            content: Text('Fakturované ucpávky nelze upravovat')),
       );
       context.pop();
       return;
@@ -104,6 +105,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _location = seal['location'] as String?;
     _fireRating = seal['fireRating'] as String?;
     _noteCtrl.text = seal['note'] as String? ?? '';
+    _internalNoteCtrl.text = seal['internalNote'] as String? ?? '';
     _baseVersion = seal['version'] as int? ?? 1;
     _entries
       ..clear()
@@ -345,6 +347,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _location,
       'fireRating': _fireRating,
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
+      'internalNote':
+          _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
       'entries': entriesPayload,
     };
 
@@ -358,6 +362,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           location: _location!,
           fireRating: _fireRating!,
           note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+          internalNote: Value(
+              _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
           status: const Value('draft'),
           isSynced: const Value(false),
           jsonPayload: Value(jsonEncode(payload)),
@@ -424,6 +430,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _location,
       'fireRating': _fireRating,
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
+      'internalNote':
+          _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
       'entries': entriesPayload,
     };
 
@@ -435,6 +443,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         location: Value(_location!),
         fireRating: Value(_fireRating!),
         note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+        internalNote: Value(
+            _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
         isSynced: const Value(false),
         syncConflict: const Value(false),
         jsonPayload: Value(jsonEncode(payload)),
@@ -544,6 +554,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               decoration: const InputDecoration(
                   labelText: 'Poznámka', border: OutlineInputBorder()),
               maxLines: 2,
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              key: const Key('seal_internal_note'),
+              controller: _internalNoteCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Interní poznámka z terénu',
+                hintText: 'Volitelné — viditelné pro vedení a export',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
             ),
             const SizedBox(height: 24),
             ElevatedButton(

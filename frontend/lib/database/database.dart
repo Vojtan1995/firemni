@@ -39,6 +39,7 @@ class LocalSeals extends Table {
   TextColumn get location => text()();
   TextColumn get fireRating => text()();
   TextColumn get note => text().nullable()();
+  TextColumn get internalNote => text().nullable()();
   TextColumn get status => text().withDefault(const Constant('draft'))();
   IntColumn get version => integer().withDefault(const Constant(1))();
   BoolColumn get syncConflict => boolean().withDefault(const Constant(false))();
@@ -106,7 +107,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -129,6 +130,9 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 5) {
             await migrator.addColumn(localOutbox, localOutbox.userId);
+          }
+          if (from < 6) {
+            await migrator.addColumn(localSeals, localSeals.internalNote);
           }
         },
       );

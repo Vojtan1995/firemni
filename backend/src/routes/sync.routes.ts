@@ -45,6 +45,7 @@ const sealCreatePayloadSchema = z.object({
   location: z.string().min(1),
   fireRating: z.string().min(1),
   note: z.string().nullable().optional(),
+  internalNote: z.string().nullable().optional(),
   entries: z.array(sealEntryPayloadSchema).min(1),
 });
 
@@ -153,6 +154,7 @@ async function processMutation(
             location: createPayload.location,
             fireRating: createPayload.fireRating,
             note: createPayload.note ?? null,
+            internalNote: createPayload.internalNote ?? null,
             createdById: userId,
             updatedById: userId,
             entries: {
@@ -231,6 +233,7 @@ async function processMutation(
           location: (p.location as string) ?? seal.location,
           fireRating: (p.fireRating as string) ?? seal.fireRating,
           note: (p.note as string | undefined) ?? seal.note,
+          internalNote: (p.internalNote as string | undefined) ?? seal.internalNote,
           status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,

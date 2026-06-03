@@ -797,6 +797,12 @@ class $LocalSealsTable extends LocalSeals
   late final GeneratedColumn<String> note = GeneratedColumn<String>(
       'note', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _internalNoteMeta =
+      const VerificationMeta('internalNote');
+  @override
+  late final GeneratedColumn<String> internalNote = GeneratedColumn<String>(
+      'internal_note', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _statusMeta = const VerificationMeta('status');
   @override
   late final GeneratedColumn<String> status = GeneratedColumn<String>(
@@ -861,6 +867,7 @@ class $LocalSealsTable extends LocalSeals
         location,
         fireRating,
         note,
+        internalNote,
         status,
         version,
         syncConflict,
@@ -936,6 +943,12 @@ class $LocalSealsTable extends LocalSeals
       context.handle(
           _noteMeta, note.isAcceptableOrUnknown(data['note']!, _noteMeta));
     }
+    if (data.containsKey('internal_note')) {
+      context.handle(
+          _internalNoteMeta,
+          internalNote.isAcceptableOrUnknown(
+              data['internal_note']!, _internalNoteMeta));
+    }
     if (data.containsKey('status')) {
       context.handle(_statusMeta,
           status.isAcceptableOrUnknown(data['status']!, _statusMeta));
@@ -997,6 +1010,8 @@ class $LocalSealsTable extends LocalSeals
           .read(DriftSqlType.string, data['${effectivePrefix}fire_rating'])!,
       note: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}note']),
+      internalNote: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}internal_note']),
       status: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}status'])!,
       version: attachedDatabase.typeMapping
@@ -1030,6 +1045,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
   final String location;
   final String fireRating;
   final String? note;
+  final String? internalNote;
   final String status;
   final int version;
   final bool syncConflict;
@@ -1047,6 +1063,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       required this.location,
       required this.fireRating,
       this.note,
+      this.internalNote,
       required this.status,
       required this.version,
       required this.syncConflict,
@@ -1067,6 +1084,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
     map['fire_rating'] = Variable<String>(fireRating);
     if (!nullToAbsent || note != null) {
       map['note'] = Variable<String>(note);
+    }
+    if (!nullToAbsent || internalNote != null) {
+      map['internal_note'] = Variable<String>(internalNote);
     }
     map['status'] = Variable<String>(status);
     map['version'] = Variable<int>(version);
@@ -1093,6 +1113,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       location: Value(location),
       fireRating: Value(fireRating),
       note: note == null && nullToAbsent ? const Value.absent() : Value(note),
+      internalNote: internalNote == null && nullToAbsent
+          ? const Value.absent()
+          : Value(internalNote),
       status: Value(status),
       version: Value(version),
       syncConflict: Value(syncConflict),
@@ -1120,6 +1143,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       location: serializer.fromJson<String>(json['location']),
       fireRating: serializer.fromJson<String>(json['fireRating']),
       note: serializer.fromJson<String?>(json['note']),
+      internalNote: serializer.fromJson<String?>(json['internalNote']),
       status: serializer.fromJson<String>(json['status']),
       version: serializer.fromJson<int>(json['version']),
       syncConflict: serializer.fromJson<bool>(json['syncConflict']),
@@ -1142,6 +1166,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       'location': serializer.toJson<String>(location),
       'fireRating': serializer.toJson<String>(fireRating),
       'note': serializer.toJson<String?>(note),
+      'internalNote': serializer.toJson<String?>(internalNote),
       'status': serializer.toJson<String>(status),
       'version': serializer.toJson<int>(version),
       'syncConflict': serializer.toJson<bool>(syncConflict),
@@ -1162,6 +1187,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           String? location,
           String? fireRating,
           Value<String?> note = const Value.absent(),
+          Value<String?> internalNote = const Value.absent(),
           String? status,
           int? version,
           bool? syncConflict,
@@ -1179,6 +1205,8 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
         location: location ?? this.location,
         fireRating: fireRating ?? this.fireRating,
         note: note.present ? note.value : this.note,
+        internalNote:
+            internalNote.present ? internalNote.value : this.internalNote,
         status: status ?? this.status,
         version: version ?? this.version,
         syncConflict: syncConflict ?? this.syncConflict,
@@ -1202,6 +1230,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       fireRating:
           data.fireRating.present ? data.fireRating.value : this.fireRating,
       note: data.note.present ? data.note.value : this.note,
+      internalNote: data.internalNote.present
+          ? data.internalNote.value
+          : this.internalNote,
       status: data.status.present ? data.status.value : this.status,
       version: data.version.present ? data.version.value : this.version,
       syncConflict: data.syncConflict.present
@@ -1227,6 +1258,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           ..write('location: $location, ')
           ..write('fireRating: $fireRating, ')
           ..write('note: $note, ')
+          ..write('internalNote: $internalNote, ')
           ..write('status: $status, ')
           ..write('version: $version, ')
           ..write('syncConflict: $syncConflict, ')
@@ -1249,6 +1281,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       location,
       fireRating,
       note,
+      internalNote,
       status,
       version,
       syncConflict,
@@ -1269,6 +1302,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           other.location == this.location &&
           other.fireRating == this.fireRating &&
           other.note == this.note &&
+          other.internalNote == this.internalNote &&
           other.status == this.status &&
           other.version == this.version &&
           other.syncConflict == this.syncConflict &&
@@ -1288,6 +1322,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
   final Value<String> location;
   final Value<String> fireRating;
   final Value<String?> note;
+  final Value<String?> internalNote;
   final Value<String> status;
   final Value<int> version;
   final Value<bool> syncConflict;
@@ -1306,6 +1341,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.location = const Value.absent(),
     this.fireRating = const Value.absent(),
     this.note = const Value.absent(),
+    this.internalNote = const Value.absent(),
     this.status = const Value.absent(),
     this.version = const Value.absent(),
     this.syncConflict = const Value.absent(),
@@ -1325,6 +1361,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     required String location,
     required String fireRating,
     this.note = const Value.absent(),
+    this.internalNote = const Value.absent(),
     this.status = const Value.absent(),
     this.version = const Value.absent(),
     this.syncConflict = const Value.absent(),
@@ -1352,6 +1389,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     Expression<String>? location,
     Expression<String>? fireRating,
     Expression<String>? note,
+    Expression<String>? internalNote,
     Expression<String>? status,
     Expression<int>? version,
     Expression<bool>? syncConflict,
@@ -1371,6 +1409,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       if (location != null) 'location': location,
       if (fireRating != null) 'fire_rating': fireRating,
       if (note != null) 'note': note,
+      if (internalNote != null) 'internal_note': internalNote,
       if (status != null) 'status': status,
       if (version != null) 'version': version,
       if (syncConflict != null) 'sync_conflict': syncConflict,
@@ -1392,6 +1431,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       Value<String>? location,
       Value<String>? fireRating,
       Value<String?>? note,
+      Value<String?>? internalNote,
       Value<String>? status,
       Value<int>? version,
       Value<bool>? syncConflict,
@@ -1410,6 +1450,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       location: location ?? this.location,
       fireRating: fireRating ?? this.fireRating,
       note: note ?? this.note,
+      internalNote: internalNote ?? this.internalNote,
       status: status ?? this.status,
       version: version ?? this.version,
       syncConflict: syncConflict ?? this.syncConflict,
@@ -1451,6 +1492,9 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     if (note.present) {
       map['note'] = Variable<String>(note.value);
     }
+    if (internalNote.present) {
+      map['internal_note'] = Variable<String>(internalNote.value);
+    }
     if (status.present) {
       map['status'] = Variable<String>(status.value);
     }
@@ -1490,6 +1534,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
           ..write('location: $location, ')
           ..write('fireRating: $fireRating, ')
           ..write('note: $note, ')
+          ..write('internalNote: $internalNote, ')
           ..write('status: $status, ')
           ..write('version: $version, ')
           ..write('syncConflict: $syncConflict, ')
@@ -3314,6 +3359,7 @@ typedef $$LocalSealsTableCreateCompanionBuilder = LocalSealsCompanion Function({
   required String location,
   required String fireRating,
   Value<String?> note,
+  Value<String?> internalNote,
   Value<String> status,
   Value<int> version,
   Value<bool> syncConflict,
@@ -3333,6 +3379,7 @@ typedef $$LocalSealsTableUpdateCompanionBuilder = LocalSealsCompanion Function({
   Value<String> location,
   Value<String> fireRating,
   Value<String?> note,
+  Value<String?> internalNote,
   Value<String> status,
   Value<int> version,
   Value<bool> syncConflict,
@@ -3378,6 +3425,9 @@ class $$LocalSealsTableFilterComposer
 
   ColumnFilters<String> get note => $composableBuilder(
       column: $table.note, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get internalNote => $composableBuilder(
+      column: $table.internalNote, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnFilters(column));
@@ -3438,6 +3488,10 @@ class $$LocalSealsTableOrderingComposer
   ColumnOrderings<String> get note => $composableBuilder(
       column: $table.note, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get internalNote => $composableBuilder(
+      column: $table.internalNote,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get status => $composableBuilder(
       column: $table.status, builder: (column) => ColumnOrderings(column));
 
@@ -3497,6 +3551,9 @@ class $$LocalSealsTableAnnotationComposer
   GeneratedColumn<String> get note =>
       $composableBuilder(column: $table.note, builder: (column) => column);
 
+  GeneratedColumn<String> get internalNote => $composableBuilder(
+      column: $table.internalNote, builder: (column) => column);
+
   GeneratedColumn<String> get status =>
       $composableBuilder(column: $table.status, builder: (column) => column);
 
@@ -3551,6 +3608,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<String> location = const Value.absent(),
             Value<String> fireRating = const Value.absent(),
             Value<String?> note = const Value.absent(),
+            Value<String?> internalNote = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int> version = const Value.absent(),
             Value<bool> syncConflict = const Value.absent(),
@@ -3570,6 +3628,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             location: location,
             fireRating: fireRating,
             note: note,
+            internalNote: internalNote,
             status: status,
             version: version,
             syncConflict: syncConflict,
@@ -3589,6 +3648,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             required String location,
             required String fireRating,
             Value<String?> note = const Value.absent(),
+            Value<String?> internalNote = const Value.absent(),
             Value<String> status = const Value.absent(),
             Value<int> version = const Value.absent(),
             Value<bool> syncConflict = const Value.absent(),
@@ -3608,6 +3668,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             location: location,
             fireRating: fireRating,
             note: note,
+            internalNote: internalNote,
             status: status,
             version: version,
             syncConflict: syncConflict,

@@ -37,6 +37,7 @@ const sealBodySchema = z.object({
   location: z.string(),
   fireRating: z.string(),
   note: z.string().optional(),
+  internalNote: z.string().optional(),
   entries: z.array(entrySchema).min(1),
   baseVersion: z.number().int().optional(),
 });
@@ -139,6 +140,7 @@ router.post('/', async (req, res, next) => {
         location: body.location,
         fireRating: body.fireRating,
         note: body.note,
+        internalNote: body.internalNote,
         status: SealStatus.draft,
         createdById: req.user!.id,
         updatedById: req.user!.id,
@@ -200,7 +202,7 @@ router.patch('/:id', async (req, res, next) => {
       updateData.status = nextStatus;
       await logChange(req.user!.id, 'seal', existing.id, 'status', existing.status, nextStatus);
     }
-    const fields = ['sealNumber', 'system', 'construction', 'location', 'fireRating', 'note'] as const;
+    const fields = ['sealNumber', 'system', 'construction', 'location', 'fireRating', 'note', 'internalNote'] as const;
     for (const f of fields) {
       if (body[f] !== undefined) {
         if (String(existing[f]) !== String(body[f])) {

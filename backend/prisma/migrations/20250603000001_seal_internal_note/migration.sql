@@ -1,0 +1,1 @@
+ALTER TABLE "seals" ADD COLUMN IF NOT EXISTS "internal_note" TEXT;
