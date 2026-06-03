@@ -253,6 +253,80 @@ Future<Set<String>> loadSealIdsWithActiveSyncOutbox(
   );
 }
 
+/// Sync flags when caching seal list rows from API (S2 / list refresh).
+Future<({bool isSynced, bool syncConflict})> sealListCacheSyncFlags(
+  AppDatabase db, {
+  required String sealId,
+  required LocalSeal? existing,
+  String? userId,
+}) async {
+  final activeIds = await loadSealIdsWithActiveSyncOutbox(db, userId: userId);
+  return pullSealSyncFlags(
+    existing: existing,
+    hasActiveOutbox: activeIds.contains(sealId),
+  );
+}
+
+/// Merges API list with local-only rows; skips duplicates by id or sealNumber (S1).
+List<Map<String, dynamic>> mergeSealListWithLocalRows({
+  required List<Map<String, dynamic>> apiList,
+  required List<LocalSeal> localOnFloor,
+  required Map<String, dynamic> Function(LocalSeal row) mapLocal,
+}) {
+  final apiIds = apiList.map((e) => e['id'] as String).toSet();
+  final apiNumbers = apiList.map((e) => e['sealNumber'] as String).toSet();
+  final merged = [...apiList];
+  for (final row in localOnFloor) {
+    if (apiIds.contains(row.id)) continue;
+    if (apiNumbers.contains(row.sealNumber)) continue;
+    merged.add(mapLocal(row));
+  }
+  merged.sort((a, b) =>
+      (a['sealNumber'] as String).compareTo(b['sealNumber'] as String));
+  return merged;
+}
+
+/// After push, replace local seal primary key when server assigns a different id.
+Future<void> remapLocalSealIdAfterPush(
+  AppDatabase db,
+  String fromId,
+  String toId,
+) async {
+  if (fromId == toId) return;
+  final row = await (db.select(db.localSeals)
+        ..where((s) => s.id.equals(fromId)))
+      .getSingleOrNull();
+  if (row == null) return;
+
+  await db.transaction(() async {
+    await (db.delete(db.localSeals)..where((s) => s.id.equals(fromId))).go();
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: toId,
+            jobId: row.jobId,
+            floorId: row.floorId,
+            sealNumber: row.sealNumber,
+            system: row.system,
+            construction: row.construction,
+            location: row.location,
+            fireRating: row.fireRating,
+            note: Value(row.note),
+            status: Value(row.status),
+            version: Value(row.version),
+            isSynced: const Value(true),
+            syncConflict: const Value(false),
+            jsonPayload: Value(row.jsonPayload),
+            deletedAt: Value(row.deletedAt),
+            updatedAt: row.updatedAt,
+          ),
+        );
+  });
+
+  await (db.update(db.localPhotos)..where((p) => p.sealId.equals(fromId))).write(
+    LocalPhotosCompanion(sealId: Value(toId)),
+  );
+}
+
 Future<String?> resolveSealIdForOutbox(AppDatabase db, LocalOutboxData row) async {
   final payload = jsonDecode(row.payload) as Map<String, dynamic>;
   final explicit = payload['id'] ?? payload['sealId'];

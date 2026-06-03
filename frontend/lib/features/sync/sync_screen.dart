@@ -126,6 +126,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   Widget build(BuildContext context) {
     final online = ref.watch(connectivityProvider);
     final pending = ref.watch(syncPendingCountProvider);
+    final queuedOutbox = ref.watch(syncQueuedOutboxCountProvider);
     final unsentPhotos = ref.watch(unsentPhotosCountProvider);
     final unsentPhotoList = ref.watch(unsentPhotosProvider);
     final conflicts = ref.watch(syncConflictsProvider);
@@ -145,7 +146,8 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
               ),
               title: Text(online.valueOrNull == true ? 'Online' : 'Offline'),
               subtitle: Text(
-                'Čekajících položek: ${pending.valueOrNull ?? 0}\n'
+                'Připraveno k sync: ${pending.valueOrNull ?? 0}\n'
+                'Outbox ve frontě: ${queuedOutbox.valueOrNull ?? 0}\n'
                 'Neodeslané fotky: ${unsentPhotos.valueOrNull ?? 0}',
               ),
               isThreeLine: true,

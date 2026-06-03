@@ -19,6 +19,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T6 outbox per user | hotovo | `local_outbox.user_id`, filtrování sync UI |
 | T11 seal edit screen | hotovo | `/seal/:id/edit`, outbox `update` |
 | PHOTO-01 photo persist/sync | hotovo | `seal_photo_storage.dart`, server ID map, SyncScreen unsent list |
+| SYNC-01 sync integrity | hotovo | list cache flags, merge dedupe, seal ID remap, status push, queue counts |
 
 ### Ověření testů (2026-06-03, PHOTO-01)
 

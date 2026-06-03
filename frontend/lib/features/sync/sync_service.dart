@@ -26,6 +26,15 @@ final syncPendingCountProvider = StreamProvider<int>((ref) async* {
   }
 });
 
+final syncQueuedOutboxCountProvider = StreamProvider<int>((ref) async* {
+  final db = ref.watch(databaseProvider);
+  final userId = ref.watch(currentUserIdProvider);
+  while (true) {
+    yield await countQueuedOutboxItems(db, userId: userId);
+    await Future.delayed(const Duration(seconds: 5));
+  }
+});
+
 final unsentPhotosCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
   while (true) {
@@ -178,20 +187,16 @@ class SyncService {
         final localSealId = await resolveSealIdForOutbox(_db, pending[i]);
         final serverId = r['entityId'] as String?;
         if (localSealId != null && serverId != null) {
-          await (_db.update(_db.localSeals)
-                ..where((s) => s.id.equals(localSealId)))
-              .write(
-            LocalSealsCompanion(
-              id: Value(serverId),
-              isSynced: const Value(true),
-              syncConflict: const Value(false),
-            ),
-          );
           if (localSealId != serverId) {
-            await (_db.update(_db.localPhotos)
-                  ..where((p) => p.sealId.equals(localSealId)))
+            await remapLocalSealIdAfterPush(_db, localSealId, serverId);
+          } else {
+            await (_db.update(_db.localSeals)
+                  ..where((s) => s.id.equals(localSealId)))
                 .write(
-              LocalPhotosCompanion(sealId: Value(serverId)),
+              const LocalSealsCompanion(
+                isSynced: Value(true),
+                syncConflict: Value(false),
+              ),
             );
           }
         }

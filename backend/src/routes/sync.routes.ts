@@ -4,10 +4,10 @@ import { Prisma, SealStatus, UserRole } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError, conflict, forbidden } from '../lib/errors.js';
-import {
-  checkDuplicateSealNumber,
+import { checkDuplicateSealNumber,
   canWorkerEdit,
   isSealLocked,
+  changeSealStatus,
 } from '../services/seal.service.js';
 
 const router = Router();
@@ -242,6 +242,15 @@ async function processMutation(
         where: { id: sealId },
         data: { deletedAt: new Date(), deletedById: userId, version: { increment: 1 } },
       });
+      return { entityId: sealId };
+    }
+
+    if (mut.operation === 'status') {
+      const newStatus = p.status as SealStatus | undefined;
+      if (!newStatus || !Object.values(SealStatus).includes(newStatus)) {
+        throw conflict('Neplatný status ucpávky');
+      }
+      await changeSealStatus(sealId, newStatus, userId, userRole);
       return { entityId: sealId };
     }
   }

@@ -344,4 +344,31 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(updateRes.body.results[0].status).toBe('conflict');
     expect(updateRes.body.results[0].conflict).toMatch(/worker nemůže editovat/i);
   });
+
+  it('management can push status mutation via sync', async () => {
+    const sealNumber = `${Date.now()}`;
+    const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, sealNumber),
+      }),
+    ]);
+    expect(createRes.body.results[0].status).toBe('ok');
+    const sealId = createRes.body.results[0].entityId;
+
+    const statusRes = await push(managementToken, [
+      sealMutation({
+        operation: 'status',
+        payload: {
+          id: sealId,
+          status: 'checked',
+        },
+      }),
+    ]);
+
+    expect(statusRes.status).toBe(200);
+    expect(statusRes.body.results[0].status).toBe('ok');
+    const seal = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(seal.status).toBe('checked');
+  });
 });

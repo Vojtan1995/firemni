@@ -207,3 +207,17 @@ Future<bool> hasDueSyncWork(
 }) async {
   return (await countDueSyncItems(db, now, userId: userId)) > 0;
 }
+
+/// Outbox rows still queued (pending/failed/conflict) for the logged-in user.
+Future<int> countQueuedOutboxItems(
+  AppDatabase db, {
+  String? userId,
+}) async {
+  final outbox = filterOutboxForUser(
+    await (db.select(db.localOutbox)
+          ..where((o) => o.status.isIn(['pending', 'failed', 'conflict'])))
+        .get(),
+    userId,
+  );
+  return outbox.length;
+}

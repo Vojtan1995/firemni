@@ -7,6 +7,8 @@ import '../../core/api/api_client.dart';
 import '../../core/theme.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../auth/auth_provider.dart';
+import '../sync/sync_conflict.dart';
 
 /// Zda seznam pochází z API nebo z lokální cache (FE-01).
 enum SealListDataSource { online, offline }
@@ -64,11 +66,18 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
 
   Future<void> _cacheSealsFromApi(
       AppDatabase db, List<Map<String, dynamic>> apiList) async {
+    final userId = ref.read(currentUserIdProvider);
     for (final m in apiList) {
       final id = m['id'] as String;
       final existing = await (db.select(db.localSeals)
             ..where((s) => s.id.equals(id)))
           .getSingleOrNull();
+      final syncFlags = await sealListCacheSyncFlags(
+        db,
+        sealId: id,
+        existing: existing,
+        userId: userId,
+      );
 
       await db.into(db.localSeals).insertOnConflictUpdate(
             LocalSealsCompanion.insert(
@@ -82,8 +91,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
               fireRating: existing?.fireRating ?? '',
               status: Value(m['status'] as String? ?? 'draft'),
               version: Value(m['version'] as int? ?? 1),
-              isSynced: const Value(true),
-              syncConflict: const Value(false),
+              isSynced: Value(syncFlags.isSynced),
+              syncConflict: Value(syncFlags.syncConflict),
               updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
                   DateTime.now(),
             ),
@@ -96,21 +105,16 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     AppDatabase db,
     List<Map<String, dynamic>> apiList,
   ) async {
-    final apiIds = apiList.map((e) => e['id'] as String).toSet();
     final localOnFloor = await (db.select(db.localSeals)
           ..where((s) =>
               s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
         .get();
 
-    final merged = [...apiList];
-    for (final row in localOnFloor) {
-      if (!apiIds.contains(row.id)) {
-        merged.add(_mapLocalSealRow(row));
-      }
-    }
-    merged.sort((a, b) =>
-        (a['sealNumber'] as String).compareTo(b['sealNumber'] as String));
-    return merged;
+    return mergeSealListWithLocalRows(
+      apiList: apiList,
+      localOnFloor: localOnFloor,
+      mapLocal: _mapLocalSealRow,
+    );
   }
 
   Future<void> _loadFromDrift(AppDatabase db) async {

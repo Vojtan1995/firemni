@@ -126,6 +126,11 @@ fix: stabilize seal photo persistence and sync
 
 # 2. SYNC-01 – stabilizace synchronizace
 
+### Implementační stav (2026-06-03)
+
+- **Hotovo** — list cache respektuje sync flags; merge deduplikuje podle sealNumber; remap local seal ID po pushi; outbox queue count v SyncScreen; backend `operation: status`.
+- **Device strategy (S4):** outbox filtrovaný podle `userId` (T6); fotky via seal; logout nečistí frontu — rozhodnutí o sdíleném tabletu odloženo.
+
 ## Problémy k řešení
 
 - Po „úspěšné“ synchronizaci ucpávka může zmizet ze seznamu.
