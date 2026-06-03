@@ -15,6 +15,7 @@ import syncRoutes from './routes/sync.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
 import logsRoutes from './routes/logs.routes.js';
 import usersRoutes from './routes/users.routes.js';
+import messagesRoutes from './routes/messages.routes.js';
 
 export function createApp() {
   const app = express();
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api/reports', reportsRoutes);
   app.use('/api/logs', logsRoutes);
   app.use('/api/users', usersRoutes);
+  app.use('/api/messages', messagesRoutes);
 
   app.use(errorMiddleware);
 
