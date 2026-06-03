@@ -56,6 +56,7 @@ describe('Users admin (management / admin)', () => {
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body[0]).not.toHaveProperty('pinHash');
+    expect(res.body.some((u) => u.role === 'admin')).toBe(false);
   });
 
   it('management cannot create admin user', async () => {

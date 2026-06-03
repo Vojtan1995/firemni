@@ -25,6 +25,17 @@ class HomeScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          if (auth.isSuperAdmin)
+            Card(
+              color: Theme.of(context).colorScheme.errorContainer,
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Text(
+                  'Super Admin — nouzový účet. Běžnou správu provádí role Vedení.',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ),
           ListTile(
             leading: const CircleAvatar(child: Icon(Icons.person)),
             title: Text(user['displayName'] as String? ?? ''),
@@ -60,7 +71,7 @@ class HomeScreen extends ConsumerWidget {
               title: 'Logy',
               onTap: () => context.push('/logs'),
             ),
-          if (auth.isAdmin)
+          if (auth.canAccessTrash)
             _MenuTile(
               icon: Icons.delete_outline,
               title: 'Koš / Smazané položky',
