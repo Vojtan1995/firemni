@@ -29,19 +29,19 @@ describe('My jobs and messages (phase 2)', () => {
   });
 
   afterAll(async () => {
-    await prisma.seal.deleteMany({ where: { sealNumber: '88001' } });
     await prisma.privateMessage.deleteMany({});
     await prisma.$disconnect();
   });
 
   it('worker sees job after creating a seal', async () => {
+    const sealNumber = String(Date.now()).slice(-5);
     const create = await request(app)
       .post('/api/seals')
       .set('Authorization', `Bearer ${workerToken}`)
       .send({
         jobId,
         floorId,
-        sealNumber: '88001',
+        sealNumber,
         system: 'Test',
         construction: 'Stěna',
         location: 'A',
