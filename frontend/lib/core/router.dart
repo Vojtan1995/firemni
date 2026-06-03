@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../features/auth/auth_provider.dart';
 import '../features/auth/change_pin_screen.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/profile_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/jobs/job_number_screen.dart';
 import '../features/jobs/floor_list_screen.dart';
@@ -53,6 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/change-pin', builder: (_, __) => const ChangePinScreen()),
+      GoRoute(path: '/profile', builder: (_, __) => const ProfileScreen()),
       GoRoute(
         path: '/',
         builder: (_, __) => const HomeScreen(),

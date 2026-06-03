@@ -55,65 +55,72 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Změna PINu')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(24),
-          children: [
-            Text('Nastavte si vlastní PIN',
-                style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 8),
-            Text(
-              'Před pokračováním je potřeba změnit dočasný PIN.',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              key: const Key('change_pin_current'),
-              controller: _currentCtrl,
-              decoration: const InputDecoration(
-                  labelText: 'Aktuální PIN', border: OutlineInputBorder()),
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('change_pin_new'),
-              controller: _newCtrl,
-              decoration: const InputDecoration(
-                  labelText: 'Nový PIN', border: OutlineInputBorder()),
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              textInputAction: TextInputAction.next,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              key: const Key('change_pin_confirm'),
-              controller: _confirmCtrl,
-              decoration: const InputDecoration(
-                  labelText: 'Potvrdit nový PIN', border: OutlineInputBorder()),
-              obscureText: true,
-              keyboardType: TextInputType.number,
-              onSubmitted: (_) => _submit(),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Změna PINu'),
+          automaticallyImplyLeading: false,
+        ),
+        body: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.all(24),
+            children: [
+              Text('Nastavte si vlastní PIN',
+                  style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 8),
+              Text(
+                'Před pokračováním je potřeba změnit dočasný PIN.',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 24),
+              TextField(
+                key: const Key('change_pin_current'),
+                controller: _currentCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Aktuální PIN', border: OutlineInputBorder()),
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('change_pin_new'),
+                controller: _newCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Nový PIN', border: OutlineInputBorder()),
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                textInputAction: TextInputAction.next,
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                key: const Key('change_pin_confirm'),
+                controller: _confirmCtrl,
+                decoration: const InputDecoration(
+                    labelText: 'Potvrdit nový PIN',
+                    border: OutlineInputBorder()),
+                obscureText: true,
+                keyboardType: TextInputType.number,
+                onSubmitted: (_) => _submit(),
+              ),
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(_error!, style: const TextStyle(color: Colors.red)),
+              ],
+              const SizedBox(height: 24),
+              FilledButton(
+                key: const Key('change_pin_submit'),
+                onPressed: _loading ? null : _submit,
+                child: _loading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Uložit PIN'),
+              ),
             ],
-            const SizedBox(height: 24),
-            FilledButton(
-              key: const Key('change_pin_submit'),
-              onPressed: _loading ? null : _submit,
-              child: _loading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Uložit PIN'),
-            ),
-          ],
+          ),
         ),
       ),
     );
