@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
@@ -109,7 +108,6 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final me = ref.watch(authUserProvider)?['id'] as String?;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Zprávy'),

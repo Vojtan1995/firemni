@@ -16,6 +16,7 @@ import '../features/management/management_home_screen.dart';
 import '../features/management/jobs_admin_screen.dart';
 import '../features/management/users_admin_screen.dart';
 import '../features/reports/reports_screen.dart';
+import '../features/logs/logs_screen.dart';
 import '../features/jobs/my_jobs_screen.dart';
 import '../features/messages/messages_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
