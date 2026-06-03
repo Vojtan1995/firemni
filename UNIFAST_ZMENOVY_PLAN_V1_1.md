@@ -404,6 +404,10 @@ Worker home:
 
 # 10. Duplicitní číslo ucpávky
 
+### Implementační stav (2026-06-03)
+
+- **Hotovo** — hláška dle specifikace, SyncScreen duplicate summary, oprava čísla v konfliktu (commit `7cd0891`).
+
 ## Chování
 
 Při duplicitě čísla zobrazit jasnou chybu:
@@ -489,6 +493,10 @@ Pokud současné API stále vyžaduje materiály na každém prostupu, frontend 
 ---
 
 # 13. Exporty
+
+### Implementační stav (2026-06-03)
+
+- **Hotovo** — filtry pracovník/zakázka/patro/status/období/systém/typ prostupu, save dialog (`file_picker`), CSV/PDF (commit `687be3d`).
 
 ## Požadavky
 
