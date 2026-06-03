@@ -1,14 +1,15 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { UserRole } from '@prisma/client';
-import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../lib/permissions.js';
 import { logActivity } from '../services/audit.service.js';
 import * as userService from '../services/user.service.js';
 import { paramId } from '../lib/params.js';
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireRole(...userService.MANAGEMENT_ROLES));
+router.use(requirePermission('user.manage'));
 
 const pinSchema = z.string().min(4).max(8);
 
@@ -26,9 +27,9 @@ const updateUserSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
-router.get('/', async (_req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
-    const users = await userService.listUsers();
+    const users = await userService.listUsers(req.user!.role);
     res.json(users);
   } catch (e) {
     next(e);

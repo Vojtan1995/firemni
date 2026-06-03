@@ -3,7 +3,9 @@ import { prisma } from '../lib/prisma.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { logActivity, logChange } from './audit.service.js';
 
-const MANAGEMENT_ROLES: UserRole[] = [UserRole.vedeni, UserRole.admin];
+import { VEDENI_ROLES } from '../lib/permissions.js';
+
+export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
 export function canWorkerEdit(status: SealStatus) {
   return status === SealStatus.draft;
@@ -120,5 +122,3 @@ export async function restoreSeal(sealId: string, userId: string) {
   await logActivity(userId, 'restore', 'seal', sealId);
   return updated;
 }
-
-export { MANAGEMENT_ROLES };

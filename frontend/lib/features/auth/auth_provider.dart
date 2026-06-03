@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../core/api/api_client.dart';
+import '../../core/permissions.dart';
 
 const _tokenKey = 'auth_token';
 const _userKey = 'auth_user';
@@ -134,11 +135,13 @@ class AuthService {
   bool get isVedeni => role == 'vedeni';
   bool get isUcetni => role == 'ucetni';
   bool get isAdmin => role == 'admin';
-  bool get isManagement => isVedeni || isAdmin;
   bool get isSuperAdmin => isAdmin;
-  bool get canAccessReports => isVedeni || isUcetni || isAdmin;
-  bool get canManageJobs => isVedeni || isAdmin;
-  bool get canManageUsers => isVedeni || isAdmin;
+  bool get isManagement => isVedeni || isAdmin;
+  bool get canAccessReports => AppPermissions.canAccessReports(role);
+  bool get canManageJobs => AppPermissions.canManageJobs(role);
+  bool get canManageUsers => AppPermissions.canManageUsers(role);
+  bool get canViewLogs => AppPermissions.canViewLogs(role);
+  bool get canAccessTrash => AppPermissions.canAccessTrash(role);
   bool get mustChangePin =>
       _ref.read(authUserProvider)?['mustChangePin'] == true;
 }

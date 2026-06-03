@@ -2,8 +2,9 @@ import bcrypt from 'bcrypt';
 import { User, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import { VEDENI_ROLES } from '../lib/permissions.js';
 
-export const MANAGEMENT_ROLES: UserRole[] = [UserRole.vedeni, UserRole.admin];
+export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
 const ASSIGNABLE_BY_VEDENI: UserRole[] = [UserRole.worker, UserRole.vedeni, UserRole.ucetni];
 
@@ -45,9 +46,13 @@ function assertCanManageTarget(actorRole: UserRole, target: User) {
   }
 }
 
-export async function listUsers(): Promise<PublicUser[]> {
+export async function listUsers(actorRole?: UserRole): Promise<PublicUser[]> {
   const users = await prisma.user.findMany({ orderBy: { username: 'asc' } });
-  return users.map(toPublicUser);
+  const filtered =
+    actorRole === UserRole.admin
+      ? users
+      : users.filter((u) => u.role !== UserRole.admin);
+  return filtered.map(toPublicUser);
 }
 
 export async function createUser(

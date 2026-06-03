@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { UserRole } from '@prisma/client';
-import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
+import { authMiddleware } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireRole(UserRole.vedeni, UserRole.admin));
+router.use(requirePermission('logs.view'));
 
 router.get('/activity', async (req, res, next) => {
   try {

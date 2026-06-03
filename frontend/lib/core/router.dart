@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/auth_provider.dart';
+import '../core/permissions.dart';
 import '../features/auth/change_pin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/profile_screen.dart';
@@ -34,8 +35,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (mustChangePin && !onChangePin) return '/change-pin';
         if (!mustChangePin && onChangePin) return '/';
         final role = authUser['role'] as String?;
-        final canReports = role == 'vedeni' || role == 'ucetni' || role == 'admin';
-        final canManage = role == 'vedeni' || role == 'admin';
         const reportsOnly = ['/reports'];
         const manageOnly = [
           '/jobs-admin',
@@ -43,10 +42,22 @@ final routerProvider = Provider<GoRouter>((ref) {
           '/logs',
           '/management',
         ];
-        if (!canReports && reportsOnly.contains(state.matchedLocation)) {
+        const superAdminBlocked = [
+          '/reports',
+          '/jobs-admin',
+          '/users-admin',
+          '/management',
+        ];
+        if (!AppPermissions.canAccessReports(role) &&
+            reportsOnly.contains(state.matchedLocation)) {
           return '/';
         }
-        if (!canManage && manageOnly.contains(state.matchedLocation)) {
+        if (!AppPermissions.canManageJobs(role) &&
+            manageOnly.contains(state.matchedLocation)) {
+          return '/';
+        }
+        if (role == 'admin' &&
+            superAdminBlocked.contains(state.matchedLocation)) {
           return '/';
         }
         if (role != 'admin' && state.matchedLocation == '/trash') {

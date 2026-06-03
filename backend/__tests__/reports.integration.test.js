@@ -156,6 +156,20 @@ describe('Reports and exports (BE-05)', () => {
       expect(res.status).toBe(200);
       expect(res.body.count).toBeGreaterThanOrEqual(3);
     });
+
+    it('ucetni can access work-summary and export', async () => {
+      const ucetniToken = (await login('ucetni')).token;
+      const summary = await request(app)
+        .get('/api/reports/work-summary')
+        .set('Authorization', `Bearer ${ucetniToken}`)
+        .query(reportQuery);
+      expect(summary.status).toBe(200);
+      const csv = await request(app)
+        .get('/api/reports/export/csv')
+        .set('Authorization', `Bearer ${ucetniToken}`)
+        .query(reportQuery);
+      expect(csv.status).toBe(200);
+    });
   });
 
   describe('GET /api/reports/work-summary filters', () => {

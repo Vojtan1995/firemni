@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import PDFDocument from 'pdfkit';
-import { SealStatus, UserRole } from '@prisma/client';
-import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
+import { SealStatus } from '@prisma/client';
+import { authMiddleware } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireRole(UserRole.vedeni, UserRole.ucetni, UserRole.admin));
+router.use(requirePermission('reports.view', 'reports.export'));
 
 function buildWhere(query: Record<string, unknown>) {
   const where: Record<string, unknown> = { deletedAt: null };

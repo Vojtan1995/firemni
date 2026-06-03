@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { SealStatus, UserRole } from '@prisma/client';
 import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 import { notFound } from '../lib/errors.js';
 import { logActivity, logChange } from '../services/audit.service.js';
@@ -39,7 +40,7 @@ const sealBodySchema = z.object({
   baseVersion: z.number().int().optional(),
 });
 
-router.get('/trash', requireRole(UserRole.admin), async (_req, res, next) => {
+router.get('/trash', requirePermission('admin.trash'), async (_req, res, next) => {
   try {
     const seals = await prisma.seal.findMany({
       where: { deletedAt: { not: null } },
@@ -271,7 +272,7 @@ router.delete('/:id', async (req, res, next) => {
   }
 });
 
-router.patch('/:id/restore', requireRole(UserRole.admin), async (req, res, next) => {
+router.patch('/:id/restore', requirePermission('seal.restore'), async (req, res, next) => {
   try {
     const seal = await restoreSeal(paramId(req.params.id), req.user!.id);
     res.json(seal);
