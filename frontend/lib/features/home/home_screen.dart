@@ -45,6 +45,8 @@ class HomeScreen extends ConsumerWidget {
           ),
           const Divider(),
           _MenuTile(icon: Icons.construction, title: 'Stavba', onTap: () => context.push('/job-number')),
+          _MenuTile(icon: Icons.work, title: 'Moje zakázky', onTap: () => context.push('/my-jobs')),
+          _MenuTile(icon: Icons.mail_outline, title: 'Zprávy', onTap: () => context.push('/messages')),
           _MenuTile(icon: Icons.sync, title: 'Synchronizace', onTap: () => context.push('/sync')),
           if (auth.canAccessReports)
             _MenuTile(

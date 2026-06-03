@@ -10,6 +10,7 @@ import { checkDuplicateSealNumber,
   changeSealStatus,
   statusAfterWorkerEdit,
 } from '../services/seal.service.js';
+import { touchJobParticipant } from '../services/job-participant.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -175,6 +176,7 @@ async function processMutation(
           },
         }),
       );
+      await touchJobParticipant(createPayload.jobId, userId, 'worker');
       return { entityId: seal.id };
     }
 
@@ -239,6 +241,7 @@ async function processMutation(
           updatedById: userId,
         },
       });
+      await touchJobParticipant(seal.jobId, userId, 'worker');
       return { entityId: sealId };
     }
 

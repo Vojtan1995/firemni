@@ -7,11 +7,56 @@ import { notFound, badRequest, conflict } from '../lib/errors.js';
 import { logActivity } from '../services/audit.service.js';
 import { MANAGEMENT_ROLES } from '../services/seal.service.js';
 import { paramId } from '../lib/params.js';
+import { requirePermission } from '../lib/permissions.js';
+import * as jobParticipantService from '../services/job-participant.service.js';
 
 const router = Router();
 router.use(authMiddleware);
 
 const projectNumberSchema = z.string().regex(/^\d{8}$/, 'Číslo stavby musí mít 8 číslic');
+
+router.get('/my', async (req, res, next) => {
+  try {
+    const jobs = await jobParticipantService.listMyJobs(req.user!.id);
+    res.json(jobs);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/:jobId/participants', requirePermission('job.manage'), async (req, res, next) => {
+  try {
+    const jobId = paramId(req.params.jobId);
+    const body = z
+      .object({
+        userId: z.string().uuid(),
+        roleOnJob: z.string().min(1).default('assigned'),
+      })
+      .parse(req.body);
+    const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw notFound('Stavba nenalezena');
+    await jobParticipantService.touchJobParticipant(
+      jobId,
+      body.userId,
+      body.roleOnJob,
+      req.user!.id,
+    );
+    res.status(201).json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/:jobId/participants/:userId', requirePermission('job.manage'), async (req, res, next) => {
+  try {
+    await prisma.jobParticipant.deleteMany({
+      where: { jobId: paramId(req.params.jobId), userId: paramId(req.params.userId) },
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.get('/', requireRole(UserRole.vedeni, UserRole.admin), async (req, res, next) => {
   try {

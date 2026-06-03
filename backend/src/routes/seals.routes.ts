@@ -6,6 +6,7 @@ import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 import { notFound } from '../lib/errors.js';
 import { logActivity, logChange } from '../services/audit.service.js';
+import { touchJobParticipant } from '../services/job-participant.service.js';
 import { paramId } from '../lib/params.js';
 import {
   assertSealEditable,
@@ -164,6 +165,7 @@ router.post('/', async (req, res, next) => {
     });
 
     await logActivity(req.user!.id, 'create', 'seal', seal.id);
+    await touchJobParticipant(body.jobId, req.user!.id, 'worker');
     res.status(201).json(seal);
   } catch (e) {
     next(e);
@@ -251,6 +253,7 @@ router.patch('/:id', async (req, res, next) => {
     });
 
     await logActivity(req.user!.id, 'update', 'seal', seal.id);
+    await touchJobParticipant(existing.jobId, req.user!.id, 'worker');
     res.json(seal);
   } catch (e) {
     next(e);

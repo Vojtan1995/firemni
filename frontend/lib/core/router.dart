@@ -16,7 +16,8 @@ import '../features/management/management_home_screen.dart';
 import '../features/management/jobs_admin_screen.dart';
 import '../features/management/users_admin_screen.dart';
 import '../features/reports/reports_screen.dart';
-import '../features/logs/logs_screen.dart';
+import '../features/jobs/my_jobs_screen.dart';
+import '../features/messages/messages_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -107,6 +108,8 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (c, s) =>
                   SealDetailScreen(sealId: s.pathParameters['id']!)),
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
+          GoRoute(path: 'my-jobs', builder: (_, __) => const MyJobsScreen()),
+          GoRoute(path: 'messages', builder: (_, __) => const MessagesScreen()),
           GoRoute(
               path: 'management',
               builder: (_, __) => const ManagementHomeScreen()),
