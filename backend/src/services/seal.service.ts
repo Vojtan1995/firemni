@@ -8,7 +8,14 @@ import { VEDENI_ROLES } from '../lib/permissions.js';
 export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
 export function canWorkerEdit(status: SealStatus) {
-  return status === SealStatus.draft;
+  return status === SealStatus.draft || status === SealStatus.checked;
+}
+
+export function statusAfterWorkerEdit(currentStatus: SealStatus, userRole: UserRole): SealStatus {
+  if (userRole === UserRole.worker && currentStatus === SealStatus.checked) {
+    return SealStatus.draft;
+  }
+  return currentStatus;
 }
 
 export function isSealLocked(status: SealStatus) {

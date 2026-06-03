@@ -312,7 +312,7 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(updateRes.body.results[0].conflict).toMatch(/zamčena/i);
   });
 
-  it('rejects worker update on checked seal (not editable by worker)', async () => {
+  it('worker can update checked seal via sync and status reverts to draft', async () => {
     const sealNumber = `${SEAL_PREFIX}5`;
     const createRes = await push(workerToken, [
       sealMutation({
@@ -341,8 +341,10 @@ describe('POST /api/sync/push (BE-04)', () => {
       }),
     ]);
 
-    expect(updateRes.body.results[0].status).toBe('conflict');
-    expect(updateRes.body.results[0].conflict).toMatch(/worker nemůže editovat/i);
+    expect(updateRes.body.results[0].status).toBe('ok');
+    const updated = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(updated.status).toBe('draft');
+    expect(updated.location).toBe('Worker sync edit checked');
   });
 
   it('management can push status mutation via sync', async () => {

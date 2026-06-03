@@ -14,6 +14,7 @@ import {
   softDeleteSeal,
   restoreSeal,
   MANAGEMENT_ROLES,
+  statusAfterWorkerEdit,
 } from '../services/seal.service.js';
 
 const router = Router();
@@ -194,6 +195,11 @@ router.patch('/:id', async (req, res, next) => {
       version: { increment: 1 },
       updatedById: req.user!.id,
     };
+    const nextStatus = statusAfterWorkerEdit(existing.status, req.user!.role);
+    if (nextStatus !== existing.status) {
+      updateData.status = nextStatus;
+      await logChange(req.user!.id, 'seal', existing.id, 'status', existing.status, nextStatus);
+    }
     const fields = ['sealNumber', 'system', 'construction', 'location', 'fireRating', 'note'] as const;
     for (const f of fields) {
       if (body[f] !== undefined) {

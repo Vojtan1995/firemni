@@ -8,6 +8,7 @@ import { checkDuplicateSealNumber,
   canWorkerEdit,
   isSealLocked,
   changeSealStatus,
+  statusAfterWorkerEdit,
 } from '../services/seal.service.js';
 
 const router = Router();
@@ -220,6 +221,7 @@ async function processMutation(
           }
         });
       }
+      const nextStatus = statusAfterWorkerEdit(seal.status, userRole);
       await prisma.seal.update({
         where: { id: sealId },
         data: {
@@ -229,6 +231,7 @@ async function processMutation(
           location: (p.location as string) ?? seal.location,
           fireRating: (p.fireRating as string) ?? seal.fireRating,
           note: (p.note as string | undefined) ?? seal.note,
+          status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,
         },

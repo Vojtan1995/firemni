@@ -548,7 +548,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           Text('Umístění: ${seal['location']}'),
           Text('Odolnost: ${seal['fireRating']}'),
           if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
-          if (status == 'draft') ...[
+          if (status == 'draft' || status == 'checked') ...[
             const SizedBox(height: 12),
             FilledButton.icon(
               onPressed: () {
@@ -559,7 +559,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 );
               },
               icon: const Icon(Icons.edit),
-              label: const Text('Upravit ucpávku'),
+              label: Text(status == 'checked'
+                  ? 'Upravit (vrátí na rozpracováno)'
+                  : 'Upravit ucpávku'),
             ),
           ],
           const Divider(),

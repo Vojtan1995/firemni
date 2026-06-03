@@ -158,8 +158,8 @@ describe('Seals HTTP integration (BE-03)', () => {
     });
   });
 
-  describe('worker cannot edit checked or invoiced seals', () => {
-    it('worker cannot PATCH a checked seal', async () => {
+  describe('worker edit rules', () => {
+    it('worker can PATCH a checked seal and status reverts to draft', async () => {
       const created = await createSeal(workerToken, jobId, floor1Id, `${SEAL_PREFIX}30`);
       expect(created.status).toBe(201);
       const sealId = created.body.id;
@@ -182,8 +182,9 @@ describe('Seals HTTP integration (BE-03)', () => {
           location: 'Změna workerem',
         });
 
-      expect(res.status).toBe(403);
-      expect(res.body.code).toBe('FORBIDDEN');
+      expect(res.status).toBe(200);
+      expect(res.body.status).toBe('draft');
+      expect(res.body.location).toBe('Změna workerem');
     });
 
     it('worker cannot PATCH an invoiced seal', async () => {
