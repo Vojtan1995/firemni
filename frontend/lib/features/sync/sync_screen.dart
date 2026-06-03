@@ -187,8 +187,9 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                         ),
                         title: Text(label),
                         subtitle: Text(
-                          '$statusLabel'
-                          '${p.lastError != null && p.lastError!.isNotEmpty ? '\n${p.lastError}' : ''}',
+                          p.lastError != null && p.lastError!.isNotEmpty
+                              ? '$statusLabel\n${p.lastError}'
+                              : statusLabel,
                         ),
                         isThreeLine: p.lastError != null &&
                             p.lastError!.isNotEmpty,

@@ -28,13 +28,22 @@ const storage = multer.diskStorage({
   },
 });
 
+function isAllowedImageMime(mimetype: string, originalname: string): boolean {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
+  if (allowed.includes(mimetype)) return true;
+  if (mimetype === 'application/octet-stream' || mimetype === 'application/x-unknown') {
+    const ext = path.extname(originalname).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.webp'].includes(ext);
+  }
+  return false;
+}
+
 const upload = multer({
   storage,
   limits: { fileSize: maxPhotoSizeBytes },
   fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
-    if (allowed.includes(file.mimetype)) cb(null, true);
-    else cb(badRequest('Nepodporovaný formát souboru'));
+    if (isAllowedImageMime(file.mimetype, file.originalname)) cb(null, true);
+    else cb(badRequest(`Nepodporovaný formát souboru (${file.mimetype})`));
   },
 });
 
@@ -60,7 +69,10 @@ function photoUploadMiddleware(req: Request, res: Response, next: NextFunction) 
     if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
       return next(new AppError(413, 'UPLOAD_TOO_LARGE', `Fotka nesmí být větší než ${maxPhotoSizeBytes} B`));
     }
-    return next(badRequest('Fotku se nepodařilo nahrát'));
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_UNEXPECTED_FILE') {
+      return next(badRequest('Očekáváno multipart pole „photo“'));
+    }
+    return next(badRequest(`Fotku se nepodařilo nahrát: ${err instanceof Error ? err.message : 'neznámá chyba'}`));
   });
 }
 
@@ -69,7 +81,7 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
   try {
     const sealId = paramId(req.params.sealId);
     if (!req.file) {
-      throw badRequest('Soubor photo je povinný');
+      throw badRequest('Chybí multipart pole „photo“ se souborem fotky');
     }
 
     if (req.user!.role === UserRole.worker) {
@@ -88,7 +100,7 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
         .webp({ quality: 85 })
         .toFile(outputPath);
     } catch {
-      throw badRequest('Soubor není platný obrázek');
+      throw badRequest('Soubor není platný obrázek (poškozený nebo nepodporovaný formát)');
     } finally {
       removeFileIfExists(req.file.path);
     }

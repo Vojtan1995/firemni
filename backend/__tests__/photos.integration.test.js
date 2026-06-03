@@ -122,6 +122,30 @@ describe('Photos upload integration', () => {
     expect(res.body.length).toBeGreaterThan(0);
   });
 
+  it('accepts application/octet-stream when filename has image extension', async () => {
+    const res = await request(app)
+      .post(`/api/seals/${sealId}/photos`)
+      .set('Authorization', `Bearer ${workerToken}`)
+      .attach('photo', tinyPng, {
+        filename: 'photo.png',
+        contentType: 'application/octet-stream',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.mimeType).toBe('image/webp');
+  });
+
+  it('returns clear error when photo field is missing', async () => {
+    const res = await request(app)
+      .post(`/api/seals/${sealId}/photos`)
+      .set('Authorization', `Bearer ${workerToken}`)
+      .send({ photoType: 'detail' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('BAD_REQUEST');
+    expect(res.body.error).toMatch(/photo/i);
+  });
+
   it('rejects unsupported upload MIME type with 400', async () => {
     const res = await request(app)
       .post(`/api/seals/${sealId}/photos`)

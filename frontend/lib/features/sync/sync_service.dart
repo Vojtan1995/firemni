@@ -11,6 +11,7 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
 import '../seals/seal_detail_screen.dart';
+import '../seals/seal_photo_upload.dart';
 import 'sync_conflict.dart';
 import 'sync_outbox_user.dart';
 import 'sync_retry.dart';
@@ -403,11 +404,16 @@ class SyncService {
           continue;
         }
 
+        final sealId = await resolvePhotoUploadSealId(_db, photo);
+        if (sealId == null) {
+          continue;
+        }
+
         final formData = FormData.fromMap({
-          'photo': await MultipartFile.fromFile(photo.localPath,
-              filename: 'photo.webp'),
+          'photo': await sealPhotoMultipartFile(photo.localPath),
+          'photoType': 'detail',
         });
-        final res = await _dio.post('/api/seals/${photo.sealId}/photos',
+        final res = await _dio.post('/api/seals/$sealId/photos',
             data: formData);
         final data = res.data is Map ? res.data as Map : const {};
         await markPhotoSyncSuccess(
@@ -421,7 +427,7 @@ class SyncService {
           _db,
           photo.id,
           currentRetryCount: photo.retryCount,
-          error: e.toString(),
+          error: photoSyncErrorMessage(e),
           now: now,
         );
       }

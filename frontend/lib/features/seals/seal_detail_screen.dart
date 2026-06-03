@@ -15,6 +15,7 @@ import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
 import '../sync/sync_retry.dart';
 import 'seal_photo_storage.dart';
+import 'seal_photo_upload.dart';
 
 /// Zda detail pochází z API nebo z lokální cache (offline detail).
 enum SealDetailDataSource { online, offline }
@@ -311,8 +312,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       if (online) {
         try {
           final formData = FormData.fromMap({
-            'photo': await MultipartFile.fromFile(persistedPath,
-                filename: 'photo.webp'),
+            'photo': await sealPhotoMultipartFile(persistedPath),
+            'photoType': 'detail',
           });
           final res = await ref
               .read(dioProvider)
