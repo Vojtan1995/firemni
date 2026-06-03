@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
+import '../seals/seal_constants.dart';
 import 'reports_query.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   String? _filterStatus;
   String? _filterWorkerId;
   String? _filterFloorId;
+  String? _filterSystem;
+  String? _filterEntryType;
   DateTime? _filterFrom;
   DateTime? _filterTo;
 
@@ -41,6 +44,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
         status: _filterStatus,
         workerId: _filterWorkerId,
         floorId: _filterFloorId,
+        system: _filterSystem,
+        entryType: _filterEntryType,
         from: _filterFrom,
         to: _filterTo,
       );
@@ -329,6 +334,48 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       )
                       .toList(),
                   onChanged: (v) => setState(() => _filterStatus = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: _filterSystem,
+                  decoration: const InputDecoration(
+                    labelText: 'Systém',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Všechny systémy'),
+                    ),
+                    ...sealSystems.map(
+                      (s) => DropdownMenuItem<String?>(
+                        value: s,
+                        child: Text(s),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _filterSystem = v),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String?>(
+                  value: _filterEntryType,
+                  decoration: const InputDecoration(
+                    labelText: 'Typ prostupu',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem<String?>(
+                      value: null,
+                      child: Text('Všechny typy'),
+                    ),
+                    ...entryTypes.map(
+                      (t) => DropdownMenuItem<String?>(
+                        value: t,
+                        child: Text(t),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setState(() => _filterEntryType = v),
                 ),
                 const SizedBox(height: 12),
                 Row(

@@ -14,6 +14,7 @@ function buildWhere(query: Record<string, unknown>) {
   if (query.status) where.status = String(query.status) as SealStatus;
   if (query.workerId) where.createdById = String(query.workerId);
   if (query.floorId) where.floorId = String(query.floorId);
+  if (query.system) where.system = String(query.system);
   if (query.from || query.to) {
     where.createdAt = {};
     if (query.from) (where.createdAt as Record<string, Date>).gte = new Date(String(query.from));

@@ -8,6 +8,8 @@ void main() {
       status: 'draft',
       workerId: 'user-1',
       floorId: 'floor-1',
+      system: 'Hilti',
+      entryType: 'EL.V.',
       from: DateTime(2026, 1, 1),
       to: DateTime(2026, 1, 31),
     );
@@ -15,6 +17,8 @@ void main() {
     expect(params['status'], 'draft');
     expect(params['workerId'], 'user-1');
     expect(params['floorId'], 'floor-1');
+    expect(params['system'], 'Hilti');
+    expect(params['entryType'], 'EL.V.');
     expect(params['from'], '2026-01-01');
     expect(params['to'], '2026-01-31');
   });

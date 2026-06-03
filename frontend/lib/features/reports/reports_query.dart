@@ -6,6 +6,8 @@ Map<String, String> buildReportsQueryParams({
   String? status,
   String? workerId,
   String? floorId,
+  String? system,
+  String? entryType,
   DateTime? from,
   DateTime? to,
 }) {
@@ -14,6 +16,8 @@ Map<String, String> buildReportsQueryParams({
   if (status != null && status.isNotEmpty) params['status'] = status;
   if (workerId != null && workerId.isNotEmpty) params['workerId'] = workerId;
   if (floorId != null && floorId.isNotEmpty) params['floorId'] = floorId;
+  if (system != null && system.isNotEmpty) params['system'] = system;
+  if (entryType != null && entryType.isNotEmpty) params['entryType'] = entryType;
   final dateFmt = DateFormat('yyyy-MM-dd');
   if (from != null) params['from'] = dateFmt.format(from);
   if (to != null) params['to'] = dateFmt.format(to);

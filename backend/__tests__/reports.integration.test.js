@@ -206,6 +206,26 @@ describe('Reports and exports (BE-05)', () => {
       expect(numbers).not.toContain(`${SEAL_PREFIX}2`);
     });
 
+    it('filters by system', async () => {
+      const res = await request(app)
+        .get('/api/reports/work-summary')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .query({ jobId, system: 'Report test' });
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBeGreaterThanOrEqual(3);
+      expect(res.body.rows.every((r) => r.system === 'Report test')).toBe(true);
+    });
+
+    it('filters by entryType', async () => {
+      const res = await request(app)
+        .get('/api/reports/work-summary')
+        .set('Authorization', `Bearer ${managementToken}`)
+        .query({ jobId, entryType: 'Kabel' });
+      expect(res.status).toBe(200);
+      expect(res.body.count).toBeGreaterThanOrEqual(3);
+      expect(res.body.rows.every((r) => r.typProstupu === 'Kabel')).toBe(true);
+    });
+
     it('filters by date range (from/to)', async () => {
       const today = new Date();
       const from = new Date(today);
