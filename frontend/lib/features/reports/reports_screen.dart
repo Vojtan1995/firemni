@@ -1,12 +1,10 @@
-import 'dart:io';
-
 import 'package:dio/dio.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
 import '../seals/seal_constants.dart';
+import 'export_service.dart';
 import 'reports_query.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
@@ -178,43 +176,36 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   }) async {
     setState(() => _exporting = true);
     try {
+      logExport('$successLabel generation started');
+
       final res = await ref.read(dioProvider).get(
             path,
             queryParameters: _queryParams,
             options: Options(responseType: ResponseType.bytes),
           );
-      final bytes = res.data;
-      if (bytes == null || bytes.isEmpty) {
-        throw StateError('Export vrátil prázdný soubor');
-      }
+
+      final bytes = normalizeExportBytes(res.data, exportLabel: successLabel);
+      logExport('$successLabel generated successfully');
+      logExport('$successLabel bytes length: ${bytes.length}');
 
       final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final defaultName = 'soupis_praci_$date.$extension';
 
-      String? filePath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Uložit $successLabel',
+      final filePath = await saveExportFile(
+        bytes: bytes,
         fileName: defaultName,
-        type: FileType.custom,
-        allowedExtensions: [extension],
+        extension: extension,
+        exportLabel: successLabel,
       );
-
-      if (filePath == null) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uložení zrušeno')),
-        );
-        return;
-      }
-
-      if (!filePath.toLowerCase().endsWith('.$extension')) {
-        filePath = '$filePath.$extension';
-      }
-
-      await File(filePath).writeAsBytes(bytes, flush: true);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$successLabel uloženo: $filePath')),
+      );
+    } on ExportSaveCancelled {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uložení zrušeno')),
       );
     } on DioException catch (e) {
       _showError(_dioMessage(e, errorLabel));
