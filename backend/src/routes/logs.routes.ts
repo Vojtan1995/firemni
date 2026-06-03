@@ -7,6 +7,35 @@ const router = Router();
 router.use(authMiddleware);
 router.use(requirePermission('logs.view'));
 
+router.get('/login', async (req, res, next) => {
+  try {
+    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const logs = await prisma.loginLog.findMany({
+      where: since ? { createdAt: { gte: since } } : {},
+      include: { user: { select: { displayName: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json(logs);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/errors', async (req, res, next) => {
+  try {
+    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const logs = await prisma.errorLog.findMany({
+      where: since ? { createdAt: { gte: since } } : {},
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+    res.json(logs);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/activity', async (req, res, next) => {
   try {
     const since = req.query.since ? new Date(String(req.query.since)) : undefined;
