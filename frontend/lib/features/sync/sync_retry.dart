@@ -73,17 +73,80 @@ Future<void> markOutboxSyncFailure(
   );
 }
 
-Future<void> markPhotoSyncSuccess(AppDatabase db, String photoId,
-    {String? serverPath}) async {
+Future<void> markPhotoSyncSuccess(
+  AppDatabase db,
+  String photoId, {
+  String? serverPath,
+  String? serverPhotoId,
+}) async {
+  final row = await (db.select(db.localPhotos)
+        ..where((p) => p.id.equals(photoId)))
+      .getSingleOrNull();
+  if (row == null) return;
+
+  final resolvedServerPath = serverPath ?? row.serverPath;
+  final targetId = serverPhotoId ?? photoId;
+
+  if (serverPhotoId != null && serverPhotoId != photoId) {
+    await db.transaction(() async {
+      await (db.delete(db.localPhotos)..where((p) => p.id.equals(photoId)))
+          .go();
+      await db.into(db.localPhotos).insert(
+            LocalPhotosCompanion.insert(
+              id: targetId,
+              sealId: row.sealId,
+              localPath: row.localPath,
+              serverPath: resolvedServerPath == null
+                  ? const Value.absent()
+                  : Value(resolvedServerPath),
+              status: const Value('done'),
+              createdAt: row.createdAt,
+              retryCount: const Value(0),
+              lastError: const Value(null),
+              nextRetryAt: const Value(null),
+            ),
+          );
+    });
+    return;
+  }
+
   await (db.update(db.localPhotos)..where((p) => p.id.equals(photoId))).write(
     LocalPhotosCompanion(
       status: const Value('done'),
       retryCount: const Value(0),
       lastError: const Value(null),
       nextRetryAt: const Value(null),
-      serverPath: serverPath == null ? const Value.absent() : Value(serverPath),
+      serverPath: resolvedServerPath == null
+          ? const Value.absent()
+          : Value(resolvedServerPath),
     ),
   );
+}
+
+/// All photos waiting for upload (including blocked-by-seal and backoff).
+Future<int> countUnsentPhotos(AppDatabase db) async {
+  final photos = await (db.select(db.localPhotos)
+        ..where((p) => p.status.isIn(['pending', 'failed'])))
+      .get();
+  return photos.length;
+}
+
+/// Pending/failed photos with seal number for SyncScreen.
+Future<List<({LocalPhoto photo, String? sealNumber})>> loadUnsentPhotosWithSeal(
+  AppDatabase db,
+) async {
+  final photos = await (db.select(db.localPhotos)
+        ..where((p) => p.status.isIn(['pending', 'failed']))
+        ..orderBy([(p) => OrderingTerm.desc(p.createdAt)]))
+      .get();
+  final result = <({LocalPhoto photo, String? sealNumber})>[];
+  for (final photo in photos) {
+    final seal = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(photo.sealId)))
+        .getSingleOrNull();
+    result.add((photo: photo, sealNumber: seal?.sealNumber));
+  }
+  return result;
 }
 
 Future<void> markPhotoSyncFailure(

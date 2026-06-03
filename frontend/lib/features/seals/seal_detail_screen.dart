@@ -4,20 +4,44 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../core/theme.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
+import '../sync/sync_retry.dart';
+import 'seal_photo_storage.dart';
 
 /// Zda detail pochází z API nebo z lokální cache (offline detail).
 enum SealDetailDataSource { online, offline }
+
+/// Uloží metadata fotek z API do Drift (server ID, status done).
+Future<void> cacheSealPhotosFromApiList(
+  AppDatabase db,
+  String sealId,
+  List<dynamic>? photos,
+) async {
+  for (final p in (photos ?? [])) {
+    final m = p as Map<String, dynamic>;
+    final photoId = m['id'] as String;
+    final filePath = m['filePath'] as String;
+    await db.into(db.localPhotos).insertOnConflictUpdate(
+          LocalPhotosCompanion.insert(
+            id: photoId,
+            sealId: sealId,
+            localPath: filePath,
+            serverPath: Value(filePath),
+            status: const Value('done'),
+            createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??
+                DateTime.now(),
+          ),
+        );
+  }
+}
 
 /// Uloží detail ucpávky z API do Drift (sloupce + jsonPayload + metadata fotek).
 Future<void> cacheSealDetailFromApi(
@@ -48,22 +72,7 @@ Future<void> cacheSealDetailFromApi(
         ),
       );
 
-  for (final p in (seal['photos'] as List? ?? [])) {
-    final m = p as Map<String, dynamic>;
-    final photoId = m['id'] as String;
-    final filePath = m['filePath'] as String;
-    await db.into(db.localPhotos).insertOnConflictUpdate(
-          LocalPhotosCompanion.insert(
-            id: photoId,
-            sealId: id,
-            localPath: filePath,
-            serverPath: Value(filePath),
-            status: const Value('done'),
-            createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??
-                DateTime.now(),
-          ),
-        );
-  }
+  await cacheSealPhotosFromApiList(db, id, seal['photos'] as List?);
 }
 
 /// Sestaví mapu detailu pro UI z lokálního řádku a fotek (bez síťových volání).
@@ -94,26 +103,23 @@ Map<String, dynamic>? sealDetailFromLocal(
   final photoMaps = <Map<String, dynamic>>[];
 
   for (final p in photos) {
+    final map = {
+      'id': p.id,
+      'localPath': p.localPath,
+      'filePath': p.serverPath,
+      'status': p.status,
+      if (p.lastError != null) 'lastError': p.lastError,
+    };
+
     final hasLocalFile =
         p.localPath.isNotEmpty && File(p.localPath).existsSync();
     if (hasLocalFile) {
-      photoMaps.add({
-        'id': p.id,
-        'localPath': p.localPath,
-        'filePath': p.serverPath,
-      });
+      photoMaps.add(map);
     } else if (p.serverPath != null && p.serverPath!.isNotEmpty) {
-      photoMaps.add({
-        'id': p.id,
-        'filePath': p.serverPath,
-        'localPath': p.localPath,
-      });
-    } else if (p.status == 'pending' && p.localPath.isNotEmpty) {
-      photoMaps.add({
-        'id': p.id,
-        'localPath': p.localPath,
-        'filePath': p.serverPath,
-      });
+      photoMaps.add(map);
+    } else if ((p.status == 'pending' || p.status == 'failed') &&
+        p.localPath.isNotEmpty) {
+      photoMaps.add(map);
     }
   }
 
@@ -122,6 +128,47 @@ Map<String, dynamic>? sealDetailFromLocal(
   }
 
   return seal;
+}
+
+/// Sloučí fotky z API s lokálními pending/failed řádky a statusy.
+List<Map<String, dynamic>> mergePhotosForDisplay(
+  List<dynamic>? apiPhotos,
+  List<LocalPhoto> localPhotos,
+) {
+  final result = <Map<String, dynamic>>[];
+  final localById = {for (final p in localPhotos) p.id: p};
+  final seen = <String>{};
+
+  for (final p in (apiPhotos ?? [])) {
+    final m = Map<String, dynamic>.from(p as Map);
+    final id = m['id'] as String;
+    seen.add(id);
+    final local = localById[id];
+    if (local != null) {
+      m['status'] = local.status;
+      if (local.lastError != null) m['lastError'] = local.lastError;
+      if (local.localPath.isNotEmpty && File(local.localPath).existsSync()) {
+        m['localPath'] = local.localPath;
+      }
+    } else {
+      m['status'] = 'done';
+    }
+    result.add(m);
+  }
+
+  for (final p in localPhotos) {
+    if (seen.contains(p.id)) continue;
+    if (p.status != 'pending' && p.status != 'failed') continue;
+    result.add({
+      'id': p.id,
+      'localPath': p.localPath,
+      'filePath': p.serverPath,
+      'status': p.status,
+      if (p.lastError != null) 'lastError': p.lastError,
+    });
+  }
+
+  return result;
 }
 
 class SealDetailScreen extends ConsumerStatefulWidget {
@@ -158,6 +205,13 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       final res = await dio.get('/api/seals/${widget.sealId}');
       final seal = Map<String, dynamic>.from(res.data as Map);
       await cacheSealDetailFromApi(db, seal);
+      final localPhotos = await (db.select(db.localPhotos)
+            ..where((p) => p.sealId.equals(widget.sealId)))
+          .get();
+      seal['photos'] = mergePhotosForDisplay(
+        seal['photos'] as List?,
+        localPhotos,
+      );
       if (!mounted) return;
       setState(() {
         _seal = seal;
@@ -230,15 +284,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         return;
       }
 
-      final dir = await getTemporaryDirectory();
-      final out = '${dir.path}/${const Uuid().v4()}.webp';
-      final compressed = await FlutterImageCompress.compressAndGetFile(
-        img.path,
-        out,
-        quality: 85,
-        format: CompressFormat.webp,
-      );
-      if (compressed == null) {
+      final persistedPath = await compressAndPersistSealPhoto(img.path);
+      if (persistedPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Komprese fotky se nezdařila')),
@@ -250,15 +297,32 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       final photoId = const Uuid().v4();
       final online = _dataSource == SealDetailDataSource.online;
 
+      await db.into(db.localPhotos).insert(
+            LocalPhotosCompanion.insert(
+              id: photoId,
+              sealId: widget.sealId,
+              localPath: persistedPath,
+              status: const Value('pending'),
+              createdAt: DateTime.now(),
+            ),
+          );
+
       if (online) {
         try {
           final formData = FormData.fromMap({
-            'photo': await MultipartFile.fromFile(compressed.path,
+            'photo': await MultipartFile.fromFile(persistedPath,
                 filename: 'photo.webp'),
           });
-          await ref
+          final res = await ref
               .read(dioProvider)
               .post('/api/seals/${widget.sealId}/photos', data: formData);
+          final data = res.data is Map ? res.data as Map : const {};
+          await markPhotoSyncSuccess(
+            db,
+            photoId,
+            serverPath: data['filePath'] as String?,
+            serverPhotoId: data['id'] as String?,
+          );
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Fotka nahrána')),
@@ -267,19 +331,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           await _load();
           return;
         } catch (_) {
-          // fronta pro sync
+          // fronta pro sync — pending řádek zůstává
         }
       }
-
-      await db.into(db.localPhotos).insert(
-            LocalPhotosCompanion.insert(
-              id: photoId,
-              sealId: widget.sealId,
-              localPath: compressed.path,
-              status: const Value('pending'),
-              createdAt: DateTime.now(),
-            ),
-          );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -304,55 +358,118 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     }
   }
 
+  String _photoStatusLabel(String? status) {
+    switch (status) {
+      case 'pending':
+        return 'Čeká na upload';
+      case 'failed':
+        return 'Selhala';
+      case 'done':
+        return 'Nahraná';
+      default:
+        return status ?? '';
+    }
+  }
+
+  Color _photoStatusColor(String? status) {
+    switch (status) {
+      case 'pending':
+        return Colors.orange;
+      case 'failed':
+        return Colors.red;
+      case 'done':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   Widget _photoTile(Map<String, dynamic> m) {
+    final status = m['status'] as String?;
+    final lastError = m['lastError'] as String?;
+
+    Widget image;
     final localPath = m['localPath'] as String?;
     if (localPath != null &&
         localPath.isNotEmpty &&
         File(localPath).existsSync()) {
-      return Image.file(File(localPath), height: 200, fit: BoxFit.cover);
-    }
-
-    final id = m['id'] as String?;
-    if (_dataSource == SealDetailDataSource.online && id != null) {
-      return FutureBuilder<Response<List<int>>>(
-        future: ref.read(dioProvider).get<List<int>>(
-              '/api/photos/$id/file',
-              options: Options(responseType: ResponseType.bytes),
+      image = Image.file(File(localPath), height: 200, fit: BoxFit.cover);
+    } else {
+      final id = m['id'] as String?;
+      if (_dataSource == SealDetailDataSource.online && id != null) {
+        image = FutureBuilder<Response<List<int>>>(
+          future: ref.read(dioProvider).get<List<int>>(
+                '/api/photos/$id/file',
+                options: Options(responseType: ResponseType.bytes),
+              ),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return Container(
+                height: 200,
+                color: Colors.grey.shade200,
+                child: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            final bytes = snapshot.data?.data;
+            if (snapshot.hasError || bytes == null || bytes.isEmpty) {
+              return const SizedBox(
+                height: 120,
+                child: Center(child: Icon(Icons.broken_image, size: 100)),
+              );
+            }
+            return Image.memory(Uint8List.fromList(bytes),
+                height: 200, fit: BoxFit.cover);
+          },
+        );
+      } else {
+        final filePath = m['filePath'] as String?;
+        image = Container(
+          height: 120,
+          color: Colors.grey.shade200,
+          child: Center(
+            child: Text(
+              filePath != null
+                  ? 'Foto: $filePath\n(načtení vyžaduje síť)'
+                  : 'Lokální foto',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
             ),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done) {
-            return Container(
-              height: 200,
-              color: Colors.grey.shade200,
-              child: const Center(child: CircularProgressIndicator()),
-            );
-          }
-          final bytes = snapshot.data?.data;
-          if (snapshot.hasError || bytes == null || bytes.isEmpty) {
-            return const SizedBox(
-              height: 120,
-              child: Center(child: Icon(Icons.broken_image, size: 100)),
-            );
-          }
-          return Image.memory(Uint8List.fromList(bytes),
-              height: 200, fit: BoxFit.cover);
-        },
-      );
+          ),
+        );
+      }
     }
 
-    final filePath = m['filePath'] as String?;
-    return Container(
-      height: 120,
-      color: Colors.grey.shade200,
-      child: Center(
-        child: Text(
-          filePath != null
-              ? 'Foto: $filePath\n(načtení vyžaduje síť)'
-              : 'Lokální foto',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        image,
+        if (status != null && status.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Icon(Icons.circle, size: 10, color: _photoStatusColor(status)),
+              const SizedBox(width: 6),
+              Text(
+                _photoStatusLabel(status),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: _photoStatusColor(status),
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
+            ],
+          ),
+          if (status == 'failed' && lastError != null && lastError.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                lastError,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.red.shade700,
+                    ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 

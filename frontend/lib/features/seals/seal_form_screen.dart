@@ -2,11 +2,9 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../database/database.dart';
@@ -18,6 +16,7 @@ import 'seal_constants.dart';
 import 'seal_duplicate_local.dart';
 import 'seal_detail_screen.dart';
 import 'seal_form_loader.dart';
+import 'seal_photo_storage.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
 
@@ -125,15 +124,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         }
         return;
       }
-      final dir = await getTemporaryDirectory();
-      final out = '${dir.path}/${const Uuid().v4()}.webp';
-      final compressed = await FlutterImageCompress.compressAndGetFile(
-        img.path,
-        out,
-        quality: 85,
-        format: CompressFormat.webp,
-      );
-      if (compressed == null) {
+      final persistedPath = await compressAndPersistSealPhoto(img.path);
+      if (persistedPath == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Komprese fotky se nezdařila')),
@@ -142,7 +134,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         return;
       }
       setState(() {
-        _photoPaths.add(compressed.path);
+        _photoPaths.add(persistedPath);
         _showPhotoWarning = false;
       });
     } catch (e) {

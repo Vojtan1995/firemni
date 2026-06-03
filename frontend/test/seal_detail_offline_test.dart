@@ -153,5 +153,72 @@ void main() {
     final photoList = seal['photos'] as List;
     expect(photoList.length, 1);
     expect((photoList.first as Map)['localPath'], '/tmp/pending.webp');
+    expect((photoList.first as Map)['status'], 'pending');
+  });
+
+  test('sealDetailFromLocal includes failed photo metadata', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-1',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '1',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            jsonPayload: const Value('{"entries":[],"photos":[]}'),
+            updatedAt: DateTime.now(),
+          ),
+        );
+
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'failed-ph',
+            sealId: 'seal-1',
+            localPath: '/tmp/missing.webp',
+            status: const Value('failed'),
+            lastError: const Value('network error'),
+            createdAt: DateTime.now(),
+          ),
+        );
+
+    final row = await (db.select(db.localSeals)..where((s) => s.id.equals('seal-1'))).getSingle();
+    final photos = await (db.select(db.localPhotos)..where((p) => p.sealId.equals('seal-1'))).get();
+    final seal = sealDetailFromLocal(row, photos)!;
+
+    final photoList = seal['photos'] as List;
+    expect(photoList.length, 1);
+    expect((photoList.first as Map)['status'], 'failed');
+    expect((photoList.first as Map)['lastError'], 'network error');
+  });
+
+  test('mergePhotosForDisplay adds pending local-only photos', () {
+    final merged = mergePhotosForDisplay(
+      [
+        {'id': 'server-1', 'filePath': 'a.webp'},
+      ],
+      [
+        LocalPhoto(
+          id: 'local-pending',
+          sealId: 'seal-1',
+          localPath: '/data/pending.webp',
+          serverPath: null,
+          status: 'pending',
+          createdAt: DateTime.now(),
+          nextRetryAt: null,
+          retryCount: 0,
+          lastError: null,
+        ),
+      ],
+    );
+
+    expect(merged.length, 2);
+    expect(merged.first['status'], 'done');
+    expect(merged.last['id'], 'local-pending');
+    expect(merged.last['status'], 'pending');
   });
 }

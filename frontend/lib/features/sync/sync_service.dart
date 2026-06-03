@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:dio/dio.dart';
@@ -9,6 +10,7 @@ import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
+import '../seals/seal_detail_screen.dart';
 import 'sync_conflict.dart';
 import 'sync_outbox_user.dart';
 import 'sync_retry.dart';
@@ -20,6 +22,22 @@ final syncPendingCountProvider = StreamProvider<int>((ref) async* {
   final userId = ref.watch(currentUserIdProvider);
   while (true) {
     yield await countDueSyncItems(db, DateTime.now(), userId: userId);
+    await Future.delayed(const Duration(seconds: 5));
+  }
+});
+
+final unsentPhotosCountProvider = StreamProvider<int>((ref) async* {
+  final db = ref.watch(databaseProvider);
+  while (true) {
+    yield await countUnsentPhotos(db);
+    await Future.delayed(const Duration(seconds: 5));
+  }
+});
+
+final unsentPhotosProvider = StreamProvider<List<({LocalPhoto photo, String? sealNumber})>>((ref) async* {
+  final db = ref.watch(databaseProvider);
+  while (true) {
+    yield await loadUnsentPhotosWithSeal(db);
     await Future.delayed(const Duration(seconds: 5));
   }
 });
@@ -283,6 +301,11 @@ class SyncService {
             deletedAt: const Value(null),
             updatedAt: DateTime.parse(m['updatedAt'] as String),
           ));
+      await cacheSealPhotosFromApiList(
+        _db,
+        sealId,
+        m['photos'] as List?,
+      );
     }
 
     final deleted = data['deleted'] as Map<String, dynamic>? ?? const {};
@@ -363,6 +386,17 @@ class SyncService {
           continue;
         }
 
+        if (!File(photo.localPath).existsSync()) {
+          await markPhotoSyncFailure(
+            _db,
+            photo.id,
+            currentRetryCount: photo.retryCount,
+            error: 'Lokální soubor fotky nenalezen',
+            now: now,
+          );
+          continue;
+        }
+
         final formData = FormData.fromMap({
           'photo': await MultipartFile.fromFile(photo.localPath,
               filename: 'photo.webp'),
@@ -370,8 +404,12 @@ class SyncService {
         final res = await _dio.post('/api/seals/${photo.sealId}/photos',
             data: formData);
         final data = res.data is Map ? res.data as Map : const {};
-        await markPhotoSyncSuccess(_db, photo.id,
-            serverPath: data['filePath'] as String?);
+        await markPhotoSyncSuccess(
+          _db,
+          photo.id,
+          serverPath: data['filePath'] as String?,
+          serverPhotoId: data['id'] as String?,
+        );
       } catch (e) {
         await markPhotoSyncFailure(
           _db,

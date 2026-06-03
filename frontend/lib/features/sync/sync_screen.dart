@@ -126,6 +126,8 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
   Widget build(BuildContext context) {
     final online = ref.watch(connectivityProvider);
     final pending = ref.watch(syncPendingCountProvider);
+    final unsentPhotos = ref.watch(unsentPhotosCountProvider);
+    final unsentPhotoList = ref.watch(unsentPhotosProvider);
     final conflicts = ref.watch(syncConflictsProvider);
     final dateFormat = DateFormat('d.M.y HH:mm');
 
@@ -142,8 +144,63 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                 size: 40,
               ),
               title: Text(online.valueOrNull == true ? 'Online' : 'Offline'),
-              subtitle: Text('Čekajících položek: ${pending.valueOrNull ?? 0}'),
+              subtitle: Text(
+                'Čekajících položek: ${pending.valueOrNull ?? 0}\n'
+                'Neodeslané fotky: ${unsentPhotos.valueOrNull ?? 0}',
+              ),
+              isThreeLine: true,
             ),
+          ),
+          unsentPhotoList.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (items) {
+              if (items.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 8),
+                  Text(
+                    'Neodeslané fotky',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                  const SizedBox(height: 8),
+                  ...items.take(5).map((item) {
+                    final p = item.photo;
+                    final label = item.sealNumber != null
+                        ? 'Ucpávka č. ${item.sealNumber}'
+                        : 'Ucpávka ${p.sealId.substring(0, 8)}…';
+                    final statusLabel =
+                        p.status == 'failed' ? 'Selhala' : 'Čeká na upload';
+                    return Card(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      child: ListTile(
+                        leading: Icon(
+                          p.status == 'failed'
+                              ? Icons.error_outline
+                              : Icons.photo_camera,
+                          color: p.status == 'failed'
+                              ? Colors.red
+                              : Colors.orange,
+                        ),
+                        title: Text(label),
+                        subtitle: Text(
+                          '$statusLabel'
+                          '${p.lastError != null && p.lastError!.isNotEmpty ? '\n${p.lastError}' : ''}',
+                        ),
+                        isThreeLine: p.lastError != null &&
+                            p.lastError!.isNotEmpty,
+                      ),
+                    );
+                  }),
+                  if (items.length > 5)
+                    Text(
+                      '… a dalších ${items.length - 5} fotek',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
           ElevatedButton.icon(

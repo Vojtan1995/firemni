@@ -82,3 +82,17 @@ Přehled pro beta a release: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §5.
 
 - **Chování:** `getDownloadsDirectory()` nemusí být dostupné → fallback `getApplicationDocumentsDirectory()`.
 - **Dopad:** soubor je v app-specific složce; cesta se zobrazí ve SnackBar (scoped storage, bez legacy permission).
+
+## 7. Fotky – zbývající rizika (po PHOTO-01, 2026-06-03)
+
+### 7.1 Staré fotky v temp adresáři
+
+- **Projev:** po upgradu aplikace chybí náhled u řádků v `local_photos`, upload končí `failed` („Lokální soubor fotky nenalezen“).
+- **Příčina:** verze před PHOTO-01 ukládala WebP do `getTemporaryDirectory()`; OS mohl soubor smazat.
+- **Oprava:** fotku pořídit znovu u dané ucpávky.
+
+### 7.2 Backend uploady na ephemeral disku (Railway)
+
+- **Projev:** `GET /api/photos/:id/file` vrací 404 po redeployi, DB řádek zůstává.
+- **Příčina:** `UPLOAD_PATH=./uploads` na efemérním disku hostitele.
+- **Mitigace:** persistent volume / S3 — mimo scope PHOTO-01 klienta.

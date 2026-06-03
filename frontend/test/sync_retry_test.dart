@@ -188,6 +188,40 @@ void main() {
     expect(row.serverPath, 'server-photo.webp');
   });
 
+  test('markPhotoSyncSuccess replaces local id with server photo id', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'local-photo-id',
+            sealId: 'seal-1',
+            localPath: '/data/seal_photos/local.webp',
+            status: const Value('pending'),
+            createdAt: DateTime.now(),
+          ),
+        );
+
+    await markPhotoSyncSuccess(
+      db,
+      'local-photo-id',
+      serverPath: 'server.webp',
+      serverPhotoId: 'server-photo-id',
+    );
+
+    final oldRow = await (db.select(db.localPhotos)
+          ..where((p) => p.id.equals('local-photo-id')))
+        .getSingleOrNull();
+    expect(oldRow, isNull);
+
+    final newRow = await (db.select(db.localPhotos)
+          ..where((p) => p.id.equals('server-photo-id')))
+        .getSingle();
+    expect(newRow.status, 'done');
+    expect(newRow.serverPath, 'server.webp');
+    expect(newRow.localPath, '/data/seal_photos/local.webp');
+  });
+
   test('countDueSyncItems excludes failed rows before nextRetryAt (T4)', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
@@ -222,6 +256,42 @@ void main() {
         );
 
     expect(await countDueSyncItems(db, now, userId: 'user-1'), 1);
+  });
+
+  test('countUnsentPhotos counts pending and failed rows', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+    final now = DateTime(2026, 5, 27, 10, 0);
+
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-pending',
+            sealId: 'seal-1',
+            localPath: 'local.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-failed',
+            sealId: 'seal-1',
+            localPath: 'local2.webp',
+            status: const Value('failed'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-done',
+            sealId: 'seal-1',
+            localPath: 'local3.webp',
+            status: const Value('done'),
+            createdAt: now,
+          ),
+        );
+
+    expect(await countUnsentPhotos(db), 2);
   });
 
   test('countDueSyncItems skips photos blocked by unsynced seal (T5)', () async {

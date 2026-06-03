@@ -18,8 +18,9 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T12 duplicate UX / precheck | hotovo | lokální kontrola + oprava čísla v sync |
 | T6 outbox per user | hotovo | `local_outbox.user_id`, filtrování sync UI |
 | T11 seal edit screen | hotovo | `/seal/:id/edit`, outbox `update` |
+| PHOTO-01 photo persist/sync | hotovo | `seal_photo_storage.dart`, server ID map, SyncScreen unsent list |
 
-### Ověření testů (2026-05-27)
+### Ověření testů (2026-06-03, PHOTO-01)
 
 | Příkaz | Výsledek |
 |--------|----------|
