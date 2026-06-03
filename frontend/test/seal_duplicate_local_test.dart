@@ -7,9 +7,10 @@ import 'package:ucpavky/features/sync/sync_conflict.dart';
 void main() {
   test('isDuplicateConflictMessage detects duplicate text', () {
     expect(
-      isDuplicateConflictMessage('Duplicitní číslo ucpávky na tomto patře'),
+      isDuplicateConflictMessage(duplicateSealNumberMessage),
       isTrue,
     );
+    expect(isDuplicateConflictMessage('Duplicitní číslo ucpávky'), isTrue);
     expect(isDuplicateConflictMessage('Verze entity se neshoduje'), isFalse);
   });
 
@@ -102,5 +103,16 @@ void main() {
     expect(outbox.mutationId, isNot('mut-old'));
     final payload = outbox.payload;
     expect(payload, contains('"sealNumber":"100"'));
+  });
+
+  test('duplicateConflictSummary includes attempted number', () {
+    expect(
+      duplicateConflictSummary(attemptedNumber: '42'),
+      contains('42'),
+    );
+    expect(
+      duplicateConflictSummary(attemptedNumber: '42'),
+      contains('štítek'),
+    );
   });
 }

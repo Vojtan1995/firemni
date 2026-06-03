@@ -265,6 +265,15 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                             const SizedBox(height: 8),
                             Text('Ucpávka č. ${c.sealNumber}'),
                           ],
+                          if (isDuplicateConflictMessage(c.conflictMessage)) ...[
+                            const SizedBox(height: 8),
+                            Text(
+                              duplicateConflictSummary(
+                                attemptedNumber: c.sealNumber,
+                              ),
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
                           if (c.jobLabel != null) Text('Stavba: ${c.jobLabel}'),
                           if (c.floorName != null) Text('Patro: ${c.floorName}'),
                           const SizedBox(height: 8),
