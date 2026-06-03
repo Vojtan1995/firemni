@@ -34,15 +34,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (mustChangePin && !onChangePin) return '/change-pin';
         if (!mustChangePin && onChangePin) return '/';
         final role = authUser['role'] as String?;
-        final isManagement = role == 'management' || role == 'admin';
-        const managementOnly = [
-          '/reports',
+        final canReports = role == 'vedeni' || role == 'ucetni' || role == 'admin';
+        final canManage = role == 'vedeni' || role == 'admin';
+        const reportsOnly = ['/reports'];
+        const manageOnly = [
           '/jobs-admin',
           '/users-admin',
           '/logs',
-          '/management'
+          '/management',
         ];
-        if (!isManagement && managementOnly.contains(state.matchedLocation)) {
+        if (!canReports && reportsOnly.contains(state.matchedLocation)) {
+          return '/';
+        }
+        if (!canManage && manageOnly.contains(state.matchedLocation)) {
           return '/';
         }
         if (role != 'admin' && state.matchedLocation == '/trash') {

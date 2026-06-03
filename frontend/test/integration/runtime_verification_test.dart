@@ -112,7 +112,7 @@ void main() {
         'pin': '1234',
       });
       final mgmtToken = data['token'] as String;
-      expect((data['user'] as Map)['role'], 'management');
+      expect((data['user'] as Map)['role'], 'vedeni');
 
       final client = HttpClient();
       try {

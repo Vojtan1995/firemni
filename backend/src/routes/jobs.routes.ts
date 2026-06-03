@@ -13,7 +13,7 @@ router.use(authMiddleware);
 
 const projectNumberSchema = z.string().regex(/^\d{8}$/, 'Číslo stavby musí mít 8 číslic');
 
-router.get('/', requireRole(UserRole.management, UserRole.admin), async (req, res, next) => {
+router.get('/', requireRole(UserRole.vedeni, UserRole.admin), async (req, res, next) => {
   try {
     const archived = req.query.archived === 'true';
     const jobs = await prisma.job.findMany({

@@ -3,9 +3,9 @@ import { User, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 
-export const MANAGEMENT_ROLES: UserRole[] = [UserRole.management, UserRole.admin];
+export const MANAGEMENT_ROLES: UserRole[] = [UserRole.vedeni, UserRole.admin];
 
-const ASSIGNABLE_BY_MANAGEMENT: UserRole[] = [UserRole.worker, UserRole.management];
+const ASSIGNABLE_BY_VEDENI: UserRole[] = [UserRole.worker, UserRole.vedeni, UserRole.ucetni];
 
 export type PublicUser = {
   id: string;
@@ -33,7 +33,7 @@ export function toPublicUser(user: User): PublicUser {
 
 function assertRoleAssignable(actorRole: UserRole, role: UserRole) {
   if (actorRole === UserRole.admin) return;
-  if (role === UserRole.admin || !ASSIGNABLE_BY_MANAGEMENT.includes(role)) {
+  if (role === UserRole.admin || !ASSIGNABLE_BY_VEDENI.includes(role)) {
     throw forbidden('Vedení nemůže spravovat účty s rolí admin');
   }
 }

@@ -35,12 +35,31 @@ class HomeScreen extends ConsumerWidget {
           const Divider(),
           _MenuTile(icon: Icons.construction, title: 'Stavba', onTap: () => context.push('/job-number')),
           _MenuTile(icon: Icons.sync, title: 'Synchronizace', onTap: () => context.push('/sync')),
-          if (auth.isManagement) ...[
-            _MenuTile(icon: Icons.admin_panel_settings, title: 'Správa staveb', onTap: () => context.push('/jobs-admin')),
-            _MenuTile(icon: Icons.people, title: 'Uživatelé', onTap: () => context.push('/users-admin')),
-            _MenuTile(icon: Icons.assignment, title: 'Soupis prací / Export', onTap: () => context.push('/reports')),
-            _MenuTile(icon: Icons.history, title: 'Logy', onTap: () => context.push('/logs')),
+          if (auth.canAccessReports)
+            _MenuTile(
+              icon: Icons.assignment,
+              title: 'Soupis prací / Export',
+              onTap: () => context.push('/reports'),
+            ),
+          if (auth.canManageJobs) ...[
+            _MenuTile(
+              icon: Icons.admin_panel_settings,
+              title: 'Správa staveb',
+              onTap: () => context.push('/jobs-admin'),
+            ),
           ],
+          if (auth.canManageUsers)
+            _MenuTile(
+              icon: Icons.people,
+              title: 'Uživatelé',
+              onTap: () => context.push('/users-admin'),
+            ),
+          if (auth.canManageJobs)
+            _MenuTile(
+              icon: Icons.history,
+              title: 'Logy',
+              onTap: () => context.push('/logs'),
+            ),
           if (auth.isAdmin)
             _MenuTile(
               icon: Icons.delete_outline,

@@ -3,7 +3,7 @@ import { prisma } from '../lib/prisma.js';
 import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { logActivity, logChange } from './audit.service.js';
 
-const MANAGEMENT_ROLES: UserRole[] = [UserRole.management, UserRole.admin];
+const MANAGEMENT_ROLES: UserRole[] = [UserRole.vedeni, UserRole.admin];
 
 export function canWorkerEdit(status: SealStatus) {
   return status === SealStatus.draft;

@@ -5,7 +5,7 @@ import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireRole(UserRole.management, UserRole.admin));
+router.use(requireRole(UserRole.vedeni, UserRole.admin));
 
 router.get('/activity', async (req, res, next) => {
   try {

@@ -17,14 +17,25 @@ async function main() {
     },
   });
 
-  const management = await prisma.user.upsert({
+  const vedeni = await prisma.user.upsert({
     where: { username: 'vedeni' },
-    update: {},
+    update: { role: UserRole.vedeni },
     create: {
       username: 'vedeni',
       displayName: 'Vedení',
       pinHash,
-      role: UserRole.management,
+      role: UserRole.vedeni,
+    },
+  });
+
+  await prisma.user.upsert({
+    where: { username: 'ucetni' },
+    update: { role: UserRole.ucetni },
+    create: {
+      username: 'ucetni',
+      displayName: 'Účetní',
+      pinHash,
+      role: UserRole.ucetni,
     },
   });
 
@@ -63,7 +74,7 @@ async function main() {
       projectNumber: '12345678',
       name: 'Testovací stavba',
       address: 'Praha 1',
-      createdById: management.id,
+      createdById: vedeni.id,
     },
   });
 

@@ -9,7 +9,8 @@ datasource db {
 
 enum UserRole {
   worker
-  management
+  vedeni
+  ucetni
   admin
 }
 

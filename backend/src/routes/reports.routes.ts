@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma.js';
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireRole(UserRole.management, UserRole.admin));
+router.use(requireRole(UserRole.vedeni, UserRole.ucetni, UserRole.admin));
 
 function buildWhere(query: Record<string, unknown>) {
   const where: Record<string, unknown> = { deletedAt: null };
