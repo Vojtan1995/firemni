@@ -117,7 +117,17 @@ void main() {
         }
       }
 
-      expect(foundHome, isTrue, reason: 'Expected navigation to home after login');
+      if (!foundHome) {
+        final visibleTexts = tester
+            .widgetList<Text>(find.byType(Text))
+            .map((w) => w.data)
+            .whereType<String>()
+            .where((t) => t.isNotEmpty)
+            .toList();
+        fail(
+          'Expected navigation to home after login. Visible texts: $visibleTexts',
+        );
+      }
       expect(find.text('Stavba'), findsOneWidget);
       expect(find.text('Neplatné přihlašovací údaje'), findsNothing);
     });

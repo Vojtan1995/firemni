@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/auth_provider.dart';
@@ -21,12 +22,28 @@ import '../features/jobs/my_jobs_screen.dart';
 import '../features/messages/messages_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
 
+/// Keeps a single [GoRouter] instance; re-runs redirect when auth changes.
+class GoRouterRefresh extends ChangeNotifier {
+  GoRouterRefresh(Ref ref) {
+    ref.listen(authUserProvider, (_, __) => notifyListeners());
+    ref.listen(authTokenProvider, (_, __) => notifyListeners());
+  }
+}
+
+final _routerRefreshProvider = Provider<GoRouterRefresh>((ref) {
+  final refresh = GoRouterRefresh(ref);
+  ref.onDispose(refresh.dispose);
+  return refresh;
+});
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authUser = ref.watch(authUserProvider);
+  final refresh = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
+    refreshListenable: refresh,
     initialLocation: '/login',
     redirect: (context, state) {
+      final authUser = ref.read(authUserProvider);
       final loggedIn = authUser != null;
       final onLogin = state.matchedLocation == '/login';
       final onChangePin = state.matchedLocation == '/change-pin';
