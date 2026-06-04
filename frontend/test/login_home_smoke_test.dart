@@ -1,10 +1,7 @@
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ucpavky/core/config.dart';
 import 'package:ucpavky/core/router.dart';
 import 'package:ucpavky/core/theme.dart';
 import 'package:ucpavky/database/database.dart';
@@ -17,11 +14,33 @@ import 'package:ucpavky/features/sync/sync_service.dart';
 ///
 /// Strategie:
 /// - **UI smoke (bez sítě):** izolovaný [LoginScreen] – ověří pole a tlačítko.
-/// - **E2E smoke (síť):** celý router + reálné `POST /api/auth/login` jako
-///   [runtime_verification_test.dart] (backend na [AppConfig.apiBaseUrl]).
-/// - V testu se přepisuje jen [syncServiceProvider] (no-op sync), aby login
-///   nezávisel na sync pull/push; auth zůstává reálné API.
+/// - **Router smoke (bez sítě):** celý router + fake auth service, protože
+///   `testWidgets` blokuje reálný [HttpClient]. Reálné API ověřuje
+///   [runtime_verification_test.dart].
+/// - V testu se přepisuje [syncServiceProvider] (no-op sync), aby login
+///   nezávisel na sync pull/push.
 /// - [FlutterSecureStorage.setMockInitialValues] kvůli headless testu.
+class _FakeAuthService extends AuthService {
+  _FakeAuthService(this.ref) : super(ref);
+
+  final Ref ref;
+
+  @override
+  Future<void> login(String username, String pin) async {
+    if (username != 'worker1' || pin != '1234') {
+      throw Exception('Invalid credentials');
+    }
+    ref.read(authTokenProvider.notifier).state = 'test-token';
+    ref.read(authUserProvider.notifier).state = {
+      'id': 'user-worker1',
+      'username': 'worker1',
+      'displayName': 'Worker 1',
+      'role': 'worker',
+      'mustChangePin': false,
+    };
+  }
+}
+
 class _NoopSyncService extends SyncService {
   _NoopSyncService(super.ref);
 
@@ -30,21 +49,10 @@ class _NoopSyncService extends SyncService {
       SyncResult(success: true);
 }
 
-Future<bool> _backendReachable() async {
-  final client = HttpClient();
-  try {
-    final uri = Uri.parse('${AppConfig.apiBaseUrl}/health');
-    final req = await client.getUrl(uri);
-    final res = await req.close();
-    return res.statusCode == 200;
-  } catch (_) {
-    return false;
-  } finally {
-    client.close();
-  }
-}
-
-Widget _smokeApp({List<Override> extraOverrides = const []}) {
+Widget _smokeApp({
+  bool useFakeAuth = false,
+  List<Override> extraOverrides = const [],
+}) {
   return ProviderScope(
     overrides: [
       databaseProvider.overrideWith((ref) {
@@ -52,6 +60,8 @@ Widget _smokeApp({List<Override> extraOverrides = const []}) {
         ref.onDispose(db.close);
         return db;
       }),
+      if (useFakeAuth)
+        authServiceProvider.overrideWith((ref) => _FakeAuthService(ref)),
       syncServiceProvider.overrideWith((ref) => _NoopSyncService(ref)),
       ...extraOverrides,
     ],
@@ -88,15 +98,7 @@ void main() {
     });
 
     testWidgets('worker1 login navigates to home menu', (tester) async {
-      final backendUp = await _backendReachable();
-      expect(
-        backendUp,
-        isTrue,
-        reason:
-            'Backend must run at ${AppConfig.apiBaseUrl} (same as runtime_verification_test)',
-      );
-
-      await tester.pumpWidget(_smokeApp());
+      await tester.pumpWidget(_smokeApp(useFakeAuth: true));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('login_username')), findsOneWidget);
