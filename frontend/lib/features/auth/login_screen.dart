@@ -33,7 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         return;
       }
       await ref.read(syncServiceProvider).syncAll();
-      // Auth redirect sends logged-in users away from /login → /.
+      if (mounted) context.go('/');
     } catch (e) {
       setState(() => _error = 'Neplatné přihlašovací údaje');
     } finally {
