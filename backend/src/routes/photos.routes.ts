@@ -62,6 +62,17 @@ function resolveUploadFilePath(fileName: string) {
   return filePath;
 }
 
+async function convertUploadToWebp(inputPath: string, outputPath: string) {
+  const meta = await sharp(inputPath, { failOn: 'error' }).metadata();
+  if (!meta.format) {
+    throw badRequest('Soubor není platný obrázek (nelze rozpoznat formát)');
+  }
+  await sharp(inputPath, { failOn: 'error' })
+    .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
+    .webp({ quality: 85 })
+    .toFile(outputPath);
+}
+
 function photoUploadMiddleware(req: Request, res: Response, next: NextFunction) {
   uploadSinglePhoto(req, res, (err) => {
     if (!err) return next();
@@ -95,11 +106,9 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
     outputPath = resolveUploadFilePath(outputName);
 
     try {
-      await sharp(req.file.path)
-        .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
-        .webp({ quality: 85 })
-        .toFile(outputPath);
-    } catch {
+      await convertUploadToWebp(req.file.path, outputPath);
+    } catch (e) {
+      if (e instanceof AppError) throw e;
       throw badRequest('Soubor není platný obrázek (poškozený nebo nepodporovaný formát)');
     } finally {
       removeFileIfExists(req.file.path);

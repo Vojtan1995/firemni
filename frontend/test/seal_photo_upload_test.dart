@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ucpavky/database/database.dart';
+import 'package:ucpavky/features/seals/seal_detail_screen.dart';
 import 'package:ucpavky/features/seals/seal_photo_upload.dart';
 
 void main() {
@@ -11,6 +14,54 @@ void main() {
       expect(photoUploadMediaType('/a.jpg').mimeType, 'image/jpeg');
       expect(photoUploadMediaType('/a.jpeg').mimeType, 'image/jpeg');
       expect(photoUploadMediaType('/a.png').mimeType, 'image/png');
+    });
+  });
+
+  group('isRecognizedImageHeader', () {
+    test('recognizes jpeg and png magic bytes', () {
+      expect(isRecognizedImageHeader([0xFF, 0xD8, 0xFF, 0xE0]), isTrue);
+      expect(
+        isRecognizedImageHeader([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]),
+        isTrue,
+      );
+      expect(isRecognizedImageHeader([0x00, 0x01, 0x02]), isFalse);
+    });
+  });
+
+  group('validateLocalPhotoFile', () {
+    test('rejects missing file', () async {
+      expect(
+        () => validateLocalPhotoFile('/nonexistent/photo.webp'),
+        throwsStateError,
+      );
+    });
+
+    test('accepts small png file', () async {
+      final dir = Directory.systemTemp.createTempSync('photo_upload_test_');
+      addTearDown(() {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      });
+      final file = File('${dir.path}/tiny.png');
+      await file.writeAsBytes([
+        0x89,
+        0x50,
+        0x4E,
+        0x47,
+        0x0D,
+        0x0A,
+        0x1A,
+        0x0A,
+        0x00,
+        0x00,
+        0x00,
+        0x0D,
+      ]);
+
+      await validateLocalPhotoFile(file.path);
+      final prepared = await preparePhotoForUpload(file.path);
+      expect(prepared.isTemporary, isFalse);
+      expect(prepared.contentType.mimeType, 'image/png');
+      await prepared.dispose();
     });
   });
 
@@ -104,5 +155,31 @@ void main() {
 
       expect(await resolvePhotoUploadSealId(db, photo), 'server-seal-id');
     });
+  });
+
+  test('mergePhotosForDisplay prefers done for api photo with stale failed local',
+      () {
+    final merged = mergePhotosForDisplay(
+      [
+        {'id': 'server-1', 'filePath': 'a.webp'},
+      ],
+      [
+        LocalPhoto(
+          id: 'server-1',
+          sealId: 'seal-1',
+          localPath: '/data/failed.webp',
+          serverPath: null,
+          status: 'failed',
+          createdAt: DateTime.now(),
+          nextRetryAt: null,
+          retryCount: 1,
+          lastError: 'Soubor není platný obrázek',
+        ),
+      ],
+    );
+
+    expect(merged.length, 1);
+    expect(merged.first['status'], 'done');
+    expect(merged.first['lastError'], isNull);
   });
 }

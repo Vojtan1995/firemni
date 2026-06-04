@@ -385,32 +385,35 @@ class SyncService {
         force ? all : all.where((p) => photoIsDueForRetry(p, now)).toList();
 
     for (final photo in pending) {
+      final seal = await (_db.select(_db.localSeals)
+            ..where((s) => s.id.equals(photo.sealId)))
+          .getSingleOrNull();
+      if (isPhotoUploadBlockedBySeal(seal)) {
+        continue;
+      }
+
+      if (!File(photo.localPath).existsSync()) {
+        await markPhotoSyncFailure(
+          _db,
+          photo.id,
+          currentRetryCount: photo.retryCount,
+          error: 'Lokální soubor fotky nenalezen',
+          now: now,
+        );
+        continue;
+      }
+
+      PreparedPhotoUpload? prepared;
       try {
-        final seal = await (_db.select(_db.localSeals)
-              ..where((s) => s.id.equals(photo.sealId)))
-            .getSingleOrNull();
-        if (isPhotoUploadBlockedBySeal(seal)) {
-          continue;
-        }
-
-        if (!File(photo.localPath).existsSync()) {
-          await markPhotoSyncFailure(
-            _db,
-            photo.id,
-            currentRetryCount: photo.retryCount,
-            error: 'Lokální soubor fotky nenalezen',
-            now: now,
-          );
-          continue;
-        }
-
         final sealId = await resolvePhotoUploadSealId(_db, photo);
         if (sealId == null) {
           continue;
         }
 
+        final upload = await sealPhotoMultipartFile(photo.localPath);
+        prepared = upload.prepared;
         final formData = FormData.fromMap({
-          'photo': await sealPhotoMultipartFile(photo.localPath),
+          'photo': upload.multipart,
           'photoType': 'detail',
         });
         final res = await _dio.post('/api/seals/$sealId/photos',
@@ -430,6 +433,8 @@ class SyncService {
           error: photoSyncErrorMessage(e),
           now: now,
         );
+      } finally {
+        await prepared?.dispose();
       }
     }
   }

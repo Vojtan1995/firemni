@@ -14,6 +14,7 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
 import '../sync/sync_retry.dart';
+import '../sync/sync_service.dart';
 import 'seal_photo_storage.dart';
 import 'seal_photo_upload.dart';
 
@@ -30,14 +31,25 @@ Future<void> cacheSealPhotosFromApiList(
     final m = p as Map<String, dynamic>;
     final photoId = m['id'] as String;
     final filePath = m['filePath'] as String;
+    final existing = await (db.select(db.localPhotos)
+          ..where((row) => row.id.equals(photoId)))
+        .getSingleOrNull();
+    final keepLocalPath = existing != null &&
+        existing.localPath.isNotEmpty &&
+        File(existing.localPath).existsSync();
+
     await db.into(db.localPhotos).insertOnConflictUpdate(
           LocalPhotosCompanion.insert(
             id: photoId,
             sealId: sealId,
-            localPath: filePath,
+            localPath: keepLocalPath ? existing.localPath : '',
             serverPath: Value(filePath),
             status: const Value('done'),
+            lastError: const Value(null),
+            nextRetryAt: const Value(null),
+            retryCount: const Value(0),
             createdAt: DateTime.tryParse(m['createdAt'] as String? ?? '') ??
+                existing?.createdAt ??
                 DateTime.now(),
           ),
         );
@@ -147,8 +159,8 @@ List<Map<String, dynamic>> mergePhotosForDisplay(
     seen.add(id);
     final local = localById[id];
     if (local != null) {
-      m['status'] = local.status;
-      if (local.lastError != null) m['lastError'] = local.lastError;
+      // Photo returned by API is on the server — do not show stale failed overlay.
+      m['status'] = 'done';
       if (local.localPath.isNotEmpty && File(local.localPath).existsSync()) {
         m['localPath'] = local.localPath;
       }
@@ -310,9 +322,12 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           );
 
       if (online) {
+        PreparedPhotoUpload? prepared;
         try {
+          final upload = await sealPhotoMultipartFile(persistedPath);
+          prepared = upload.prepared;
           final formData = FormData.fromMap({
-            'photo': await sealPhotoMultipartFile(persistedPath),
+            'photo': upload.multipart,
             'photoType': 'detail',
           });
           final res = await ref
@@ -334,6 +349,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           return;
         } catch (_) {
           // fronta pro sync — pending řádek zůstává
+        } finally {
+          await prepared?.dispose();
         }
       }
 
@@ -358,6 +375,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     } finally {
       if (mounted) setState(() => _uploadingPhoto = false);
     }
+  }
+
+  Future<void> _retryPhotoUpload(String photoId) async {
+    final db = ref.read(databaseProvider);
+    await resetPhotoForRetry(db, photoId);
+    await ref.read(syncServiceProvider).syncAll(force: true);
+    if (!mounted) return;
+    await _load();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Opakovaný upload fotky dokončen')),
+    );
   }
 
   String _photoStatusLabel(String? status) {
@@ -468,6 +496,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Colors.red.shade700,
                     ),
+              ),
+            ),
+          if (status == 'failed')
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: _uploadingPhoto
+                    ? null
+                    : () => _retryPhotoUpload(m['id'] as String),
+                icon: const Icon(Icons.refresh, size: 18),
+                label: const Text('Zkusit znovu'),
               ),
             ),
         ],

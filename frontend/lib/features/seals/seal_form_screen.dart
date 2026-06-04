@@ -16,6 +16,7 @@ import 'seal_constants.dart';
 import 'seal_duplicate_local.dart';
 import 'seal_detail_screen.dart';
 import 'seal_form_loader.dart';
+import '../sync/sync_retry.dart';
 import 'seal_photo_storage.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
@@ -388,11 +389,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     await ref.read(syncServiceProvider).syncAll();
 
     if (!mounted) return;
+    final message = await _buildSaveDialogMessage(db);
     await showDialog(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Uloženo'),
-        content: const Text('Ucpávka byla uložena lokálně.'),
+        content: Text(message),
         actions: [
           TextButton(
             onPressed: () {
@@ -412,6 +414,20 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         ],
       ),
     );
+  }
+
+  Future<String> _buildSaveDialogMessage(AppDatabase db) async {
+    final unsent = await countUnsentPhotos(db);
+    if (unsent == 0) {
+      return 'Ucpávka byla uložena, fotky nahrány na server.';
+    }
+    final word = unsent == 1
+        ? 'fotka'
+        : unsent < 5
+            ? 'fotky'
+            : 'fotek';
+    return 'Ucpávka byla uložena, ale $unsent $word se nepodařilo nahrát. '
+        'Otevřete Synchronizaci a zkuste znovu.';
   }
 
   Future<void> _saveEdit(
@@ -462,8 +478,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     await ref.read(syncServiceProvider).syncAll();
 
     if (!mounted) return;
+    final unsent = await countUnsentPhotos(db);
+    final message = unsent == 0
+        ? 'Ucpávka uložena, fotky nahrány na server.'
+        : 'Ucpávka uložena, ale $unsent fotek se nepodařilo nahrát. Synchronizujte znovu.';
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ucpávka uložena')),
+      SnackBar(content: Text(message)),
     );
     context.go('/seal/$sealId');
   }

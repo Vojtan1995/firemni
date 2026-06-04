@@ -11,6 +11,10 @@ const tinyPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
 );
+const tinyWebp = Buffer.from(
+  'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=',
+  'base64',
+);
 
 function sealBody(jobId, floorId, sealNumber) {
   return {
@@ -133,6 +137,20 @@ describe('Photos upload integration', () => {
 
     expect(res.status).toBe(201);
     expect(res.body.mimeType).toBe('image/webp');
+  });
+
+  it('accepts real webp upload and stores webp output', async () => {
+    const res = await request(app)
+      .post(`/api/seals/${sealId}/photos`)
+      .set('Authorization', `Bearer ${workerToken}`)
+      .attach('photo', tinyWebp, {
+        filename: 'photo.webp',
+        contentType: 'image/webp',
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.mimeType).toBe('image/webp');
+    expect(res.body.filePath).toMatch(/\.webp$/);
   });
 
   it('returns clear error when photo field is missing', async () => {
