@@ -50,7 +50,12 @@ const upload = multer({
 const uploadSinglePhoto = upload.single('photo');
 
 function removeFileIfExists(filePath: string | undefined) {
-  if (filePath && fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  if (!filePath || !fs.existsSync(filePath)) return;
+  try {
+    fs.unlinkSync(filePath);
+  } catch {
+    // Ignore EBUSY on Windows when sharp/multer still holds the handle.
+  }
 }
 
 function resolveUploadFilePath(fileName: string) {
@@ -102,7 +107,7 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
       if (!seal) throw notFound('Ucpávka nenalezena');
     }
 
-    const outputName = `${path.parse(req.file.filename).name}.webp`;
+    const outputName = `${path.parse(req.file.filename).name}-${Date.now()}.webp`;
     outputPath = resolveUploadFilePath(outputName);
 
     try {

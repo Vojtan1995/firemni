@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import sharp from 'sharp';
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
@@ -11,10 +12,7 @@ const tinyPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
 );
-const tinyWebp = Buffer.from(
-  'UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAQAcJaQAA3AA/vuUAAA=',
-  'base64',
-);
+let tinyWebp;
 
 function sealBody(jobId, floorId, sealNumber) {
   return {
@@ -53,6 +51,7 @@ describe('Photos upload integration', () => {
   }
 
   beforeAll(async () => {
+    tinyWebp = await sharp(tinyPng).webp({ quality: 85 }).toBuffer();
     workerToken = await login('worker1');
     managementToken = await login('vedeni');
 
