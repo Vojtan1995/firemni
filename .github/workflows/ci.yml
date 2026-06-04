@@ -125,7 +125,6 @@ jobs:
         env:
           DATABASE_URL: ${{ env.TEST_DATABASE_URL }}
           JWT_SECRET: ci-jwt-secret-not-for-production
-          NODE_ENV: production
           PORT: "3000"
           CORS_ORIGIN: http://localhost:3000
           PUBLIC_UPLOADS: "false"
@@ -136,7 +135,7 @@ jobs:
           npx prisma db seed
           npm run build
           mkdir -p uploads
-          npm start &
+          NODE_ENV=production npm start &
           for i in $(seq 1 30); do
             if curl -sf "${{ env.API_BASE_URL }}/health" > /dev/null; then
               echo "Backend ready"
