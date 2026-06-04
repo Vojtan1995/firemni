@@ -383,6 +383,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     await ref.read(syncServiceProvider).syncAll(force: true);
     if (!mounted) return;
     await _load();
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Opakovaný upload fotky dokončen')),
     );

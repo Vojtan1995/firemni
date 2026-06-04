@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:ucpavky/database/database.dart';
 
 const _apiBase = String.fromEnvironment('API_BASE_URL', defaultValue: 'http://localhost:3000');
@@ -59,8 +58,6 @@ Future<List<dynamic>> _jsonListRequest(String path, {Map<String, String>? header
 }
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-
   group('Frontend runtime verification (real backend)', () {
     late String token;
     late String jobId;

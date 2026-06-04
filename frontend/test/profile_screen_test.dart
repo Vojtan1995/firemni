@@ -19,7 +19,7 @@ void main() {
             },
           ),
         ],
-        child: MaterialApp(home: const ProfileScreen()),
+        child: const MaterialApp(home: ProfileScreen()),
       ),
     );
     await tester.pumpAndSettle();

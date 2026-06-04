@@ -243,7 +243,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<String?>(
-                  value: _filterJobId,
+                  key: ValueKey('filter-job-$_filterJobId'),
+                  initialValue: _filterJobId,
                   decoration: const InputDecoration(
                     labelText: 'Stavba',
                     border: OutlineInputBorder(),
@@ -267,7 +268,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterFloorId,
+                  key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
+                  initialValue: _filterFloorId,
                   decoration: const InputDecoration(
                     labelText: 'Patro',
                     border: OutlineInputBorder(),
@@ -290,7 +292,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterWorkerId,
+                  key: ValueKey('filter-worker-$_filterWorkerId'),
+                  initialValue: _filterWorkerId,
                   decoration: const InputDecoration(
                     labelText: 'Pracovník',
                     border: OutlineInputBorder(),
@@ -311,7 +314,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterStatus,
+                  key: ValueKey('filter-status-$_filterStatus'),
+                  initialValue: _filterStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
                     border: OutlineInputBorder(),
@@ -328,7 +332,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterSystem,
+                  key: ValueKey('filter-system-$_filterSystem'),
+                  initialValue: _filterSystem,
                   decoration: const InputDecoration(
                     labelText: 'Systém',
                     border: OutlineInputBorder(),
@@ -349,7 +354,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
-                  value: _filterEntryType,
+                  key: ValueKey('filter-entry-$_filterEntryType'),
+                  initialValue: _filterEntryType,
                   decoration: const InputDecoration(
                     labelText: 'Typ prostupu',
                     border: OutlineInputBorder(),

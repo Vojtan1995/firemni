@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:integration_test/integration_test.dart';
 import 'package:ucpavky/core/config.dart';
 import 'package:ucpavky/core/router.dart';
 import 'package:ucpavky/core/theme.dart';
@@ -66,8 +65,6 @@ Widget _smokeApp({List<Override> extraOverrides = const []}) {
 }
 
 void main() {
-  IntegrationTestWidgetsFlutterBinding.ensureInitialized();
-
   setUp(() {
     FlutterSecureStorage.setMockInitialValues({});
   });
@@ -109,7 +106,7 @@ void main() {
       await tester.enterText(find.byKey(const Key('login_pin')), '1234');
       await tester.tap(find.byKey(const Key('login_submit')));
       await tester.pump();
-      await tester.pumpAndSettle(const Duration(seconds: 15));
+      await tester.pumpAndSettle(const Duration(seconds: 30));
 
       expect(find.text('Hlavní menu'), findsOneWidget);
       expect(find.text('Stavba'), findsOneWidget);

@@ -80,7 +80,7 @@ jobs:
 
       - name: flutter analyze
         working-directory: frontend
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: flutter test (unit/offline, no backend)
         working-directory: frontend

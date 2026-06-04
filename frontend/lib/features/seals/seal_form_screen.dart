@@ -390,6 +390,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 
     if (!mounted) return;
     final message = await _buildSaveDialogMessage(db);
+    if (!mounted) return;
     await showDialog(
       context: context,
       builder: (c) => AlertDialog(
@@ -482,6 +483,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     final message = unsent == 0
         ? 'Ucpávka uložena, fotky nahrány na server.'
         : 'Ucpávka uložena, ale $unsent fotek se nepodařilo nahrát. Synchronizujte znovu.';
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
