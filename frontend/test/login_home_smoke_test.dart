@@ -106,9 +106,18 @@ void main() {
       await tester.enterText(find.byKey(const Key('login_pin')), '1234');
       await tester.tap(find.byKey(const Key('login_submit')));
       await tester.pump();
-      await tester.pumpAndSettle(const Duration(seconds: 30));
 
-      expect(find.text('Hlavní menu'), findsOneWidget);
+      // Do not pumpAndSettle while login shows CircularProgressIndicator (infinite animation).
+      var foundHome = false;
+      for (var i = 0; i < 100; i++) {
+        await tester.pump(const Duration(milliseconds: 300));
+        if (find.text('Hlavní menu').evaluate().isNotEmpty) {
+          foundHome = true;
+          break;
+        }
+      }
+
+      expect(foundHome, isTrue, reason: 'Expected navigation to home after login');
       expect(find.text('Stavba'), findsOneWidget);
       expect(find.text('Neplatné přihlašovací údaje'), findsNothing);
     });
@@ -132,7 +141,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('change_pin_submit')), findsOneWidget);
-      expect(find.text('HlavnĂ­ menu'), findsNothing);
+      expect(find.text('Hlavní menu'), findsNothing);
     });
   });
 }
