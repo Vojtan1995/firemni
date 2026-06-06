@@ -1,0 +1,52 @@
+{
+  "EL. V.": [
+    { "name": "≤ Ø 20", "price": 130 },
+    { "name": "Ø 30", "price": 140 },
+    { "name": "Ø 40", "price": 150 },
+    { "name": "Ø 50", "price": 230 },
+    { "name": "100/100", "price": 350 },
+    { "name": "150/100", "price": 400 },
+    { "name": "200/100", "price": 470 },
+    { "name": "300/100", "price": 590 },
+    { "name": "300/200", "price": 680 },
+    { "name": "500/300", "price": 860 }
+  ],
+  "OC": [
+    { "name": "≤ Ø 100", "price": 140 },
+    { "name": "Ø 110-150", "price": 160 },
+    { "name": "Ø 160-200", "price": 180 },
+    { "name": "Ø 210-250", "price": 210 }
+  ],
+  "OC HOŘ": [
+    { "name": "≤ Ø 40", "price": 140 },
+    { "name": "Ø 50", "price": 180 },
+    { "name": "Ø 75", "price": 210 },
+    { "name": "Ø 90", "price": 250 },
+    { "name": "Ø 100", "price": 290 },
+    { "name": "Ø 125", "price": 310 },
+    { "name": "Ø 150", "price": 330 }
+  ],
+  "VZT": [
+    { "name": "≤ Ø 100", "price": 115 },
+    { "name": "Ø 125", "price": 140 },
+    { "name": "Ø 160", "price": 180 },
+    { "name": "Ø 200", "price": 225 },
+    { "name": "Ø 220", "price": 250 },
+    { "name": "Ø 250", "price": 285 },
+    { "name": "Ø 300", "price": 340 },
+    { "name": "mb", "price": 180, "unit": "mb" }
+  ],
+  "PROSTUPY": [
+    { "name": "Dilatační", "price": 990, "unit": "m2" },
+    { "name": "Plocha", "price": 980, "unit": "m2" }
+  ],
+  "PVC": [
+    { "name": "≤ Ø 40", "price": 130 },
+    { "name": "Ø 50", "price": 190 },
+    { "name": "Ø 75", "price": 250 },
+    { "name": "Ø 90", "price": 290 },
+    { "name": "Ø 110", "price": 340 },
+    { "name": "Ø 125", "price": 540 },
+    { "name": "Ø 160", "price": 630 }
+  ]
+}

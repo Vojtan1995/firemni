@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/design_tokens.dart';
+import '../../core/permissions.dart';
+import '../../database/database_provider.dart';
+import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../jobs/jobs_cache_service.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -16,51 +21,90 @@ class HomeScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Hlavní menu'),
         actions: [
-          IconButton(icon: const Icon(Icons.logout), onPressed: () async {
-            await auth.logout();
-            if (context.mounted) context.go('/login');
-          }),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await auth.logout();
+              if (context.mounted) context.go('/login');
+            },
+          ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           if (auth.isSuperAdmin)
-            Card(
-              color: Theme.of(context).colorScheme.errorContainer,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  'Super Admin — nouzový účet. Běžnou správu provádí role Vedení.',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
+            AppCard(
+              color: AppColors.warning.withValues(alpha: 0.1),
+              borderColor: AppColors.warning.withValues(alpha: 0.4),
+              showChevron: false,
+              child: Text(
+                'Super Admin — nouzový účet. Běžnou správu provádí role Vedení.',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: AppColors.warning,
+                    ),
               ),
             ),
-          ListTile(
-            leading: const CircleAvatar(child: Icon(Icons.person)),
-            title: Text(user['displayName'] as String? ?? ''),
-            subtitle: Text(role),
-            trailing: const Icon(Icons.chevron_right),
+          AppCard(
+            leading: AppIconBox(
+              icon: Icons.person,
+              backgroundColor: AppColors.bgSecondary,
+              color: AppColors.textPrimary,
+            ),
+            title: user['displayName'] as String? ?? '',
+            subtitle: AppPermissions.roleLabel(role),
             onTap: () => context.push('/profile'),
           ),
-          const Divider(),
-          _MenuTile(icon: Icons.construction, title: 'Stavba', onTap: () => context.push('/job-number')),
-          _MenuTile(icon: Icons.work, title: 'Moje zakázky', onTap: () => context.push('/my-jobs')),
-          _MenuTile(icon: Icons.mail_outline, title: 'Zprávy', onTap: () => context.push('/messages')),
-          _MenuTile(icon: Icons.sync, title: 'Synchronizace', onTap: () => context.push('/sync')),
-          if (auth.canAccessReports)
+          const SizedBox(height: AppSpacing.sm),
+          const _LastOpenedJobCard(),
+          _MenuTile(
+            icon: Icons.construction,
+            title: 'Stavba',
+            onTap: () => context.push('/job-number'),
+          ),
+          _MenuTile(
+            icon: Icons.work,
+            title: 'Moje zakázky',
+            onTap: () => context.push('/my-jobs'),
+          ),
+          _MenuTile(
+            icon: Icons.mail_outline,
+            title: 'Zprávy',
+            onTap: () => context.push('/messages'),
+          ),
+          _MenuTile(
+            icon: Icons.sync,
+            title: 'Synchronizace',
+            onTap: () => context.push('/sync'),
+          ),
+          if (auth.canAccessReports || auth.canManageWorksheets)
             _MenuTile(
-              icon: Icons.assignment,
-              title: 'Soupis prací / Export',
-              onTap: () => context.push('/reports'),
+              icon: Icons.description,
+              title: auth.isWorker ? 'Moje soupisy' : 'Soupisy práce',
+              onTap: () => context.push('/soupisy'),
             ),
-          if (auth.canManageJobs) ...[
+          if (auth.canViewStats)
+            _MenuTile(
+              icon: Icons.analytics_outlined,
+              title: auth.isWorker
+                  ? 'Moje statistiky'
+                  : auth.isUcetni
+                      ? 'Statistiky fakturace'
+                      : 'Dashboard',
+              onTap: () => context.push('/stats'),
+            ),
+          if (auth.canViewPriceList)
+            _MenuTile(
+              icon: Icons.price_check,
+              title: 'Ceník',
+              onTap: () => context.push('/price-list'),
+            ),
+          if (auth.canManageJobs)
             _MenuTile(
               icon: Icons.admin_panel_settings,
               title: 'Správa staveb',
               onTap: () => context.push('/jobs-admin'),
             ),
-          ],
           if (auth.canManageUsers)
             _MenuTile(
               icon: Icons.people,
@@ -79,30 +123,82 @@ class HomeScreen extends ConsumerWidget {
               title: 'Koš / Smazané položky',
               onTap: () => context.push('/trash'),
             ),
-          _MenuTile(icon: Icons.help_outline, title: 'Nápověda', onTap: () {
-            showAboutDialog(context: context, applicationName: 'Ucpávky', applicationVersion: '1.0.0');
-          }),
+          _MenuTile(
+            icon: Icons.help_outline,
+            title: 'Nápověda',
+            onTap: () {
+              showAboutDialog(
+                context: context,
+                applicationName: 'Ucpávky',
+                applicationVersion: '1.0.0',
+              );
+            },
+          ),
         ],
       ),
     );
   }
 }
 
+class _LastOpenedJobCard extends ConsumerStatefulWidget {
+  const _LastOpenedJobCard();
+
+  @override
+  ConsumerState<_LastOpenedJobCard> createState() => _LastOpenedJobCardState();
+}
+
+class _LastOpenedJobCardState extends ConsumerState<_LastOpenedJobCard> {
+  String? _jobId;
+  String? _jobName;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    final last = await JobsCacheService(ref.read(databaseProvider))
+        .loadLastOpened(userId);
+    if (!mounted) return;
+    setState(() {
+      _jobId = last.jobId;
+      _jobName = last.jobName;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_jobId == null) return const SizedBox.shrink();
+    return AppCard(
+      borderColor: AppColors.accent.withValues(alpha: 0.4),
+      leading: const AppIconBox(icon: Icons.history),
+      title: 'Pokračovat na stavbu',
+      subtitle: _jobName ?? _jobId!,
+      onTap: () => context.push('/floors/$_jobId?jobId=$_jobId'),
+    );
+  }
+}
+
 class _MenuTile extends StatelessWidget {
-  const _MenuTile({required this.icon, required this.title, required this.onTap});
+  const _MenuTile({
+    required this.icon,
+    required this.title,
+    required this.onTap,
+  });
+
   final IconData icon;
   final String title;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: ListTile(
-        leading: Icon(icon, size: 32),
-        title: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
+    return AppCard(
+      leading: AppIconBox(icon: icon),
+      title: title,
+      onTap: onTap,
     );
   }
 }

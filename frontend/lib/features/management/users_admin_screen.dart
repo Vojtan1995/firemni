@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 
 String roleLabel(String role) {
@@ -11,7 +13,7 @@ String roleLabel(String role) {
     case 'vedeni':
       return 'Vedení';
     case 'ucetni':
-      return 'Účetní';
+      return 'Administrativa';
     case 'admin':
       return 'Super Admin';
     default:
@@ -270,21 +272,32 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
         child: const Icon(Icons.person_add),
       ),
       body: _users.isEmpty
-          ? const Center(child: Text('Žádní uživatelé'))
+          ? const EmptyState(
+              message: 'Žádní uživatelé',
+              icon: Icons.people_outline,
+            )
           : ListView.builder(
+              padding: const EdgeInsets.all(AppSpacing.lg),
               itemCount: _users.length,
               itemBuilder: (_, i) {
                 final u = _users[i];
                 final active = u['isActive'] != false;
                 final role = u['role'] as String? ?? '';
-                return ListTile(
-                  leading: CircleAvatar(
-                    child: Icon(active ? Icons.person : Icons.person_off),
+                return AppCard(
+                  leading: AppIconBox(
+                    icon: active ? Icons.person : Icons.person_off,
+                    backgroundColor: AppColors.bgSecondary,
+                    color: active ? AppColors.textPrimary : AppColors.textMuted,
                   ),
-                  title: Text(u['displayName'] as String? ?? ''),
-                  subtitle: Text('${u['username']} · ${roleLabel(role)}'),
-                  trailing:
-                      active ? null : const Chip(label: Text('neaktivní')),
+                  title: u['displayName'] as String? ?? '',
+                  subtitle: '${u['username']} · ${roleLabel(role)}',
+                  trailing: active
+                      ? null
+                      : const StatusBadge(
+                          status: 'inactive',
+                          label: 'neaktivní',
+                          compact: true,
+                        ),
                   onTap: () => _editUser(u),
                 );
               },

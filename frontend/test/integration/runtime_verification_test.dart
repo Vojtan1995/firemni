@@ -160,7 +160,7 @@ void main() {
       }
     });
 
-    test('worker cannot access reports PDF export', () async {
+    test('worker can access own reports PDF export', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',
         'pin': '1234',
@@ -173,15 +173,18 @@ void main() {
         final req = await client.getUrl(uri);
         req.headers.set('Authorization', 'Bearer $workerToken');
         final res = await req.close();
-        final text = await res.transform(utf8.decoder).join();
-        expect(res.statusCode, 403);
-        expect(text, contains('FORBIDDEN'));
+        final bytes = await res.fold<List<int>>(
+          <int>[],
+          (prev, chunk) => prev..addAll(chunk),
+        );
+        expect(res.statusCode, 200);
+        expect(bytes.length, greaterThan(100));
       } finally {
         client.close();
       }
     });
 
-    test('worker cannot access reports CSV export', () async {
+    test('worker can access own reports CSV export', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',
         'pin': '1234',
@@ -195,8 +198,8 @@ void main() {
         req.headers.set('Authorization', 'Bearer $workerToken');
         final res = await req.close();
         final text = await res.transform(utf8.decoder).join();
-        expect(res.statusCode, 403);
-        expect(text, contains('FORBIDDEN'));
+        expect(res.statusCode, 200);
+        expect(text, isNotEmpty);
       } finally {
         client.close();
       }

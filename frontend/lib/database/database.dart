@@ -12,10 +12,21 @@ class LocalJobs extends Table {
   TextColumn get name => text()();
   TextColumn get address => text().nullable()();
   BoolColumn get isArchived => boolean().withDefault(const Constant(false))();
+  TextColumn get status => text().nullable()();
+  DateTimeColumn get lastSyncedAt => dateTime().nullable()();
   DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {id};
+}
+
+class LocalMyJobAssignments extends Table {
+  TextColumn get userId => text()();
+  TextColumn get jobId => text()();
+  TextColumn get roleOnJob => text().withDefault(const Constant('worker'))();
+  DateTimeColumn get lastActivityAt => dateTime()();
+  @override
+  Set<Column> get primaryKey => {userId, jobId};
 }
 
 class LocalFloors extends Table {
@@ -92,13 +103,22 @@ class SyncCursor extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+class LocalUserPrefs extends Table {
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 @DriftDatabase(tables: [
   LocalJobs,
   LocalFloors,
+  LocalMyJobAssignments,
   LocalSeals,
   LocalOutbox,
   LocalPhotos,
-  SyncCursor
+  SyncCursor,
+  LocalUserPrefs,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
@@ -107,7 +127,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -133,6 +153,12 @@ class AppDatabase extends _$AppDatabase {
           }
           if (from < 6) {
             await migrator.addColumn(localSeals, localSeals.internalNote);
+          }
+          if (from < 7) {
+            await migrator.addColumn(localJobs, localJobs.status);
+            await migrator.addColumn(localJobs, localJobs.lastSyncedAt);
+            await migrator.createTable(localMyJobAssignments);
+            await migrator.createTable(localUserPrefs);
           }
         },
       );

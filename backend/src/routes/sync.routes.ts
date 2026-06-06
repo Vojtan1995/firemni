@@ -11,6 +11,8 @@ import { checkDuplicateSealNumber,
   statusAfterWorkerEdit,
 } from '../services/seal.service.js';
 import { touchJobParticipant } from '../services/job-participant.service.js';
+import { priceSealEntries } from '../services/pricing.service.js';
+import { entryCreateData, sealEntrySchema } from '../lib/seal-schemas.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -28,14 +30,6 @@ const pushSchema = z.object({
   mutations: z.array(mutationSchema),
 });
 
-const sealEntryPayloadSchema = z.object({
-  entryType: z.string().min(1),
-  dimension: z.string().min(1),
-  quantity: z.number().int().positive(),
-  insulation: z.string().min(1),
-  materials: z.array(z.string().min(1)).min(1),
-});
-
 const sealCreatePayloadSchema = z.object({
   id: z.string().uuid().optional(),
   jobId: z.string().uuid(),
@@ -47,7 +41,9 @@ const sealCreatePayloadSchema = z.object({
   fireRating: z.string().min(1),
   note: z.string().nullable().optional(),
   internalNote: z.string().nullable().optional(),
-  entries: z.array(sealEntryPayloadSchema).min(1),
+  openingLengthMm: z.number().int().positive().optional(),
+  openingWidthMm: z.number().int().positive().optional(),
+  entries: z.array(sealEntrySchema).min(1),
 });
 
 router.post('/push', async (req, res, next) => {
@@ -156,27 +152,18 @@ async function processMutation(
             fireRating: createPayload.fireRating,
             note: createPayload.note ?? null,
             internalNote: createPayload.internalNote ?? null,
+            openingLengthMm: createPayload.openingLengthMm ?? null,
+            openingWidthMm: createPayload.openingWidthMm ?? null,
             createdById: userId,
             updatedById: userId,
             entries: {
-              create: createPayload.entries.map((entry, i) => ({
-                entryType: entry.entryType,
-                dimension: entry.dimension,
-                quantity: entry.quantity,
-                insulation: entry.insulation,
-                sortOrder: i,
-                materials: {
-                  create: entry.materials.map((material, j) => ({
-                    material,
-                    sortOrder: j,
-                  })),
-                },
-              })),
+              create: createPayload.entries.map((entry, i) => entryCreateData(entry, i)),
             },
           },
         }),
       );
       await touchJobParticipant(createPayload.jobId, userId, 'worker');
+      await priceSealEntries(seal.id, userId);
       return { entityId: seal.id };
     }
 
@@ -196,7 +183,7 @@ async function processMutation(
       if (p.sealNumber && p.sealNumber !== seal.sealNumber) {
         await checkDuplicateSealNumber(seal.jobId, seal.floorId, p.sealNumber as string, seal.id);
       }
-      const entries = p.entries as z.infer<typeof sealEntryPayloadSchema>[] | undefined;
+      const entries = p.entries as z.infer<typeof sealEntrySchema>[] | undefined;
       if (entries?.length) {
         await prisma.$transaction(async (tx) => {
           await tx.sealEntry.updateMany({
@@ -204,7 +191,7 @@ async function processMutation(
             data: { deletedAt: new Date() },
           });
           for (let i = 0; i < entries.length; i++) {
-            const e = sealEntryPayloadSchema.parse(entries[i]);
+            const e = sealEntrySchema.parse(entries[i]);
             const entry = await tx.sealEntry.create({
               data: {
                 sealId,
@@ -212,6 +199,8 @@ async function processMutation(
                 dimension: e.dimension,
                 quantity: e.quantity,
                 insulation: e.insulation,
+                itemLengthMm: e.itemLengthMm ?? null,
+                itemWidthMm: e.itemWidthMm ?? null,
                 sortOrder: i,
               },
             });
@@ -224,6 +213,7 @@ async function processMutation(
             });
           }
         });
+        await priceSealEntries(sealId, userId);
       }
       const nextStatus = statusAfterWorkerEdit(seal.status, userRole);
       await prisma.seal.update({
@@ -236,6 +226,10 @@ async function processMutation(
           fireRating: (p.fireRating as string) ?? seal.fireRating,
           note: (p.note as string | undefined) ?? seal.note,
           internalNote: (p.internalNote as string | undefined) ?? seal.internalNote,
+          openingLengthMm:
+            (p.openingLengthMm as number | undefined) ?? seal.openingLengthMm,
+          openingWidthMm:
+            (p.openingWidthMm as number | undefined) ?? seal.openingWidthMm,
           status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,

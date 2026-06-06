@@ -20,6 +20,14 @@ enum SealStatus {
   invoiced
 }
 
+enum WorkSheetStatus {
+  draft
+  submitted
+  reviewed
+  ready_for_invoice
+  invoiced
+}
+
 model User {
   id           String    @id @default(uuid())
   username     String    @unique
@@ -42,6 +50,8 @@ model User {
   jobParticipants JobParticipant[]
   messagesSent    PrivateMessage[] @relation("MessageSender")
   messagesReceived PrivateMessage[] @relation("MessageRecipient")
+  worksheetsCreated WorkSheet[] @relation("WorkSheetCreator")
+  worksheetAssignments WorkSheetWorker[]
 
   @@map("users")
 }
@@ -76,6 +86,7 @@ model Job {
   floors    JobFloor[]
   seals     Seal[]
   participants JobParticipant[]
+  worksheets WorkSheet[]
 
   @@map("jobs")
 }
@@ -108,6 +119,8 @@ model Seal {
   fireRating    String     @map("fire_rating")
   note          String?
   internalNote  String?    @map("internal_note")
+  openingLengthMm Int?   @map("opening_length_mm")
+  openingWidthMm  Int?   @map("opening_width_mm")
   status        SealStatus @default(draft)
   version       Int        @default(1)
   createdById   String     @map("created_by_id")
@@ -124,6 +137,7 @@ model Seal {
   updatedBy User?        @relation("SealUpdater", fields: [updatedById], references: [id])
   entries   SealEntry[]
   photos    SealPhoto[]
+  worksheetItems WorkSheetItem[]
 
   @@index([floorId])
   @@index([jobId, floorId, sealNumber])
@@ -137,15 +151,32 @@ model SealEntry {
   sealId     String    @map("seal_id")
   entryType  String    @map("entry_type")
   dimension  String
-  quantity   Int       @default(1)
+  quantity   Decimal   @default(1) @db.Decimal(12, 3)
   insulation String
   sortOrder  Int       @default(0) @map("sort_order")
+  itemLengthMm           Int?      @map("item_length_mm")
+  itemWidthMm            Int?      @map("item_width_mm")
+  calculatedAreaM2       Decimal?  @map("calculated_area_m2") @db.Decimal(12, 6)
+  calculatedLinearMeters Decimal?  @map("calculated_linear_meters") @db.Decimal(12, 6)
+  calculatedNetAreaM2    Decimal?  @map("calculated_net_area_m2") @db.Decimal(12, 6)
+  unit                   String?
+  unitPrice            Decimal?  @map("unit_price") @db.Decimal(10, 2)
+  totalPrice           Decimal?  @map("total_price") @db.Decimal(10, 2)
+  currency             String?   @default("CZK")
+  priceListVersion     String?   @map("price_list_version")
+  priceListItemId      String?   @map("price_list_item_id")
+  priceMode            String?   @map("price_mode")
+  pricedAt             DateTime? @map("priced_at")
+  pricedByUserId       String?   @map("priced_by_user_id")
+  priceSource          String?   @map("price_source")
   createdAt  DateTime  @default(now()) @map("created_at")
   updatedAt  DateTime  @updatedAt @map("updated_at")
   deletedAt  DateTime? @map("deleted_at")
 
-  seal      Seal                 @relation(fields: [sealId], references: [id], onDelete: Cascade)
-  materials SealEntryMaterial[]
+  seal           Seal                 @relation(fields: [sealId], references: [id], onDelete: Cascade)
+  materials      SealEntryMaterial[]
+  priceListItem  PriceListItem?       @relation(fields: [priceListItemId], references: [id])
+  worksheetItems WorkSheetItem[]
 
   @@map("seal_entries")
 }
@@ -215,12 +246,77 @@ model ChangeLog {
   fieldName  String?  @map("field_name")
   oldValue   String?  @map("old_value")
   newValue   String?  @map("new_value")
+  metadata   Json?
   createdAt  DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id])
 
   @@index([entityType, entityId])
   @@map("change_log")
+}
+
+model WorkSheet {
+  id                 String           @id @default(uuid())
+  jobId              String           @map("job_id")
+  status             WorkSheetStatus  @default(draft)
+  periodFrom         DateTime?        @map("period_from")
+  periodTo           DateTime?        @map("period_to")
+  note               String?
+  internalNote       String?          @map("internal_note")
+  createdById        String           @map("created_by_id")
+  submittedAt        DateTime?        @map("submitted_at")
+  reviewedAt         DateTime?        @map("reviewed_at")
+  readyForInvoiceAt  DateTime?        @map("ready_for_invoice_at")
+  invoicedAt         DateTime?        @map("invoiced_at")
+  createdAt          DateTime         @default(now()) @map("created_at")
+  updatedAt          DateTime         @updatedAt @map("updated_at")
+
+  job      Job               @relation(fields: [jobId], references: [id])
+  createdBy User             @relation("WorkSheetCreator", fields: [createdById], references: [id])
+  workers  WorkSheetWorker[]
+  items    WorkSheetItem[]
+
+  @@index([jobId])
+  @@index([status])
+  @@map("worksheets")
+}
+
+model WorkSheetWorker {
+  id          String   @id @default(uuid())
+  worksheetId String   @map("worksheet_id")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  worksheet WorkSheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@unique([worksheetId, userId])
+  @@map("worksheet_workers")
+}
+
+model WorkSheetItem {
+  id           String   @id @default(uuid())
+  worksheetId  String   @map("worksheet_id")
+  sealId       String   @map("seal_id")
+  sealEntryId  String   @map("seal_entry_id")
+  floorId      String   @map("floor_id")
+  workerId     String   @map("worker_id")
+  sealNumber   String   @map("seal_number")
+  entryType    String   @map("entry_type")
+  dimension    String
+  quantity     Decimal  @default(1) @db.Decimal(12, 3)
+  unitPrice    Decimal? @map("unit_price") @db.Decimal(10, 2)
+  totalPrice   Decimal? @map("total_price") @db.Decimal(10, 2)
+  sortOrder    Int      @default(0) @map("sort_order")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  worksheet WorkSheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
+  seal      Seal      @relation(fields: [sealId], references: [id])
+  sealEntry SealEntry @relation(fields: [sealEntryId], references: [id])
+
+  @@unique([worksheetId, sealEntryId])
+  @@index([worksheetId])
+  @@map("worksheet_items")
 }
 
 model LoginLog {
@@ -279,4 +375,35 @@ model PrivateMessage {
 
   @@index([recipientId, readAt])
   @@map("private_messages")
+}
+
+model PriceList {
+  id        String    @id @default(uuid())
+  version   String    @unique
+  validFrom DateTime  @map("valid_from")
+  validTo   DateTime? @map("valid_to")
+  active    Boolean   @default(false)
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  items PriceListItem[]
+
+  @@map("price_lists")
+}
+
+model PriceListItem {
+  id                   String   @id @default(uuid())
+  priceListId          String   @map("price_list_id")
+  category             String
+  sizeLabel            String   @map("size_label")
+  unit                 String   @default("kus")
+  priceWithMaterial    Decimal  @map("price_with_material") @db.Decimal(10, 2)
+  priceWithoutMaterial Decimal? @map("price_without_material") @db.Decimal(10, 2)
+  active               Boolean  @default(true)
+  sortOrder            Int      @default(0) @map("sort_order")
+
+  priceList   PriceList   @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  sealEntries SealEntry[]
+
+  @@index([priceListId, category])
+  @@map("price_list_items")
 }

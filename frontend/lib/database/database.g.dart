@@ -41,6 +41,17 @@ class $LocalJobsTable extends LocalJobs
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_archived" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+      'status', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _lastSyncedAtMeta =
+      const VerificationMeta('lastSyncedAt');
+  @override
+  late final GeneratedColumn<DateTime> lastSyncedAt = GeneratedColumn<DateTime>(
+      'last_synced_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
   static const VerificationMeta _deletedAtMeta =
       const VerificationMeta('deletedAt');
   @override
@@ -54,8 +65,17 @@ class $LocalJobsTable extends LocalJobs
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [id, projectNumber, name, address, isArchived, deletedAt, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        id,
+        projectNumber,
+        name,
+        address,
+        isArchived,
+        status,
+        lastSyncedAt,
+        deletedAt,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -95,6 +115,16 @@ class $LocalJobsTable extends LocalJobs
           isArchived.isAcceptableOrUnknown(
               data['is_archived']!, _isArchivedMeta));
     }
+    if (data.containsKey('status')) {
+      context.handle(_statusMeta,
+          status.isAcceptableOrUnknown(data['status']!, _statusMeta));
+    }
+    if (data.containsKey('last_synced_at')) {
+      context.handle(
+          _lastSyncedAtMeta,
+          lastSyncedAt.isAcceptableOrUnknown(
+              data['last_synced_at']!, _lastSyncedAtMeta));
+    }
     if (data.containsKey('deleted_at')) {
       context.handle(_deletedAtMeta,
           deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta));
@@ -124,6 +154,10 @@ class $LocalJobsTable extends LocalJobs
           .read(DriftSqlType.string, data['${effectivePrefix}address']),
       isArchived: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_archived'])!,
+      status: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}status']),
+      lastSyncedAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_synced_at']),
       deletedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}deleted_at']),
       updatedAt: attachedDatabase.typeMapping
@@ -143,6 +177,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
   final String name;
   final String? address;
   final bool isArchived;
+  final String? status;
+  final DateTime? lastSyncedAt;
   final DateTime? deletedAt;
   final DateTime updatedAt;
   const LocalJob(
@@ -151,6 +187,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       required this.name,
       this.address,
       required this.isArchived,
+      this.status,
+      this.lastSyncedAt,
       this.deletedAt,
       required this.updatedAt});
   @override
@@ -163,6 +201,12 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       map['address'] = Variable<String>(address);
     }
     map['is_archived'] = Variable<bool>(isArchived);
+    if (!nullToAbsent || status != null) {
+      map['status'] = Variable<String>(status);
+    }
+    if (!nullToAbsent || lastSyncedAt != null) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt);
+    }
     if (!nullToAbsent || deletedAt != null) {
       map['deleted_at'] = Variable<DateTime>(deletedAt);
     }
@@ -179,6 +223,11 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           ? const Value.absent()
           : Value(address),
       isArchived: Value(isArchived),
+      status:
+          status == null && nullToAbsent ? const Value.absent() : Value(status),
+      lastSyncedAt: lastSyncedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastSyncedAt),
       deletedAt: deletedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(deletedAt),
@@ -195,6 +244,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       name: serializer.fromJson<String>(json['name']),
       address: serializer.fromJson<String?>(json['address']),
       isArchived: serializer.fromJson<bool>(json['isArchived']),
+      status: serializer.fromJson<String?>(json['status']),
+      lastSyncedAt: serializer.fromJson<DateTime?>(json['lastSyncedAt']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -208,6 +259,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       'name': serializer.toJson<String>(name),
       'address': serializer.toJson<String?>(address),
       'isArchived': serializer.toJson<bool>(isArchived),
+      'status': serializer.toJson<String?>(status),
+      'lastSyncedAt': serializer.toJson<DateTime?>(lastSyncedAt),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -219,6 +272,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           String? name,
           Value<String?> address = const Value.absent(),
           bool? isArchived,
+          Value<String?> status = const Value.absent(),
+          Value<DateTime?> lastSyncedAt = const Value.absent(),
           Value<DateTime?> deletedAt = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalJob(
@@ -227,6 +282,9 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
         name: name ?? this.name,
         address: address.present ? address.value : this.address,
         isArchived: isArchived ?? this.isArchived,
+        status: status.present ? status.value : this.status,
+        lastSyncedAt:
+            lastSyncedAt.present ? lastSyncedAt.value : this.lastSyncedAt,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -240,6 +298,10 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
       address: data.address.present ? data.address.value : this.address,
       isArchived:
           data.isArchived.present ? data.isArchived.value : this.isArchived,
+      status: data.status.present ? data.status.value : this.status,
+      lastSyncedAt: data.lastSyncedAt.present
+          ? data.lastSyncedAt.value
+          : this.lastSyncedAt,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -253,6 +315,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           ..write('name: $name, ')
           ..write('address: $address, ')
           ..write('isArchived: $isArchived, ')
+          ..write('status: $status, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -260,8 +324,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
   }
 
   @override
-  int get hashCode => Object.hash(
-      id, projectNumber, name, address, isArchived, deletedAt, updatedAt);
+  int get hashCode => Object.hash(id, projectNumber, name, address, isArchived,
+      status, lastSyncedAt, deletedAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -271,6 +335,8 @@ class LocalJob extends DataClass implements Insertable<LocalJob> {
           other.name == this.name &&
           other.address == this.address &&
           other.isArchived == this.isArchived &&
+          other.status == this.status &&
+          other.lastSyncedAt == this.lastSyncedAt &&
           other.deletedAt == this.deletedAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -281,6 +347,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
   final Value<String> name;
   final Value<String?> address;
   final Value<bool> isArchived;
+  final Value<String?> status;
+  final Value<DateTime?> lastSyncedAt;
   final Value<DateTime?> deletedAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
@@ -290,6 +358,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     this.name = const Value.absent(),
     this.address = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.status = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -300,6 +370,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     required String name,
     this.address = const Value.absent(),
     this.isArchived = const Value.absent(),
+    this.status = const Value.absent(),
+    this.lastSyncedAt = const Value.absent(),
     this.deletedAt = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -313,6 +385,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     Expression<String>? name,
     Expression<String>? address,
     Expression<bool>? isArchived,
+    Expression<String>? status,
+    Expression<DateTime>? lastSyncedAt,
     Expression<DateTime>? deletedAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -323,6 +397,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       if (name != null) 'name': name,
       if (address != null) 'address': address,
       if (isArchived != null) 'is_archived': isArchived,
+      if (status != null) 'status': status,
+      if (lastSyncedAt != null) 'last_synced_at': lastSyncedAt,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -335,6 +411,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       Value<String>? name,
       Value<String?>? address,
       Value<bool>? isArchived,
+      Value<String?>? status,
+      Value<DateTime?>? lastSyncedAt,
       Value<DateTime?>? deletedAt,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
@@ -344,6 +422,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
       name: name ?? this.name,
       address: address ?? this.address,
       isArchived: isArchived ?? this.isArchived,
+      status: status ?? this.status,
+      lastSyncedAt: lastSyncedAt ?? this.lastSyncedAt,
       deletedAt: deletedAt ?? this.deletedAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -368,6 +448,12 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
     if (isArchived.present) {
       map['is_archived'] = Variable<bool>(isArchived.value);
     }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (lastSyncedAt.present) {
+      map['last_synced_at'] = Variable<DateTime>(lastSyncedAt.value);
+    }
     if (deletedAt.present) {
       map['deleted_at'] = Variable<DateTime>(deletedAt.value);
     }
@@ -388,6 +474,8 @@ class LocalJobsCompanion extends UpdateCompanion<LocalJob> {
           ..write('name: $name, ')
           ..write('address: $address, ')
           ..write('isArchived: $isArchived, ')
+          ..write('status: $status, ')
+          ..write('lastSyncedAt: $lastSyncedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -735,6 +823,286 @@ class LocalFloorsCompanion extends UpdateCompanion<LocalFloor> {
           ..write('sortOrder: $sortOrder, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalMyJobAssignmentsTable extends LocalMyJobAssignments
+    with TableInfo<$LocalMyJobAssignmentsTable, LocalMyJobAssignment> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalMyJobAssignmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+      'job_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _roleOnJobMeta =
+      const VerificationMeta('roleOnJob');
+  @override
+  late final GeneratedColumn<String> roleOnJob = GeneratedColumn<String>(
+      'role_on_job', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('worker'));
+  static const VerificationMeta _lastActivityAtMeta =
+      const VerificationMeta('lastActivityAt');
+  @override
+  late final GeneratedColumn<DateTime> lastActivityAt =
+      GeneratedColumn<DateTime>('last_activity_at', aliasedName, false,
+          type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [userId, jobId, roleOnJob, lastActivityAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_my_job_assignments';
+  @override
+  VerificationContext validateIntegrity(
+      Insertable<LocalMyJobAssignment> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
+    } else if (isInserting) {
+      context.missing(_userIdMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+          _jobIdMeta, jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta));
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('role_on_job')) {
+      context.handle(
+          _roleOnJobMeta,
+          roleOnJob.isAcceptableOrUnknown(
+              data['role_on_job']!, _roleOnJobMeta));
+    }
+    if (data.containsKey('last_activity_at')) {
+      context.handle(
+          _lastActivityAtMeta,
+          lastActivityAt.isAcceptableOrUnknown(
+              data['last_activity_at']!, _lastActivityAtMeta));
+    } else if (isInserting) {
+      context.missing(_lastActivityAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {userId, jobId};
+  @override
+  LocalMyJobAssignment map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalMyJobAssignment(
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id'])!,
+      jobId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}job_id'])!,
+      roleOnJob: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}role_on_job'])!,
+      lastActivityAt: attachedDatabase.typeMapping.read(
+          DriftSqlType.dateTime, data['${effectivePrefix}last_activity_at'])!,
+    );
+  }
+
+  @override
+  $LocalMyJobAssignmentsTable createAlias(String alias) {
+    return $LocalMyJobAssignmentsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalMyJobAssignment extends DataClass
+    implements Insertable<LocalMyJobAssignment> {
+  final String userId;
+  final String jobId;
+  final String roleOnJob;
+  final DateTime lastActivityAt;
+  const LocalMyJobAssignment(
+      {required this.userId,
+      required this.jobId,
+      required this.roleOnJob,
+      required this.lastActivityAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['user_id'] = Variable<String>(userId);
+    map['job_id'] = Variable<String>(jobId);
+    map['role_on_job'] = Variable<String>(roleOnJob);
+    map['last_activity_at'] = Variable<DateTime>(lastActivityAt);
+    return map;
+  }
+
+  LocalMyJobAssignmentsCompanion toCompanion(bool nullToAbsent) {
+    return LocalMyJobAssignmentsCompanion(
+      userId: Value(userId),
+      jobId: Value(jobId),
+      roleOnJob: Value(roleOnJob),
+      lastActivityAt: Value(lastActivityAt),
+    );
+  }
+
+  factory LocalMyJobAssignment.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalMyJobAssignment(
+      userId: serializer.fromJson<String>(json['userId']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      roleOnJob: serializer.fromJson<String>(json['roleOnJob']),
+      lastActivityAt: serializer.fromJson<DateTime>(json['lastActivityAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'userId': serializer.toJson<String>(userId),
+      'jobId': serializer.toJson<String>(jobId),
+      'roleOnJob': serializer.toJson<String>(roleOnJob),
+      'lastActivityAt': serializer.toJson<DateTime>(lastActivityAt),
+    };
+  }
+
+  LocalMyJobAssignment copyWith(
+          {String? userId,
+          String? jobId,
+          String? roleOnJob,
+          DateTime? lastActivityAt}) =>
+      LocalMyJobAssignment(
+        userId: userId ?? this.userId,
+        jobId: jobId ?? this.jobId,
+        roleOnJob: roleOnJob ?? this.roleOnJob,
+        lastActivityAt: lastActivityAt ?? this.lastActivityAt,
+      );
+  LocalMyJobAssignment copyWithCompanion(LocalMyJobAssignmentsCompanion data) {
+    return LocalMyJobAssignment(
+      userId: data.userId.present ? data.userId.value : this.userId,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      roleOnJob: data.roleOnJob.present ? data.roleOnJob.value : this.roleOnJob,
+      lastActivityAt: data.lastActivityAt.present
+          ? data.lastActivityAt.value
+          : this.lastActivityAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMyJobAssignment(')
+          ..write('userId: $userId, ')
+          ..write('jobId: $jobId, ')
+          ..write('roleOnJob: $roleOnJob, ')
+          ..write('lastActivityAt: $lastActivityAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(userId, jobId, roleOnJob, lastActivityAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalMyJobAssignment &&
+          other.userId == this.userId &&
+          other.jobId == this.jobId &&
+          other.roleOnJob == this.roleOnJob &&
+          other.lastActivityAt == this.lastActivityAt);
+}
+
+class LocalMyJobAssignmentsCompanion
+    extends UpdateCompanion<LocalMyJobAssignment> {
+  final Value<String> userId;
+  final Value<String> jobId;
+  final Value<String> roleOnJob;
+  final Value<DateTime> lastActivityAt;
+  final Value<int> rowid;
+  const LocalMyJobAssignmentsCompanion({
+    this.userId = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.roleOnJob = const Value.absent(),
+    this.lastActivityAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalMyJobAssignmentsCompanion.insert({
+    required String userId,
+    required String jobId,
+    this.roleOnJob = const Value.absent(),
+    required DateTime lastActivityAt,
+    this.rowid = const Value.absent(),
+  })  : userId = Value(userId),
+        jobId = Value(jobId),
+        lastActivityAt = Value(lastActivityAt);
+  static Insertable<LocalMyJobAssignment> custom({
+    Expression<String>? userId,
+    Expression<String>? jobId,
+    Expression<String>? roleOnJob,
+    Expression<DateTime>? lastActivityAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (userId != null) 'user_id': userId,
+      if (jobId != null) 'job_id': jobId,
+      if (roleOnJob != null) 'role_on_job': roleOnJob,
+      if (lastActivityAt != null) 'last_activity_at': lastActivityAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalMyJobAssignmentsCompanion copyWith(
+      {Value<String>? userId,
+      Value<String>? jobId,
+      Value<String>? roleOnJob,
+      Value<DateTime>? lastActivityAt,
+      Value<int>? rowid}) {
+    return LocalMyJobAssignmentsCompanion(
+      userId: userId ?? this.userId,
+      jobId: jobId ?? this.jobId,
+      roleOnJob: roleOnJob ?? this.roleOnJob,
+      lastActivityAt: lastActivityAt ?? this.lastActivityAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (roleOnJob.present) {
+      map['role_on_job'] = Variable<String>(roleOnJob.value);
+    }
+    if (lastActivityAt.present) {
+      map['last_activity_at'] = Variable<DateTime>(lastActivityAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalMyJobAssignmentsCompanion(')
+          ..write('userId: $userId, ')
+          ..write('jobId: $jobId, ')
+          ..write('roleOnJob: $roleOnJob, ')
+          ..write('lastActivityAt: $lastActivityAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -2948,15 +3316,208 @@ class SyncCursorCompanion extends UpdateCompanion<SyncCursorData> {
   }
 }
 
+class $LocalUserPrefsTable extends LocalUserPrefs
+    with TableInfo<$LocalUserPrefsTable, LocalUserPref> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalUserPrefsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+      'key', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+      'value', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_user_prefs';
+  @override
+  VerificationContext validateIntegrity(Insertable<LocalUserPref> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+          _keyMeta, key.isAcceptableOrUnknown(data['key']!, _keyMeta));
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+          _valueMeta, value.isAcceptableOrUnknown(data['value']!, _valueMeta));
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  LocalUserPref map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalUserPref(
+      key: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}key'])!,
+      value: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}value'])!,
+    );
+  }
+
+  @override
+  $LocalUserPrefsTable createAlias(String alias) {
+    return $LocalUserPrefsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalUserPref extends DataClass implements Insertable<LocalUserPref> {
+  final String key;
+  final String value;
+  const LocalUserPref({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  LocalUserPrefsCompanion toCompanion(bool nullToAbsent) {
+    return LocalUserPrefsCompanion(
+      key: Value(key),
+      value: Value(value),
+    );
+  }
+
+  factory LocalUserPref.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalUserPref(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  LocalUserPref copyWith({String? key, String? value}) => LocalUserPref(
+        key: key ?? this.key,
+        value: value ?? this.value,
+      );
+  LocalUserPref copyWithCompanion(LocalUserPrefsCompanion data) {
+    return LocalUserPref(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalUserPref(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalUserPref &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class LocalUserPrefsCompanion extends UpdateCompanion<LocalUserPref> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const LocalUserPrefsCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalUserPrefsCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  })  : key = Value(key),
+        value = Value(value);
+  static Insertable<LocalUserPref> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalUserPrefsCompanion copyWith(
+      {Value<String>? key, Value<String>? value, Value<int>? rowid}) {
+    return LocalUserPrefsCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalUserPrefsCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $LocalJobsTable localJobs = $LocalJobsTable(this);
   late final $LocalFloorsTable localFloors = $LocalFloorsTable(this);
+  late final $LocalMyJobAssignmentsTable localMyJobAssignments =
+      $LocalMyJobAssignmentsTable(this);
   late final $LocalSealsTable localSeals = $LocalSealsTable(this);
   late final $LocalOutboxTable localOutbox = $LocalOutboxTable(this);
   late final $LocalPhotosTable localPhotos = $LocalPhotosTable(this);
   late final $SyncCursorTable syncCursor = $SyncCursorTable(this);
+  late final $LocalUserPrefsTable localUserPrefs = $LocalUserPrefsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -2964,10 +3525,12 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
         localJobs,
         localFloors,
+        localMyJobAssignments,
         localSeals,
         localOutbox,
         localPhotos,
-        syncCursor
+        syncCursor,
+        localUserPrefs
       ];
 }
 
@@ -2977,6 +3540,8 @@ typedef $$LocalJobsTableCreateCompanionBuilder = LocalJobsCompanion Function({
   required String name,
   Value<String?> address,
   Value<bool> isArchived,
+  Value<String?> status,
+  Value<DateTime?> lastSyncedAt,
   Value<DateTime?> deletedAt,
   required DateTime updatedAt,
   Value<int> rowid,
@@ -2987,6 +3552,8 @@ typedef $$LocalJobsTableUpdateCompanionBuilder = LocalJobsCompanion Function({
   Value<String> name,
   Value<String?> address,
   Value<bool> isArchived,
+  Value<String?> status,
+  Value<DateTime?> lastSyncedAt,
   Value<DateTime?> deletedAt,
   Value<DateTime> updatedAt,
   Value<int> rowid,
@@ -3015,6 +3582,12 @@ class $$LocalJobsTableFilterComposer
 
   ColumnFilters<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get deletedAt => $composableBuilder(
       column: $table.deletedAt, builder: (column) => ColumnFilters(column));
@@ -3048,6 +3621,13 @@ class $$LocalJobsTableOrderingComposer
   ColumnOrderings<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get status => $composableBuilder(
+      column: $table.status, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
       column: $table.deletedAt, builder: (column) => ColumnOrderings(column));
 
@@ -3078,6 +3658,12 @@ class $$LocalJobsTableAnnotationComposer
 
   GeneratedColumn<bool> get isArchived => $composableBuilder(
       column: $table.isArchived, builder: (column) => column);
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastSyncedAt => $composableBuilder(
+      column: $table.lastSyncedAt, builder: (column) => column);
 
   GeneratedColumn<DateTime> get deletedAt =>
       $composableBuilder(column: $table.deletedAt, builder: (column) => column);
@@ -3114,6 +3700,8 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             Value<String> name = const Value.absent(),
             Value<String?> address = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
+            Value<String?> status = const Value.absent(),
+            Value<DateTime?> lastSyncedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
@@ -3124,6 +3712,8 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             name: name,
             address: address,
             isArchived: isArchived,
+            status: status,
+            lastSyncedAt: lastSyncedAt,
             deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -3134,6 +3724,8 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             required String name,
             Value<String?> address = const Value.absent(),
             Value<bool> isArchived = const Value.absent(),
+            Value<String?> status = const Value.absent(),
+            Value<DateTime?> lastSyncedAt = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
@@ -3144,6 +3736,8 @@ class $$LocalJobsTableTableManager extends RootTableManager<
             name: name,
             address: address,
             isArchived: isArchived,
+            status: status,
+            lastSyncedAt: lastSyncedAt,
             deletedAt: deletedAt,
             updatedAt: updatedAt,
             rowid: rowid,
@@ -3349,6 +3943,173 @@ typedef $$LocalFloorsTableProcessedTableManager = ProcessedTableManager<
     (LocalFloor, BaseReferences<_$AppDatabase, $LocalFloorsTable, LocalFloor>),
     LocalFloor,
     PrefetchHooks Function()>;
+typedef $$LocalMyJobAssignmentsTableCreateCompanionBuilder
+    = LocalMyJobAssignmentsCompanion Function({
+  required String userId,
+  required String jobId,
+  Value<String> roleOnJob,
+  required DateTime lastActivityAt,
+  Value<int> rowid,
+});
+typedef $$LocalMyJobAssignmentsTableUpdateCompanionBuilder
+    = LocalMyJobAssignmentsCompanion Function({
+  Value<String> userId,
+  Value<String> jobId,
+  Value<String> roleOnJob,
+  Value<DateTime> lastActivityAt,
+  Value<int> rowid,
+});
+
+class $$LocalMyJobAssignmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalMyJobAssignmentsTable> {
+  $$LocalMyJobAssignmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get jobId => $composableBuilder(
+      column: $table.jobId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get roleOnJob => $composableBuilder(
+      column: $table.roleOnJob, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get lastActivityAt => $composableBuilder(
+      column: $table.lastActivityAt,
+      builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalMyJobAssignmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalMyJobAssignmentsTable> {
+  $$LocalMyJobAssignmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get jobId => $composableBuilder(
+      column: $table.jobId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get roleOnJob => $composableBuilder(
+      column: $table.roleOnJob, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get lastActivityAt => $composableBuilder(
+      column: $table.lastActivityAt,
+      builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalMyJobAssignmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalMyJobAssignmentsTable> {
+  $$LocalMyJobAssignmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
+
+  GeneratedColumn<String> get jobId =>
+      $composableBuilder(column: $table.jobId, builder: (column) => column);
+
+  GeneratedColumn<String> get roleOnJob =>
+      $composableBuilder(column: $table.roleOnJob, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastActivityAt => $composableBuilder(
+      column: $table.lastActivityAt, builder: (column) => column);
+}
+
+class $$LocalMyJobAssignmentsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LocalMyJobAssignmentsTable,
+    LocalMyJobAssignment,
+    $$LocalMyJobAssignmentsTableFilterComposer,
+    $$LocalMyJobAssignmentsTableOrderingComposer,
+    $$LocalMyJobAssignmentsTableAnnotationComposer,
+    $$LocalMyJobAssignmentsTableCreateCompanionBuilder,
+    $$LocalMyJobAssignmentsTableUpdateCompanionBuilder,
+    (
+      LocalMyJobAssignment,
+      BaseReferences<_$AppDatabase, $LocalMyJobAssignmentsTable,
+          LocalMyJobAssignment>
+    ),
+    LocalMyJobAssignment,
+    PrefetchHooks Function()> {
+  $$LocalMyJobAssignmentsTableTableManager(
+      _$AppDatabase db, $LocalMyJobAssignmentsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalMyJobAssignmentsTableFilterComposer(
+                  $db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalMyJobAssignmentsTableOrderingComposer(
+                  $db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalMyJobAssignmentsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> userId = const Value.absent(),
+            Value<String> jobId = const Value.absent(),
+            Value<String> roleOnJob = const Value.absent(),
+            Value<DateTime> lastActivityAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalMyJobAssignmentsCompanion(
+            userId: userId,
+            jobId: jobId,
+            roleOnJob: roleOnJob,
+            lastActivityAt: lastActivityAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String userId,
+            required String jobId,
+            Value<String> roleOnJob = const Value.absent(),
+            required DateTime lastActivityAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalMyJobAssignmentsCompanion.insert(
+            userId: userId,
+            jobId: jobId,
+            roleOnJob: roleOnJob,
+            lastActivityAt: lastActivityAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalMyJobAssignmentsTableProcessedTableManager
+    = ProcessedTableManager<
+        _$AppDatabase,
+        $LocalMyJobAssignmentsTable,
+        LocalMyJobAssignment,
+        $$LocalMyJobAssignmentsTableFilterComposer,
+        $$LocalMyJobAssignmentsTableOrderingComposer,
+        $$LocalMyJobAssignmentsTableAnnotationComposer,
+        $$LocalMyJobAssignmentsTableCreateCompanionBuilder,
+        $$LocalMyJobAssignmentsTableUpdateCompanionBuilder,
+        (
+          LocalMyJobAssignment,
+          BaseReferences<_$AppDatabase, $LocalMyJobAssignmentsTable,
+              LocalMyJobAssignment>
+        ),
+        LocalMyJobAssignment,
+        PrefetchHooks Function()>;
 typedef $$LocalSealsTableCreateCompanionBuilder = LocalSealsCompanion Function({
   required String id,
   required String jobId,
@@ -4375,6 +5136,135 @@ typedef $$SyncCursorTableProcessedTableManager = ProcessedTableManager<
     ),
     SyncCursorData,
     PrefetchHooks Function()>;
+typedef $$LocalUserPrefsTableCreateCompanionBuilder = LocalUserPrefsCompanion
+    Function({
+  required String key,
+  required String value,
+  Value<int> rowid,
+});
+typedef $$LocalUserPrefsTableUpdateCompanionBuilder = LocalUserPrefsCompanion
+    Function({
+  Value<String> key,
+  Value<String> value,
+  Value<int> rowid,
+});
+
+class $$LocalUserPrefsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalUserPrefsTable> {
+  $$LocalUserPrefsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalUserPrefsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalUserPrefsTable> {
+  $$LocalUserPrefsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+      column: $table.key, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get value => $composableBuilder(
+      column: $table.value, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalUserPrefsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalUserPrefsTable> {
+  $$LocalUserPrefsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$LocalUserPrefsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LocalUserPrefsTable,
+    LocalUserPref,
+    $$LocalUserPrefsTableFilterComposer,
+    $$LocalUserPrefsTableOrderingComposer,
+    $$LocalUserPrefsTableAnnotationComposer,
+    $$LocalUserPrefsTableCreateCompanionBuilder,
+    $$LocalUserPrefsTableUpdateCompanionBuilder,
+    (
+      LocalUserPref,
+      BaseReferences<_$AppDatabase, $LocalUserPrefsTable, LocalUserPref>
+    ),
+    LocalUserPref,
+    PrefetchHooks Function()> {
+  $$LocalUserPrefsTableTableManager(
+      _$AppDatabase db, $LocalUserPrefsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalUserPrefsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalUserPrefsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalUserPrefsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> key = const Value.absent(),
+            Value<String> value = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalUserPrefsCompanion(
+            key: key,
+            value: value,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String key,
+            required String value,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalUserPrefsCompanion.insert(
+            key: key,
+            value: value,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalUserPrefsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LocalUserPrefsTable,
+    LocalUserPref,
+    $$LocalUserPrefsTableFilterComposer,
+    $$LocalUserPrefsTableOrderingComposer,
+    $$LocalUserPrefsTableAnnotationComposer,
+    $$LocalUserPrefsTableCreateCompanionBuilder,
+    $$LocalUserPrefsTableUpdateCompanionBuilder,
+    (
+      LocalUserPref,
+      BaseReferences<_$AppDatabase, $LocalUserPrefsTable, LocalUserPref>
+    ),
+    LocalUserPref,
+    PrefetchHooks Function()>;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4383,6 +5273,8 @@ class $AppDatabaseManager {
       $$LocalJobsTableTableManager(_db, _db.localJobs);
   $$LocalFloorsTableTableManager get localFloors =>
       $$LocalFloorsTableTableManager(_db, _db.localFloors);
+  $$LocalMyJobAssignmentsTableTableManager get localMyJobAssignments =>
+      $$LocalMyJobAssignmentsTableTableManager(_db, _db.localMyJobAssignments);
   $$LocalSealsTableTableManager get localSeals =>
       $$LocalSealsTableTableManager(_db, _db.localSeals);
   $$LocalOutboxTableTableManager get localOutbox =>
@@ -4391,4 +5283,6 @@ class $AppDatabaseManager {
       $$LocalPhotosTableTableManager(_db, _db.localPhotos);
   $$SyncCursorTableTableManager get syncCursor =>
       $$SyncCursorTableTableManager(_db, _db.syncCursor);
+  $$LocalUserPrefsTableTableManager get localUserPrefs =>
+      $$LocalUserPrefsTableTableManager(_db, _db.localUserPrefs);
 }

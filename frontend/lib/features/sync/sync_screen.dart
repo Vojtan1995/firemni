@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/design_tokens.dart';
 import '../../database/database_provider.dart';
+import '../../widgets/widgets.dart';
 import '../seals/seal_duplicate_local.dart';
 import 'sync_conflict.dart';
 import 'sync_service.dart';
@@ -48,13 +50,10 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
             if (conflict.floorName != null)
               Text('Patro: ${conflict.floorName}',
                   style: Theme.of(ctx).textTheme.bodySmall),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             TextField(
               controller: controller,
-              decoration: const InputDecoration(
-                labelText: 'Nové číslo ucpávky',
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: 'Nové číslo ucpávky'),
               keyboardType: TextInputType.number,
               autofocus: true,
             ),
@@ -77,8 +76,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
     if (!_sealNumberPattern.hasMatch(newNumber)) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Číslo ucpávky musí obsahovat jen číslice')),
+        const SnackBar(content: Text('Číslo ucpávky musí obsahovat jen číslice')),
       );
       return;
     }
@@ -131,27 +129,26 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
     final unsentPhotoList = ref.watch(unsentPhotosProvider);
     final conflicts = ref.watch(syncConflictsProvider);
     final dateFormat = DateFormat('d.M.y HH:mm');
+    final isOnline = online.valueOrNull == true;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Synchronizace')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Card(
-            child: ListTile(
-              leading: Icon(
-                online.valueOrNull == true ? Icons.cloud_done : Icons.cloud_off,
-                color: online.valueOrNull == true ? Colors.green : Colors.orange,
-                size: 40,
-              ),
-              title: Text(online.valueOrNull == true ? 'Online' : 'Offline'),
-              subtitle: Text(
+          AppCard(
+            showChevron: false,
+            leading: AppIconBox(
+              icon: isOnline ? Icons.cloud_done : Icons.cloud_off,
+              color: isOnline ? AppColors.success : AppColors.warning,
+              backgroundColor: (isOnline ? AppColors.success : AppColors.warning)
+                  .withValues(alpha: 0.12),
+            ),
+            title: isOnline ? 'Online' : 'Offline',
+            subtitle:
                 'Připraveno k sync: ${pending.valueOrNull ?? 0}\n'
                 'Outbox ve frontě: ${queuedOutbox.valueOrNull ?? 0}\n'
                 'Neodeslané fotky: ${unsentPhotos.valueOrNull ?? 0}',
-              ),
-              isThreeLine: true,
-            ),
           ),
           unsentPhotoList.when(
             loading: () => const SizedBox.shrink(),
@@ -161,12 +158,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const SizedBox(height: 8),
-                  Text(
-                    'Neodeslané fotky',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
+                  const SectionHeader(title: 'Neodeslané fotky', style: SectionHeaderStyle.h3),
                   ...items.take(5).map((item) {
                     final p = item.photo;
                     final label = item.sealNumber != null
@@ -174,26 +166,20 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                         : 'Ucpávka ${p.sealId.substring(0, 8)}…';
                     final statusLabel =
                         p.status == 'failed' ? 'Selhala' : 'Čeká na upload';
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: Icon(
-                          p.status == 'failed'
-                              ? Icons.error_outline
-                              : Icons.photo_camera,
-                          color: p.status == 'failed'
-                              ? Colors.red
-                              : Colors.orange,
-                        ),
-                        title: Text(label),
-                        subtitle: Text(
-                          p.lastError != null && p.lastError!.isNotEmpty
-                              ? '$statusLabel\n${p.lastError}'
-                              : statusLabel,
-                        ),
-                        isThreeLine: p.lastError != null &&
-                            p.lastError!.isNotEmpty,
+                    return AppCard(
+                      showChevron: false,
+                      leading: Icon(
+                        p.status == 'failed'
+                            ? Icons.error_outline
+                            : Icons.photo_camera,
+                        color: p.status == 'failed'
+                            ? AppColors.error
+                            : AppColors.warning,
                       ),
+                      title: label,
+                      subtitle: p.lastError != null && p.lastError!.isNotEmpty
+                          ? '$statusLabel\n${p.lastError}'
+                          : statusLabel,
                     );
                   }),
                   if (items.length > 5)
@@ -205,105 +191,100 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
               );
             },
           ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: _syncing ? null : _sync,
-            icon: _syncing
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.sync, size: 28),
-            label: const Text('Synchronizovat', style: TextStyle(fontSize: 18)),
-            style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 64)),
+          const SizedBox(height: AppSpacing.lg),
+          AppPrimaryButton(
+            label: 'Synchronizovat',
+            icon: Icons.sync,
+            loading: _syncing,
+            onPressed: _sync,
           ),
           if (_message != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.md),
             Text(_message!, textAlign: TextAlign.center),
           ],
-          const SizedBox(height: 24),
-          Text(
-            'Konflikty synchronizace',
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.xl),
+          const SectionHeader(title: 'Konflikty synchronizace', style: SectionHeaderStyle.h3),
           conflicts.when(
-            loading: () => const Center(child: Padding(
-              padding: EdgeInsets.all(24),
-              child: CircularProgressIndicator(),
-            )),
+            loading: () => const Center(
+              child: Padding(
+                padding: EdgeInsets.all(AppSpacing.xl),
+                child: CircularProgressIndicator(),
+              ),
+            ),
             error: (e, _) => Text('Chyba načtení konfliktů: $e'),
             data: (items) {
               if (items.isEmpty) {
-                return const Card(
-                  child: ListTile(
-                    leading: Icon(Icons.check_circle_outline, color: Colors.green),
-                    title: Text('Žádné aktivní konflikty'),
-                    subtitle: Text('Lokální změny nejsou v konfliktu se serverem.'),
-                  ),
+                return AppCard(
+                  showChevron: false,
+                  leading: const Icon(Icons.check_circle_outline, color: AppColors.success),
+                  title: 'Žádné aktivní konflikty',
+                  subtitle: 'Lokální změny nejsou v konfliktu se serverem.',
                 );
               }
               return Column(
                 children: items.map((c) {
-                  return Card(
-                    color: Colors.orange.shade50,
-                    margin: const EdgeInsets.only(bottom: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.warning_amber, color: Colors.orange),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  '${c.entityType} · ${c.operationLabel}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                  return AppCard(
+                    showChevron: false,
+                    borderColor: AppColors.warning.withValues(alpha: 0.4),
+                    color: AppColors.warning.withValues(alpha: 0.08),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.warning_amber, color: AppColors.warning),
+                            const SizedBox(width: AppSpacing.sm),
+                            Expanded(
+                              child: Text(
+                                '${c.entityType} · ${c.operationLabel}',
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
                               ),
-                            ],
-                          ),
-                          if (c.sealNumber != null) ...[
-                            const SizedBox(height: 8),
-                            Text('Ucpávka č. ${c.sealNumber}'),
-                          ],
-                          if (isDuplicateConflictMessage(c.conflictMessage)) ...[
-                            const SizedBox(height: 8),
-                            Text(
-                              duplicateConflictSummary(
-                                attemptedNumber: c.sealNumber,
-                              ),
-                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           ],
-                          if (c.jobLabel != null) Text('Stavba: ${c.jobLabel}'),
-                          if (c.floorName != null) Text('Patro: ${c.floorName}'),
-                          const SizedBox(height: 8),
-                          Text('Důvod: ${c.conflictMessage}'),
-                          const SizedBox(height: 4),
+                        ),
+                        if (c.sealNumber != null) ...[
+                          const SizedBox(height: AppSpacing.sm),
+                          Text('Ucpávka č. ${c.sealNumber}'),
+                        ],
+                        if (isDuplicateConflictMessage(c.conflictMessage)) ...[
+                          const SizedBox(height: AppSpacing.sm),
                           Text(
-                            'Čas: ${dateFormat.format(c.createdAt)}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          const SizedBox(height: 8),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              if (c.entityType == 'seal' &&
-                                  isDuplicateConflictMessage(c.conflictMessage))
-                                TextButton.icon(
-                                  onPressed: () => _fixDuplicateNumber(c),
-                                  icon: const Icon(Icons.edit),
-                                  label: const Text('Opravit číslo'),
-                                ),
-                              TextButton.icon(
-                                onPressed: () => _dismissConflict(c.outboxId),
-                                icon: const Icon(Icons.visibility_off),
-                                label: const Text('Skrýt'),
-                              ),
-                            ],
+                            duplicateConflictSummary(
+                              attemptedNumber: c.sealNumber,
+                            ),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                         ],
-                      ),
+                        if (c.jobLabel != null) Text('Stavba: ${c.jobLabel}'),
+                        if (c.floorName != null) Text('Patro: ${c.floorName}'),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text('Důvod: ${c.conflictMessage}'),
+                        const SizedBox(height: AppSpacing.xs),
+                        Text(
+                          'Čas: ${dateFormat.format(c.createdAt)}',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                        const SizedBox(height: AppSpacing.sm),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            if (c.entityType == 'seal' &&
+                                isDuplicateConflictMessage(c.conflictMessage))
+                              TextButton.icon(
+                                onPressed: () => _fixDuplicateNumber(c),
+                                icon: const Icon(Icons.edit),
+                                label: const Text('Opravit číslo'),
+                              ),
+                            TextButton.icon(
+                              onPressed: () => _dismissConflict(c.outboxId),
+                              icon: const Icon(Icons.visibility_off),
+                              label: const Text('Skrýt'),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   );
                 }).toList(),

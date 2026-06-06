@@ -2,6 +2,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 
 class JobsAdminScreen extends ConsumerStatefulWidget {
   const JobsAdminScreen({super.key});
@@ -238,66 +240,94 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
           ? null
           : FloatingActionButton(onPressed: _createJob, child: const Icon(Icons.add)),
       body: _jobs.isEmpty
-          ? Center(child: Text(_showArchived ? 'Žádné archivované stavby' : 'Žádné aktivní stavby'))
+          ? EmptyState(
+              message: _showArchived ? 'Žádné archivované stavby' : 'Žádné aktivní stavby',
+              icon: Icons.apartment_outlined,
+            )
           : ListView.builder(
+              padding: const EdgeInsets.all(AppSpacing.lg),
               itemCount: _jobs.length,
               itemBuilder: (_, i) {
                 final j = _jobs[i];
                 final jobId = j['id'] as String;
                 final floors = (j['floors'] as List?) ?? [];
                 final isArchived = j['isArchived'] == true;
-                return ExpansionTile(
-                  title: Text('${j['projectNumber']} – ${j['name']}'),
-                  subtitle: isArchived ? const Text('Archivováno') : null,
-                  children: [
-                    if (_showArchived)
-                      ListTile(
-                        leading: const Icon(Icons.unarchive),
-                        title: const Text('Obnovit z archivu'),
-                        onTap: () => _setArchived(j, false),
-                      )
-                    else ...[
-                      ListTile(
-                        leading: const Icon(Icons.edit),
-                        title: const Text('Upravit stavbu'),
-                        onTap: () => _editJob(j),
+                return AppCard(
+                  showChevron: false,
+                  padding: EdgeInsets.zero,
+                  child: Theme(
+                    data: Theme.of(context).copyWith(
+                      dividerColor: AppColors.border,
+                    ),
+                    child: ExpansionTile(
+                      leading: AppIconBox(
+                        icon: isArchived ? Icons.inventory_2 : Icons.apartment,
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.archive),
-                        title: const Text('Archivovat'),
-                        onTap: () => _setArchived(j, true),
+                      title: Text(
+                        '${j['projectNumber']} – ${j['name']}',
+                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                       ),
-                      ListTile(
-                        leading: const Icon(Icons.delete_outline),
-                        title: const Text('Smazat stavbu'),
-                        onTap: () => _deleteJob(j),
-                      ),
-                    ],
-                    ...floors.map((f) {
-                      final floor = f as Map<String, dynamic>;
-                      return ListTile(
-                        title: Text(floor['name'] as String),
-                        trailing: _showArchived
-                            ? null
-                            : PopupMenuButton<String>(
-                                onSelected: (v) {
-                                  if (v == 'edit') _editFloor(jobId, floor);
-                                  if (v == 'delete') _deleteFloor(jobId, floor);
-                                },
-                                itemBuilder: (_) => const [
-                                  PopupMenuItem(value: 'edit', child: Text('Upravit')),
-                                  PopupMenuItem(value: 'delete', child: Text('Smazat')),
-                                ],
-                              ),
-                      );
-                    }),
-                    if (!_showArchived)
-                      ListTile(
-                        leading: const Icon(Icons.add),
-                        title: const Text('Přidat patro'),
-                        onTap: () => _addFloor(jobId),
-                      ),
-                  ],
+                      subtitle: isArchived
+                          ? Text(
+                              'Archivováno',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: AppColors.textMuted,
+                                  ),
+                            )
+                          : null,
+                      children: [
+                        if (_showArchived)
+                          ListTile(
+                            leading: const Icon(Icons.unarchive),
+                            title: const Text('Obnovit z archivu'),
+                            onTap: () => _setArchived(j, false),
+                          )
+                        else ...[
+                          ListTile(
+                            leading: const Icon(Icons.edit),
+                            title: const Text('Upravit stavbu'),
+                            onTap: () => _editJob(j),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.archive),
+                            title: const Text('Archivovat'),
+                            onTap: () => _setArchived(j, true),
+                          ),
+                          ListTile(
+                            leading: const Icon(Icons.delete_outline),
+                            title: const Text('Smazat stavbu'),
+                            onTap: () => _deleteJob(j),
+                          ),
+                        ],
+                        ...floors.map((f) {
+                          final floor = f as Map<String, dynamic>;
+                          return ListTile(
+                            title: Text(floor['name'] as String),
+                            trailing: _showArchived
+                                ? null
+                                : PopupMenuButton<String>(
+                                    onSelected: (v) {
+                                      if (v == 'edit') _editFloor(jobId, floor);
+                                      if (v == 'delete') _deleteFloor(jobId, floor);
+                                    },
+                                    itemBuilder: (_) => const [
+                                      PopupMenuItem(value: 'edit', child: Text('Upravit')),
+                                      PopupMenuItem(value: 'delete', child: Text('Smazat')),
+                                    ],
+                                  ),
+                          );
+                        }),
+                        if (!_showArchived)
+                          ListTile(
+                            leading: const Icon(Icons.add),
+                            title: const Text('Přidat patro'),
+                            onTap: () => _addFloor(jobId),
+                          ),
+                      ],
+                    ),
+                  ),
                 );
               },
             ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/design_tokens.dart';
 
 /// Vícenásobný výběr hodnot přes chipy (toggle).
 class MultiChipSelector extends StatelessWidget {
@@ -64,29 +65,51 @@ class MultiChipSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+        ),
         if (selected.isNotEmpty) ...[
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             'Vybráno: ${selected.join(', ')}',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.sm),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
           children: [
-            ..._displayOptions.map(
-              (o) => FilterChip(
+            ..._displayOptions.map((o) {
+              final isSelected = selected.contains(o);
+              return FilterChip(
                 label: Text(o),
-                selected: selected.contains(o),
+                selected: isSelected,
                 onSelected: (_) => _toggle(o),
-              ),
-            ),
+                selectedColor: AppColors.accent.withValues(alpha: 0.2),
+                backgroundColor: AppColors.bgSecondary,
+                checkmarkColor: AppColors.accent,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppColors.accent : AppColors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+                side: BorderSide(
+                  color: isSelected ? AppColors.accent : AppColors.border,
+                ),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.smAll),
+              );
+            }),
             if (allowCustom)
               ActionChip(
                 label: const Text('Vlastní'),
+                backgroundColor: AppColors.bgSecondary,
+                labelStyle: const TextStyle(color: AppColors.textSecondary),
+                side: const BorderSide(color: AppColors.border),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.smAll),
                 onPressed: () => _addCustom(context),
               ),
           ],

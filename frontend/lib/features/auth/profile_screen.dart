@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 import '../sync/sync_service.dart';
 import 'auth_provider.dart';
 
@@ -72,75 +74,68 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       appBar: AppBar(title: const Text('Profil')),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
-            ListTile(
-              leading: const CircleAvatar(child: Icon(Icons.person)),
-              title: Text(user['displayName'] as String? ?? ''),
-              subtitle: Text('${user['username']} · $role'),
+            AppCard(
+              showChevron: false,
+              leading: AppIconBox(
+                icon: Icons.person,
+                backgroundColor: AppColors.bgSecondary,
+                color: AppColors.textPrimary,
+              ),
+              title: user['displayName'] as String? ?? '',
+              subtitle: '${user['username']} · $role',
             ),
-            const Divider(height: 32),
-            Text('Změna PINu', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.lg),
+            const SectionHeader(title: 'Změna PINu', style: SectionHeaderStyle.h3),
             Text(
               'Zadejte starý PIN, nový PIN a jeho potvrzení.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
-            const SizedBox(height: 16),
-            TextField(
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
               key: const Key('profile_pin_current'),
               controller: _currentCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Aktuální PIN',
-                border: OutlineInputBorder(),
-              ),
+              label: 'Aktuální PIN',
               obscureText: true,
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
+              prefixIcon: const Icon(Icons.lock_outline),
             ),
-            const SizedBox(height: 16),
-            TextField(
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
               key: const Key('profile_pin_new'),
               controller: _newCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Nový PIN',
-                border: OutlineInputBorder(),
-              ),
+              label: 'Nový PIN',
               obscureText: true,
               keyboardType: TextInputType.number,
               textInputAction: TextInputAction.next,
+              prefixIcon: const Icon(Icons.lock_reset),
             ),
-            const SizedBox(height: 16),
-            TextField(
+            const SizedBox(height: AppSpacing.lg),
+            AppTextField(
               key: const Key('profile_pin_confirm'),
               controller: _confirmCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Potvrdit nový PIN',
-                border: OutlineInputBorder(),
-              ),
+              label: 'Potvrdit nový PIN',
               obscureText: true,
               keyboardType: TextInputType.number,
+              prefixIcon: const Icon(Icons.check_circle_outline),
               onSubmitted: (_) => _changePin(),
             ),
             if (_error != null) ...[
-              const SizedBox(height: 12),
-              Text(_error!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: AppSpacing.md),
+              Text(_error!, style: const TextStyle(color: AppColors.error)),
             ],
             if (_success != null) ...[
-              const SizedBox(height: 12),
-              Text(_success!, style: TextStyle(color: Colors.green.shade700)),
+              const SizedBox(height: AppSpacing.md),
+              Text(_success!, style: const TextStyle(color: AppColors.success)),
             ],
-            const SizedBox(height: 24),
-            FilledButton(
+            const SizedBox(height: AppSpacing.xl),
+            AppPrimaryButton(
               key: const Key('profile_pin_submit'),
-              onPressed: _loading ? null : _changePin,
-              child: _loading
-                  ? const SizedBox(
-                      height: 24,
-                      width: 24,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Text('Uložit nový PIN'),
+              label: 'Uložit nový PIN',
+              loading: _loading,
+              onPressed: _changePin,
             ),
           ],
         ),

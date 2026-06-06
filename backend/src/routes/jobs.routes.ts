@@ -158,6 +158,50 @@ router.patch('/:id/unarchive', requireRole(...MANAGEMENT_ROLES), async (req, res
   }
 });
 
+router.get('/:id/activity', requirePermission('job.manage'), async (req, res, next) => {
+  try {
+    const jobId = paramId(req.params.id);
+    const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw notFound('Stavba nenalezena');
+
+    const sealIds = (
+      await prisma.seal.findMany({
+        where: { jobId, deletedAt: null },
+        select: { id: true },
+      })
+    ).map((s) => s.id);
+
+    const [activities, changes, seals] = await Promise.all([
+      prisma.activityLog.findMany({
+        where: {
+          OR: [
+            { entityType: 'job', entityId: jobId },
+            { entityType: 'seal', entityId: { in: sealIds } },
+          ],
+        },
+        include: { user: { select: { displayName: true, username: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      prisma.changeLog.findMany({
+        where: { entityType: 'seal', entityId: { in: sealIds } },
+        include: { user: { select: { displayName: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+      }),
+      prisma.seal.groupBy({
+        by: ['status'],
+        where: { jobId, deletedAt: null },
+        _count: { id: true },
+      }),
+    ]);
+
+    res.json({ activities, changes, sealStatusBreakdown: seals });
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.patch('/:id', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
   try {
     const id = paramId(req.params.id);

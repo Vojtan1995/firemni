@@ -4,8 +4,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../../widgets/widgets.dart';
+import '../auth/auth_provider.dart';
+import 'jobs_cache_service.dart';
 
 class JobNumberScreen extends ConsumerStatefulWidget {
   const JobNumberScreen({super.key});
@@ -17,6 +21,7 @@ class JobNumberScreen extends ConsumerStatefulWidget {
 class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
   final _ctrl = TextEditingController();
   bool _loading = false;
+  bool _offline = false;
   String? _error;
 
   Future<void> _open() async {
@@ -24,37 +29,61 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
       setState(() => _error = 'Zadejte 8místné číslo stavby');
       return;
     }
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final dio = ref.read(dioProvider);
       final res = await dio.get('/api/jobs/by-number/${_ctrl.text}');
       final job = res.data as Map<String, dynamic>;
       final db = ref.read(databaseProvider);
       await db.into(db.localJobs).insertOnConflictUpdate(
-        LocalJobsCompanion.insert(
-          id: job['id'] as String,
-          projectNumber: job['projectNumber'] as String,
-          name: job['name'] as String,
-          address: Value(job['address'] as String?),
-          isArchived: Value(job['isArchived'] as bool? ?? false),
-          updatedAt: DateTime.parse(job['updatedAt'] as String),
-        ),
-      );
+            LocalJobsCompanion.insert(
+              id: job['id'] as String,
+              projectNumber: job['projectNumber'] as String,
+              name: job['name'] as String,
+              address: Value(job['address'] as String?),
+              isArchived: Value(job['isArchived'] as bool? ?? false),
+              updatedAt: DateTime.parse(job['updatedAt'] as String),
+            ),
+          );
       for (final f in (job['floors'] as List? ?? [])) {
         final m = f as Map<String, dynamic>;
         await db.into(db.localFloors).insertOnConflictUpdate(
-          LocalFloorsCompanion.insert(
-            id: m['id'] as String,
-            jobId: job['id'] as String,
-            name: m['name'] as String,
-            sortOrder: Value(m['sortOrder'] as int? ?? 0),
-            updatedAt: DateTime.parse(m['updatedAt'] as String),
-          ),
+              LocalFloorsCompanion.insert(
+                id: m['id'] as String,
+                jobId: job['id'] as String,
+                name: m['name'] as String,
+                sortOrder: Value(m['sortOrder'] as int? ?? 0),
+                updatedAt: DateTime.parse(m['updatedAt'] as String),
+              ),
+            );
+      }
+      final userId = ref.read(currentUserIdProvider);
+      if (userId != null) {
+        await JobsCacheService(db).saveLastOpened(
+          userId: userId,
+          jobId: job['id'] as String,
         );
       }
       if (mounted) context.push('/floors/${job['id']}');
     } catch (_) {
-      setState(() => _error = 'Stavba s tímto číslem neexistuje');
+      final cache = JobsCacheService(ref.read(databaseProvider));
+      final job = await cache.findJobByProjectNumber(_ctrl.text);
+      if (job != null && mounted) {
+        final userId = ref.read(currentUserIdProvider);
+        if (userId != null) {
+          await cache.saveLastOpened(userId: userId, jobId: job['id'] as String);
+        }
+        setState(() {
+          _offline = true;
+          _error = null;
+        });
+        if (mounted) context.push('/floors/${job['id']}');
+      } else {
+        setState(() => _error = 'Stavba s tímto číslem neexistuje');
+      }
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -63,31 +92,45 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Číslo stavby')),
+      appBar: AppBar(
+        title: const Text('Číslo stavby'),
+        actions: [
+          if (_offline)
+            const Padding(
+              padding: EdgeInsets.only(right: AppSpacing.sm),
+              child: Center(child: OfflineIndicator(compact: true)),
+            ),
+        ],
+      ),
       body: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
+            const SectionHeader(
+              title: 'Otevřít stavbu',
+              subtitle: 'Zadejte 8místné číslo projektu',
+              style: SectionHeaderStyle.h3,
+            ),
+            AppTextField(
               controller: _ctrl,
-              decoration: const InputDecoration(
-                labelText: '8místné číslo stavby',
-                border: OutlineInputBorder(),
-                hintText: '12345678',
-              ),
+              label: '8místné číslo stavby',
+              hint: '12345678',
               keyboardType: TextInputType.number,
               maxLength: 8,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              prefixIcon: const Icon(Icons.numbers),
             ),
             if (_error != null)
               Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(_error!, style: const TextStyle(color: Colors.red)),
+                padding: const EdgeInsets.only(top: AppSpacing.sm),
+                child: Text(_error!, style: const TextStyle(color: AppColors.error)),
               ),
-            const SizedBox(height: 24),
-            ElevatedButton(
-              onPressed: _loading ? null : _open,
-              child: _loading ? const CircularProgressIndicator() : const Text('Otevřít stavbu'),
+            const SizedBox(height: AppSpacing.xl),
+            AppPrimaryButton(
+              label: 'Otevřít stavbu',
+              loading: _loading,
+              onPressed: _open,
             ),
           ],
         ),

@@ -1,6 +1,8 @@
 
 # Kompletní projektová dokumentace - aplikace pro evidenci požárních ucpávek
 
+> **Poslední aktualizace:** 2026-06-06 – role `vedeni`/`ucetni`, modul soupisů práce, ceník, lokální Android test.
+
 ## 1. Shrnutí projektu
 Cílem je vytvořit interní firemní aplikaci pro evidenci požárních ucpávek a prostupů. Aplikace bude používaná přibližně 15 pracovníky v terénu a 4 lidmi z vedení nebo účetního oddělení. Má běžet primárně na Androidu a Windows.
 
@@ -17,11 +19,18 @@ Nejdůležitější požadavek není počet funkcí, ale rychlé zadávání v t
 - Cursor nesmí dostat pokyn typu "udělej celou aplikaci najednou".
 
 ## 3. Role
-| Role | Popis | Práva |
-|---|---|---|
-| Worker | Pracovník v terénu | zapisuje ucpávky, fotí, edituje rozpracované |
-| Management | Vedení / účetní | zakládá stavby a patra, kontroluje, exportuje, archivuje |
-| Admin | Nouzová role | vše jako management + obnova, uživatelé, zálohy |
+Implementované role v systému (`UserRole`):
+
+| Role | Kód | Popis | Hlavní práva |
+|---|---|---|---|
+| Pracovník | `worker` | Pracovník v terénu | ucpávky (vlastní), fotky, sync, vlastní soupisy, export vlastních dat |
+| Vedení | `vedeni` | Stavby, kontrola, management | CRUD stavby/patra, kontrola statusů ucpávek i soupisů, export, správa uživatelů (kromě admin) |
+| Administrativa | `ucetni` | Účetní oddělení | prohlížení dat, fakturační statusy soupisů, export soupisů a reportů |
+| Admin | `admin` | Nouzový superuživatel | vše + koš/obnova, plná správa uživatelů včetně admin účtů |
+
+Poznámka: v dokumentaci se dříve používal souhrnný termín „Management“ – v kódu je rozdělen na `vedeni` a `ucetni` s odlišnými oprávněními (viz `backend/src/lib/permissions.ts` a `frontend/lib/core/permissions.dart`).
+
+Testovací účty (seed): `worker1`, `worker2`, `vedeni`, `ucetni`, `admin` – PIN `1234`.
 
 ## 4. Workflow workerů
 1. Přihlášení jménem a PINem.
@@ -111,8 +120,9 @@ Doporučení:
 - do databáze neukládat binární data ani base64, pouze metadata a cestu
 
 ## 10. Statusy
+### 10.1 Ucpávky (prostupy)
 Finální statusový tok:
-Rozpracováno -> Zkontrolováno -> Fakturováno
+Rozpracováno (`draft`) → Zkontrolováno (`checked`) → Fakturováno (`invoiced`)
 
 Pravidla:
 - Worker po uložení vytváří rozpracovanou ucpávku.
@@ -120,7 +130,10 @@ Pravidla:
 - Vedení může nechat ucpávku rozpracovanou, pokud je potřeba něco dořešit.
 - Vedení může zkontrolovanou ucpávku vrátit zpět do rozpracováno.
 - Worker nedostává žádné notifikace ani diskuzní vlákno.
-- Každá změna statusu se loguje.
+- Každá změna statusu se loguje (`change_log`).
+
+### 10.2 Soupisy práce
+Samostatný workflow se stavy `draft → submitted → reviewed → ready_for_invoice → invoiced` včetně zpětných přechodů pro vedení/admin. Detail viz **§13.2**.
 
 ## 11. Offline režim a synchronizace
 Offline režim je povinná funkce, protože pracovníci často pracují bez signálu.
@@ -155,29 +168,72 @@ Chování:
 - konflikt vidí worker i vedení
 - vedení/admin ručně rozhodne
 
-## 13. Exporty a soupis prací
-Účetní potřebuje soupisy prací. Každá položka/prostup se může později oceňovat podle ceníku, ale v první verzi ceník ještě nebude.
+## 13. Exporty, soupisy práce a ceník
 
-V1 obsahuje:
-- detailní soupis bez cen
-- export PDF
-- export CSV/Excel
-- možnost filtrování
-- možnost zvolit sloupce exportu
+V systému existují **dva související, ale oddělené moduly**:
 
-Filtry:
-- zakázka
-- pracovník
-- období
-- status
-- patro
-- typ prostupu
-- materiál
+### 13.1 Reporty (filtr-based export ucpávek)
+Obrazovka **Soupis prací / Export** (`/reports`) – agregovaný export podle filtrů (stavba, období, pracovník, patro, status…).
 
-Později:
-- správa ceníku vedením/adminem
-- cena za kus
-- cena celkem
+- `GET /api/reports/work-summary` – náhled dat
+- `GET /api/reports/export/pdf` – PDF
+- `GET /api/reports/export/csv` – CSV (volitelné sloupce)
+
+Worker vidí export **jen svých** záznamů (server-side scope). Vedení, administrativa a admin vidí vše.
+
+### 13.2 Soupisy práce (worksheet workflow) – implementováno 2026-06
+Modul **Soupisy práce** (`/worksheets`) – formální soupis s workflow stavy, zamraženými položkami a auditem. Každý soupis patří jedné zakázce a obsahuje snapshot položek (`worksheet_items`).
+
+**Stavy soupisu (`WorkSheetStatus`):**
+
+| Stav | Kód | Význam |
+|---|---|---|
+| Rozpracovaný | `draft` | Lze doplňovat položky |
+| Odevzdaný | `submitted` | Worker odevzdal k kontrole |
+| Zkontrolovaný | `reviewed` | Schváleno vedením |
+| Připravený k fakturaci | `ready_for_invoice` | Předáno účetní |
+| Vyfakturovaný | `invoiced` | Uzavřeno |
+
+**Povolené přechody (včetně zpětných pro vedení/admin):**
+```
+draft → submitted
+submitted → reviewed | draft
+reviewed → ready_for_invoice | submitted | draft
+ready_for_invoice → invoiced | reviewed
+invoiced → ready_for_invoice
+```
+
+**Práva ke změně stavu:**
+- **worker** – pouze `draft → submitted`; po odevzdání zakázáno, dokud vedení nevrátí do `draft`
+- **administrativa (`ucetni`)** – jen fakturační: `reviewed ↔ ready_for_invoice ↔ invoiced`
+- **vedení / admin** – libovolný platný přechod včetně návratu zpět
+
+**Audit:** každá změna stavu → záznam v `change_log` (kdo, kdy, starý/nový stav, volitelný komentář) + `activity_log`.
+
+**Detail soupisu (Flutter):** seznam → klepnutí → `/worksheets/:id` – zakázka, období, pracovníci, položky, celková hodnota (pokud existuje ceník), historie stavů, tlačítka PDF/CSV/stav.
+
+**API soupisů:**
+- `GET /api/worksheets` – seznam (worker jen přiřazené)
+- `POST /api/worksheets` – vytvoření
+- `GET /api/worksheets/:id` – detail + `statusHistory`, `totalValue`, `allowedStatusTargets`
+- `POST /api/worksheets/:id/items` – přidání položek (jen `draft`)
+- `POST /api/worksheets/:id/populate` – auto-vyplnění z ucpávek
+- `PATCH /api/worksheets/:id/status` – `{ status, comment? }`
+- `GET /api/worksheets/:id/export/pdf` – PDF daného soupisu
+- `GET /api/worksheets/:id/export/csv` – CSV daného soupisu
+
+**Práva k detailu a exportu:** stejná pravidla jako u `GET /api/worksheets/:id` – worker jen vlastní, ostatní role dle `worksheet.view` (403 na backendu, ne jen skrytí tlačítek).
+
+### 13.3 Ceník – implementováno
+Správa ceníku vedením/adminem, prohlížení všemi relevantními rolemi. Ceny se ukládají jako snapshot u položek soupisu a u záznamů ucpávek (`unitPrice`, `totalPrice`).
+
+- `GET /api/price-list` – aktivní ceník
+- `POST /api/price-list/seed` – seed výchozího ceníku (vedení/admin)
+
+Obrazovka Flutter: `/price-list`.
+
+### 13.4 Filtry reportů (beze změny)
+- zakázka, pracovník, období, status, patro, typ prostupu, materiál, systém
 
 ## 14. Vyhledávání a statistiky
 Worker:
@@ -257,111 +313,113 @@ Důvod pro PostgreSQL místo serverového SQLite:
 
 ## 18. Databázový model
 Hlavní tabulky:
-- users
-- user_sessions
-- jobs
-- job_floors
-- seals
-- seal_entries
-- seal_entry_materials
-- seal_photos
+- users, user_sessions
+- jobs, job_floors
+- seals, seal_entries, seal_entry_materials, seal_photos
+- **worksheets, worksheet_workers, worksheet_items** – modul soupisů práce
+- **price_list, price_list_items** – ceník
 - sync_mutations
-- activity_log
-- change_log
-- login_log
-- error_log
+- activity_log, change_log, login_log, error_log
 
 Kritický unikátní index:
-job_id + floor_id + seal_number musí být unikátní mezi nesmazanými ucpávkami.
+- `job_id + floor_id + seal_number` musí být unikátní mezi nesmazanými ucpávkami
+- `worksheet_id + seal_entry_id` – stejný prostup nelze v soupisu duplicitně
 
 ## 19. API bloky
 Auth:
 - POST /api/auth/login
 - POST /api/auth/logout
 - GET /api/auth/me
+- POST /api/auth/change-pin
 
 Jobs:
-- GET /api/jobs
+- GET /api/jobs, GET /api/jobs/my
 - GET /api/jobs/by-number/:projectNumber
-- POST /api/jobs
-- PATCH /api/jobs/:id/archive
+- POST /api/jobs, PATCH /api/jobs/:id, PATCH /api/jobs/:id/archive
+- DELETE /api/jobs/:id (soft)
 
 Floors:
 - GET /api/jobs/:jobId/floors
 - POST /api/jobs/:jobId/floors
+- PATCH /api/floors/:id, DELETE /api/floors/:id
 
 Seals:
-- GET /api/floors/:floorId/seals
-- GET /api/seals/:id
-- POST /api/seals
-- PATCH /api/seals/:id
-- PATCH /api/seals/:id/status
-- DELETE /api/seals/:id
+- GET /api/seals/floors/:floorId/seals
+- GET /api/seals/:id, GET /api/seals/:id/history
+- POST /api/seals, PATCH /api/seals/:id
+- PATCH /api/seals/:id/status, DELETE /api/seals/:id
+- GET /api/seals/trash, PATCH /api/seals/:id/restore (admin)
+- POST /api/seals/:id/photos
+
+Photos:
+- DELETE /api/photos/:id (zakázáno pro všechny role ve V1)
 
 Sync:
 - POST /api/sync/push
 - GET /api/sync/pull
 
-Reports:
+Reports (filtr-based):
 - GET /api/reports/work-summary
 - GET /api/reports/export/pdf
 - GET /api/reports/export/csv
 
+Worksheets (modul soupisů):
+- GET /api/worksheets
+- POST /api/worksheets
+- GET /api/worksheets/:id
+- POST /api/worksheets/:id/items
+- POST /api/worksheets/:id/populate
+- PATCH /api/worksheets/:id/status
+- GET /api/worksheets/:id/export/pdf
+- GET /api/worksheets/:id/export/csv
+
+Price list:
+- GET /api/price-list
+- POST /api/price-list/seed
+
+Users (vedení/admin):
+- GET /api/users, POST /api/users, PATCH /api/users/:id
+
+Stats:
+- GET /api/stats/overview
+
+Logs:
+- GET /api/logs/activity (vedení/admin)
+
 ## 20. MVP rozsah
-MVP V1 musí mít:
-- login jméno + PIN
-- role worker/management/admin
-- stavby přes 8místné číslo
-- patra
-- seznam čísel ucpávek
-- formulář ucpávky
-- více prostupů v ucpávce
-- více materiálů na prostup
-- fotky
-- offline ukládání
-- sync
-- konflikt čísla
-- statusy
-- soupis prací
-- CSV export
-- základní logy
+MVP V1 – stav implementace (2026-06):
+
+| Oblast | Stav |
+|---|---|
+| login jméno + PIN | hotovo |
+| role worker / vedeni / ucetni / admin | hotovo |
+| stavby přes 8místné číslo | hotovo |
+| patra, správa staveb | hotovo |
+| seznam ucpávek, formulář, materiály, presety rozměrů | hotovo |
+| fotky (upload, retry, bez mazání workerem) | hotovo |
+| offline ukládání + sync push/pull | hotovo |
+| konflikty (duplicita, zamčené záznamy) | hotovo |
+| statusy ucpávek (draft/checked/invoiced) | hotovo |
+| reporty – filtr + CSV/PDF export | hotovo |
+| **soupisy práce – workflow, detail, export, audit** | **hotovo** |
+| **ceník – prohlížení + správa** | **hotovo** |
+| správa uživatelů, statistiky, logy | hotovo |
+| admin koš / obnova ucpávek | hotovo |
+| Android debug APK (lokální test proti PC) | hotovo |
+| Windows release build | hotovo |
 
 Nechat na později:
-- ceník
-- push notifikace
-- diskuze
-- QR kódy
-- tisk štítků
-- pokročilá statistika
-- editovatelný katalog
-- automatická fakturace
+- push notifikace, diskuze
+- QR kódy, tisk štítků
+- automatická fakturace / ERP napojení
+- produkční HTTPS deploy (Railway) – konfigurace existuje, release APK vyžaduje `--dart-define=API_BASE_URL=...`
 
 ## 21. Roadmapa implementace
-1. Repozitář a skeleton projektu
-2. PostgreSQL + Prisma schema
-3. Express backend setup
-4. Auth a role middleware
-5. Jobs API
-6. Floors API
-7. Seals CRUD
-8. Photos upload
-9. Basic logs
-10. Flutter skeleton
-11. Login UI
-12. Worker navigation
-13. Job number screen
-14. Floor list
-15. Seal list
-16. Seal form UI
-17. Lokální SQLite přes Drift
-18. Outbox queue
-19. Sync push/pull
-20. Conflict handling
-21. Reports
-22. Exports
-23. Management screens
-24. Admin recovery tools
-25. Testování a stabilizace
+1.–25. základní bloky – **většina hotova** (viz `FRONTEND_STATUS.md`, `RUNNING.md`)
+26. Soupisy práce – detail, export PDF/CSV, RBAC, audit stavů – **hotovo (2026-06)**
+27. Lokální testování Android APK proti PC v LAN – **hotovo** (viz §26)
+28. Produkční deploy (Railway) + release APK s HTTPS URL – **připraveno, ne povinné pro interní beta**
+29. Testování a stabilizace – **probíhá**
 
 ## 22. Struktura tasků pro Cursor
 Cursoru nedávat jeden obří task. Používat malé přesné tasky.
@@ -405,9 +463,22 @@ Povinně otestovat:
 - zkontrolovanou ucpávku worker neupraví
 - vedení vrátí ucpávku na rozpracováno
 - fakturovaný záznam je zamčený
-- worker nevidí admin/export funkce
+- worker nevidí admin/export funkce mimo scope
 - admin obnoví smazaný záznam
 - archivovaná stavba se workerovi nezobrazuje jako aktivní
+
+**Soupisy práce (2026-06):**
+- worker rozklikne a stáhne **jen vlastní** soupis; cizí → 403
+- vedení/admin rozklikne, stáhne a změní stav libovolného soupisu včetně zpětného přechodu
+- administrativa mění jen fakturační stavy; ostatní → 403
+- worker nemůže měnit stav po odevzdání (kromě nového odevzdání po vrácení do `draft`)
+- každá změna stavu vytvoří záznam v historii (kdo, kdy, from→to, komentář)
+- backend testy: `backend/__tests__/worksheets.integration.test.js`
+
+**Android lokálně (viz §26):**
+- backend běží na PC, telefon ve stejné Wi‑Fi
+- `http://<IP_PC>:3000/health` dostupné z prohlížeče telefonu
+- debug APK nainstalováno, login a soupisy fungují
 
 ## 25. Doporučený první prompt do Cursoru
 Nezačínej implementací celé aplikace.
@@ -415,3 +486,15 @@ Nezačínej implementací celé aplikace.
 První prompt má být pouze analytický:
 
 Analyzuj přiloženou projektovou dokumentaci. Nevytvářej zatím žádný kód. Navrhni detailní implementační plán po malých blocích pro backend, frontend, databázi, offline sync, fotky, reporty a testování. U každého bloku napiš závislosti, rizika a ověřovací kroky. Výstupem má být pouze plán, ne implementace.
+
+## 26. Lokální testování Android (bez Railway/GitHub)
+Pro interní test na fyzickém telefonu proti backendu na PC:
+
+1. **Backend:** `cd backend && npm run dev` (PostgreSQL + seed, viz [RUNNING.md](../RUNNING.md))
+2. **Síť:** telefon a PC ve **stejné Wi‑Fi**; ověř `http://<IP_PC>:3000/health` v prohlížeči telefonu
+3. **Debug APK:** sestavení `flutter build apk --debug` – API URL pro debug je v `frontend/lib/core/config.dart` (`_debugLanApiBaseUrl`, aktuálně LAN IP PC)
+4. **Instalace:** USB + `adb install -r build/app/outputs/flutter-apk/app-debug.apk`, nebo ruční kopie APK na telefon
+5. **Nové APK** sestavovat jen po změně kódu nebo změně IP PC
+
+Release APK pro produkci (Railway) používá jinou URL – `--dart-define=API_BASE_URL=https://…` (release default zůstává `localhost`, ne produkce).
+

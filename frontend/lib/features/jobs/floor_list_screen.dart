@@ -4,8 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../../widgets/widgets.dart';
+import '../auth/auth_provider.dart';
+import 'job_context_bar.dart';
+import 'jobs_cache_service.dart';
 
 /// Zda seznam pochází z API nebo z lokální cache (FE-02).
 enum FloorListDataSource { online, offline }
@@ -43,6 +48,13 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
       final res = await dio.get('/api/jobs/${widget.jobId}/floors');
       final apiList = (res.data as List).cast<Map<String, dynamic>>();
       await _cacheFloorsFromApi(db, apiList);
+      final userId = ref.read(currentUserIdProvider);
+      if (userId != null) {
+        await JobsCacheService(db).saveLastOpened(
+          userId: userId,
+          jobId: widget.jobId,
+        );
+      }
       if (!mounted) return;
       setState(() {
         _floors = apiList;
@@ -108,12 +120,8 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
         actions: [
           if (_dataSource == FloorListDataSource.offline)
             const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: Icon(Icons.cloud_off, size: 18),
-                label: Text('Offline data'),
-                visualDensity: VisualDensity.compact,
-              ),
+              padding: EdgeInsets.only(right: AppSpacing.sm),
+              child: Center(child: OfflineIndicator(label: 'Offline data', compact: true)),
             ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -123,38 +131,55 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                JobContextBar(jobId: widget.jobId),
                 if (_dataSource == FloorListDataSource.offline)
-                  MaterialBanner(
-                    content: Text(
-                      _offlineHint ??
-                          'Zobrazena poslední uložená patra ze zařízení. Po připojení k serveru obnovte seznam.',
+                  Container(
+                    margin: const EdgeInsets.all(AppSpacing.lg),
+                    padding: const EdgeInsets.all(AppSpacing.lg),
+                    decoration: BoxDecoration(
+                      color: AppColors.warning.withValues(alpha: 0.1),
+                      borderRadius: AppRadius.mdAll,
+                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
                     ),
-                    leading: const Icon(Icons.cloud_off),
-                    actions: [
-                      TextButton(
-                          onPressed: _load, child: const Text('Zkusit znovu')),
-                    ],
+                    child: Row(
+                      children: [
+                        const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
+                        const SizedBox(width: AppSpacing.md),
+                        Expanded(
+                          child: Text(
+                            _offlineHint ??
+                                'Zobrazena poslední uložená patra ze zařízení. Po připojení k serveru obnovte seznam.',
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: AppColors.warning,
+                                ),
+                          ),
+                        ),
+                        TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+                      ],
+                    ),
                   ),
                 if (_floors.isEmpty)
                   Expanded(
-                    child: Center(
-                      child: Text(
-                        _offlineHint ??
-                            'Pro tuto stavbu nejsou k dispozici žádná patra.',
-                        textAlign: TextAlign.center,
-                      ),
+                    child: EmptyState(
+                      message: _offlineHint ??
+                          'Pro tuto stavbu nejsou k dispozici žádná patra.',
+                      icon: Icons.layers_outlined,
                     ),
                   )
                 else
                   Expanded(
                     child: ListView.builder(
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                       itemCount: _floors.length,
                       itemBuilder: (_, i) {
                         final f = _floors[i];
-                        return ListTile(
-                          title: Text(f['name'] as String,
-                              style: const TextStyle(fontSize: 20)),
-                          trailing: const Icon(Icons.chevron_right),
+                        return AppCard(
+                          leading: AppIconBox(
+                            icon: Icons.layers,
+                            backgroundColor: AppColors.bgSecondary,
+                            color: AppColors.textSecondary,
+                          ),
+                          title: f['name'] as String,
                           onTap: () => context
                               .push('/seals/${f['id']}?jobId=${widget.jobId}'),
                         );

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 
 class MessagesScreen extends ConsumerStatefulWidget {
   const MessagesScreen({super.key});
@@ -110,7 +112,7 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Zprávy'),
+        title: Text(_inbox ? 'Doručené zprávy' : 'Odeslané zprávy'),
         actions: [
           IconButton(
             icon: Icon(_inbox ? Icons.outbox : Icons.inbox),
@@ -129,8 +131,9 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _messages.isEmpty
-              ? const Center(child: Text('Žádné zprávy'))
+              ? const EmptyState(message: 'Žádné zprávy', icon: Icons.mail_outline)
               : ListView.builder(
+                  padding: const EdgeInsets.all(AppSpacing.lg),
                   itemCount: _messages.length,
                   itemBuilder: (_, i) {
                     final m = _messages[i];
@@ -138,12 +141,20 @@ class _MessagesScreenState extends ConsumerState<MessagesScreen> {
                     final recipient = m['recipient'] as Map<String, dynamic>?;
                     final isUnread = _inbox && m['readAt'] == null;
                     final peer = _inbox ? sender : recipient;
-                    return ListTile(
-                      title: Text(peer?['displayName'] as String? ?? ''),
-                      subtitle: Text(m['body'] as String? ?? ''),
-                      trailing: isUnread
-                          ? const Icon(Icons.mark_email_unread, color: Colors.blue)
+                    return AppCard(
+                      showChevron: false,
+                      borderColor: isUnread
+                          ? AppColors.info.withValues(alpha: 0.4)
                           : null,
+                      leading: AppIconBox(
+                        icon: isUnread ? Icons.mark_email_unread : Icons.mail_outline,
+                        color: isUnread ? AppColors.info : AppColors.textSecondary,
+                        backgroundColor: (isUnread ? AppColors.info : AppColors.textMuted)
+                            .withValues(alpha: 0.12),
+                        size: 40,
+                      ),
+                      title: peer?['displayName'] as String? ?? '',
+                      subtitle: m['body'] as String? ?? '',
                       onTap: () {
                         if (_inbox && m['readAt'] == null) {
                           _markRead(m['id'] as String);

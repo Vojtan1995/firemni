@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
+import { seedDefaultPriceList } from '../src/services/pricing.service.js';
 
 const prisma = new PrismaClient();
 
@@ -30,10 +31,10 @@ async function main() {
 
   await prisma.user.upsert({
     where: { username: 'ucetni' },
-    update: { role: UserRole.ucetni },
+    update: { role: UserRole.ucetni, displayName: 'Administrativa' },
     create: {
       username: 'ucetni',
-      displayName: 'Účetní',
+      displayName: 'Administrativa',
       pinHash,
       role: UserRole.ucetni,
     },
@@ -113,6 +114,8 @@ async function main() {
   });
 
   console.log('Seed OK:', { admin: admin.username, job: job.projectNumber, floors: [floor1.name, floor2.name] });
+  await seedDefaultPriceList();
+  console.log('Price list seeded');
 }
 
 main()

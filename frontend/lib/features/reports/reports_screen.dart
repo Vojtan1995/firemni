@@ -3,19 +3,35 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
+import '../../core/parse_utils.dart';
+import '../auth/auth_provider.dart';
 import '../seals/seal_constants.dart';
 import 'export_service.dart';
 import 'reports_query.dart';
 
 class ReportsScreen extends ConsumerStatefulWidget {
-  const ReportsScreen({super.key});
+  const ReportsScreen({
+    super.key,
+    this.compact = false,
+    this.initialJobId,
+    this.initialStatus,
+    this.initialWorkerId,
+  });
+
+  /// Bez Scaffold a bez tabulky — pro vložení do [SoupisyScreen].
+  final bool compact;
+  final String? initialJobId;
+  final String? initialStatus;
+  final String? initialWorkerId;
 
   @override
-  ConsumerState<ReportsScreen> createState() => _ReportsScreenState();
+  ConsumerState<ReportsScreen> createState() => ReportsScreenState();
 }
 
-class _ReportsScreenState extends ConsumerState<ReportsScreen> {
+class ReportsScreenState extends ConsumerState<ReportsScreen> {
   List<Map<String, dynamic>> _rows = [];
+  double? _totalCzk;
   List<Map<String, dynamic>> _jobs = [];
   List<Map<String, dynamic>> _workers = [];
   List<Map<String, dynamic>> _floors = [];
@@ -37,10 +53,12 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     'invoiced': 'Vyfakturováno',
   };
 
+  bool get _isWorker => ref.read(authServiceProvider).isWorker;
+
   Map<String, String> get _queryParams => buildReportsQueryParams(
         jobId: _filterJobId,
         status: _filterStatus,
-        workerId: _filterWorkerId,
+        workerId: _isWorker ? ref.read(currentUserIdProvider) : _filterWorkerId,
         floorId: _filterFloorId,
         system: _filterSystem,
         entryType: _filterEntryType,
@@ -51,33 +69,50 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   @override
   void initState() {
     super.initState();
-    _loadJobs();
-    _loadWorkers();
+    _filterJobId = widget.initialJobId;
+    _filterStatus = widget.initialStatus;
+    _filterWorkerId = widget.initialWorkerId;
+    _loadFilterOptions();
   }
 
-  Future<void> _loadJobs() async {
-    try {
-      final res = await ref.read(dioProvider).get(
-        '/api/jobs',
-        queryParameters: {'archived': 'false'},
-      );
-      if (!mounted) return;
-      setState(() => _jobs = (res.data as List).cast<Map<String, dynamic>>());
-    } on DioException catch (e) {
-      _showError(_dioMessage(e, 'Nepodařilo se načíst stavby'));
+  /// Aplikuje filtry z drill-down navigace (volá [SoupisyScreen]).
+  Future<void> applyInitialFilters({
+    String? jobId,
+    String? status,
+    String? workerId,
+  }) async {
+    setState(() {
+      if (jobId != null) _filterJobId = jobId.isEmpty ? null : jobId;
+      if (status != null) _filterStatus = status.isEmpty ? null : status;
+      if (workerId != null) _filterWorkerId = workerId.isEmpty ? null : workerId;
+    });
+    if (_filterJobId != null) {
+      await _loadFloorsForJob(_filterJobId);
     }
+    await _load();
   }
 
-  Future<void> _loadWorkers() async {
+  Future<void> _loadFilterOptions() async {
     try {
-      final res = await ref.read(dioProvider).get('/api/users');
+      final res = await ref.read(dioProvider).get('/api/reports/filter-options');
       if (!mounted) return;
-      final all = (res.data as List).cast<Map<String, dynamic>>();
+      final data = res.data as Map;
       setState(() {
-        _workers = all.where((u) => u['role'] == 'worker').toList();
+        _jobs = (data['jobs'] as List).cast<Map<String, dynamic>>();
+        if (!_isWorker) {
+          _workers = (data['workers'] as List).cast<Map<String, dynamic>>();
+        }
       });
+      if (_filterJobId != null) {
+        await _loadFloorsForJob(_filterJobId);
+      }
+      if (widget.initialJobId != null ||
+          widget.initialStatus != null ||
+          widget.initialWorkerId != null) {
+        await _load();
+      }
     } on DioException catch (e) {
-      _showError(_dioMessage(e, 'Nepodařilo se načíst pracovníky'));
+      _showError(_dioMessage(e, 'Nepodařilo se načíst filtry'));
     }
   }
 
@@ -130,6 +165,8 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return DateFormat('d.M.yyyy').format(d);
   }
 
+  Future<void> load() => _load();
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -139,8 +176,9 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
           );
       if (!mounted) return;
       setState(() {
-        _rows =
-            ((res.data as Map)['rows'] as List).cast<Map<String, dynamic>>();
+        final data = res.data as Map;
+        _rows = (data['rows'] as List).cast<Map<String, dynamic>>();
+        _totalCzk = parseNumOrNull(data['totalCzk']);
         _loading = false;
       });
     } on DioException catch (e) {
@@ -219,7 +257,7 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
   void _showError(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red.shade700),
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
   }
 
@@ -231,13 +269,10 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
     return fallback;
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Soupis prací')),
-      body: Column(
-        children: [
-          Padding(
+  Map<String, String> get queryParams => _queryParams;
+
+  Widget _buildFiltersPanel(BuildContext context, bool isWorker) {
+    return Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -290,28 +325,30 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                       ? null
                       : (v) => setState(() => _filterFloorId = v),
                 ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-worker-$_filterWorkerId'),
-                  initialValue: _filterWorkerId,
-                  decoration: const InputDecoration(
-                    labelText: 'Pracovník',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Všichni pracovníci'),
+                if (!isWorker) ...[
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String?>(
+                    key: ValueKey('filter-worker-$_filterWorkerId'),
+                    initialValue: _filterWorkerId,
+                    decoration: const InputDecoration(
+                      labelText: 'Pracovník',
+                      border: OutlineInputBorder(),
                     ),
-                    ..._workers.map(
-                      (w) => DropdownMenuItem<String?>(
-                        value: w['id'] as String,
-                        child: Text(w['displayName'] as String? ?? w['username'] as String),
+                    items: [
+                      const DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text('Všichni pracovníci'),
                       ),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _filterWorkerId = v),
-                ),
+                      ..._workers.map(
+                        (w) => DropdownMenuItem<String?>(
+                          value: w['id'] as String,
+                          child: Text(w['displayName'] as String? ?? w['username'] as String),
+                        ),
+                      ),
+                    ],
+                    onChanged: (v) => setState(() => _filterWorkerId = v),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-status-$_filterStatus'),
@@ -452,9 +489,31 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                   ],
                 ),
+                if (_totalCzk != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Součet bez DPH: ${_totalCzk!.toStringAsFixed(2)} Kč',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                ],
               ],
             ),
-          ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isWorker = ref.watch(authServiceProvider).isWorker;
+    if (widget.compact) {
+      return _buildFiltersPanel(context, isWorker);
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(isWorker ? 'Můj soupis prací' : 'Soupis prací'),
+      ),
+      body: Column(
+        children: [
+          _buildFiltersPanel(context, isWorker),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -462,9 +521,15 @@ class _ReportsScreenState extends ConsumerState<ReportsScreen> {
                     itemCount: _rows.length,
                     itemBuilder: (_, i) {
                       final r = _rows[i];
+                      final lineTotal = parseNumOrNull(r['cenaCelkem']);
+                      final priceSuffix = lineTotal != null
+                          ? ' | ${lineTotal.toStringAsFixed(2)} Kč'
+                          : '';
                       return ListTile(
                         title: Text('${r['stavba']} | #${r['cisloUcpavky']}'),
-                        subtitle: Text('${r['typProstupu']} – ${r['kusy']} ks'),
+                        subtitle: Text(
+                          '${r['typProstupu']} – ${r['kusy']} ks$priceSuffix',
+                        ),
                       );
                     },
                   ),

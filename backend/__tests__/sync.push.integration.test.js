@@ -19,16 +19,16 @@ function sealCreatePayload(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
-        dimension: '50',
+        dimension: 'Ø20',
         quantity: 2,
-        insulation: 'zadna',
+        insulation: 'žádná',
         materials: ['Pena', 'Tmel'],
       },
       {
         entryType: 'PVC',
-        dimension: 'DN 110',
+        dimension: 'Ø110',
         quantity: 1,
-        insulation: 'horlava',
+        insulation: 'hořlavá',
         materials: ['Manzeta'],
       },
     ],
@@ -127,11 +127,11 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(seal).toBeTruthy();
     expect(seal.id).toBe(res.body.results[0].entityId);
     expect(seal.entries).toHaveLength(2);
+    expect(Number(seal.entries[0].quantity)).toBe(2);
     expect(seal.entries[0]).toMatchObject({
       entryType: 'EL.V.',
-      dimension: '50',
-      quantity: 2,
-      insulation: 'zadna',
+      dimension: 'Ø20',
+      insulation: 'žádná',
     });
     expect(seal.entries[0].materials.map((m) => m.material)).toEqual(['Pena', 'Tmel']);
     expect(seal.entries[1].materials.map((m) => m.material)).toEqual(['Manzeta']);
@@ -255,7 +255,7 @@ describe('POST /api/sync/push (BE-04)', () => {
 
     await request(app)
       .delete(`/api/seals/${sealId}`)
-      .set('Authorization', `Bearer ${workerToken}`)
+      .set('Authorization', `Bearer ${managementToken}`)
       .expect(200);
 
     const pullRes = await pull(workerToken, since);

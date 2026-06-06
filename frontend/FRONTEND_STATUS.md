@@ -46,7 +46,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
-| Reports CSV/PDF export (FE-04, FE-05) | OK | management: Dio bytes → Downloads; filtry stavba/status; `soupis_praci_YYYY-MM-DD.{csv,pdf}` |
+| Reports CSV/PDF export (FE-04, FE-05) | OK | vedeni/ucetni: Dio bytes → `file_picker` save dialog (bytes on Android/iOS); filtry; `soupis_praci_YYYY-MM-DD.{csv,pdf}` |
 | Zakázky / patra (API + offline) | OK | patra: API + Drift cache (FE-02); stavba přes číslo |
 | Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
 | Detail ucpávky (API + offline) | OK | cache `jsonPayload` + fotky; Drift fallback + banner/chip (offline detail) |

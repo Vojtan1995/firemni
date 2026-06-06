@@ -1,0 +1,178 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../core/api/api_client.dart';
+import '../auth/auth_provider.dart';
+
+class WorksheetsScreen extends ConsumerStatefulWidget {
+  const WorksheetsScreen({super.key});
+
+  @override
+  ConsumerState<WorksheetsScreen> createState() => _WorksheetsScreenState();
+}
+
+class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
+  List<Map<String, dynamic>> _worksheets = [];
+  List<Map<String, dynamic>> _jobs = [];
+  bool _loading = true;
+  String? _statusFilter;
+
+  static const _statusLabels = {
+    'draft': 'Rozpracovaný',
+    'submitted': 'Odevzdaný',
+    'reviewed': 'Zkontrolovaný',
+    'ready_for_invoice': 'Připravený k fakturaci',
+    'invoiced': 'Vyfakturovaný',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    final dio = ref.read(dioProvider);
+    final auth = ref.read(authServiceProvider);
+    try {
+      if (!auth.isWorker) {
+        final jobsRes = await dio.get('/api/jobs');
+        _jobs = (jobsRes.data as List).cast<Map<String, dynamic>>();
+      } else {
+        final jobsRes = await dio.get('/api/jobs/my');
+        _jobs = (jobsRes.data as List).cast<Map<String, dynamic>>();
+      }
+    } catch (_) {}
+
+    try {
+      final query = _statusFilter != null ? '?status=$_statusFilter' : '';
+      final res = await dio.get('/api/worksheets$query');
+      if (!mounted) return;
+      setState(() {
+        _worksheets = (res.data as List).cast<Map<String, dynamic>>();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _createWorksheet() async {
+    if (_jobs.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nejdříve vyberte dostupnou zakázku')),
+      );
+      return;
+    }
+    String? selectedJobId = _jobs.first['id'] as String?;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Nový soupis práce'),
+          content: DropdownButtonFormField<String>(
+            value: selectedJobId,
+            decoration: const InputDecoration(labelText: 'Zakázka'),
+            items: _jobs
+                .map((j) => DropdownMenuItem(
+                      value: j['id'] as String,
+                      child: Text('${j['projectNumber']} ${j['name']}'),
+                    ))
+                .toList(),
+            onChanged: (v) => setDialogState(() => selectedJobId = v),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+            FilledButton(
+              onPressed: () async {
+                if (selectedJobId == null) return;
+                Navigator.pop(ctx);
+                try {
+                  final res = await ref.read(dioProvider).post('/api/worksheets', data: {
+                    'jobId': selectedJobId,
+                  });
+                  final ws = res.data as Map<String, dynamic>;
+                  await ref.read(dioProvider).post(
+                    '/api/worksheets/${ws['id']}/populate',
+                    data: {},
+                  );
+                  await _load();
+                } on DioException catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba')),
+                  );
+                }
+              },
+              child: const Text('Vytvořit'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = ref.watch(authServiceProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(auth.isWorker ? 'Můj soupis práce' : 'Soupisy práce'),
+        actions: [
+          PopupMenuButton<String?>(
+            icon: const Icon(Icons.filter_list),
+            onSelected: (v) {
+              _statusFilter = v;
+              _load();
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(value: null, child: Text('Vše')),
+              ..._statusLabels.entries.map(
+                (e) => PopupMenuItem(value: e.key, child: Text(e.value)),
+              ),
+            ],
+          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
+        ],
+      ),
+      floatingActionButton: auth.canCreateWorksheet
+          ? FloatingActionButton.extended(
+              onPressed: _createWorksheet,
+              icon: const Icon(Icons.add),
+              label: const Text('Nový soupis'),
+            )
+          : null,
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _worksheets.isEmpty
+              ? const Center(child: Text('Žádné soupisy'))
+              : ListView.builder(
+                  itemCount: _worksheets.length,
+                  itemBuilder: (_, i) {
+                    final ws = _worksheets[i];
+                    final job = ws['job'] as Map<String, dynamic>?;
+                    final status = ws['status'] as String? ?? 'draft';
+                    final count = ws['_count']?['items'] ?? 0;
+                    final id = ws['id'] as String;
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: ListTile(
+                        title: Text(
+                          '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'.trim(),
+                        ),
+                        subtitle: Text(
+                          '${_statusLabels[status] ?? status} · $count položek',
+                        ),
+                        trailing: const Icon(Icons.chevron_right),
+                        onTap: () => context.push('/worksheets/$id'),
+                      ),
+                    );
+                  },
+                ),
+    );
+  }
+}

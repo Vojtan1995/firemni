@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
+import '../../widgets/widgets.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../sync/sync_service.dart';
@@ -16,6 +16,7 @@ import 'seal_constants.dart';
 import 'seal_duplicate_local.dart';
 import 'seal_detail_screen.dart';
 import 'seal_form_loader.dart';
+import 'seal_calculations.dart';
 import '../sync/sync_retry.dart';
 import 'seal_photo_storage.dart';
 
@@ -40,6 +41,8 @@ class SealFormScreen extends ConsumerStatefulWidget {
 
 class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _numberCtrl = TextEditingController();
+  final _openingLengthCtrl = TextEditingController();
+  final _openingWidthCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _internalNoteCtrl = TextEditingController();
   String? _system;
@@ -52,10 +55,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   bool _loadingInitial = false;
   bool _showPhotoWarning = false;
   int _baseVersion = 1;
+  String? _duplicateNumberError;
 
   @override
   void initState() {
     super.initState();
+    _numberCtrl.addListener(_onSealNumberChanged);
     if (widget.isEdit) {
       _loadingInitial = true;
       _loadForEdit();
@@ -105,6 +110,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _construction = seal['construction'] as String?;
     _location = seal['location'] as String?;
     _fireRating = seal['fireRating'] as String?;
+    _openingLengthCtrl.text = seal['openingLengthMm']?.toString() ?? '';
+    _openingWidthCtrl.text = seal['openingWidthMm']?.toString() ?? '';
     _noteCtrl.text = seal['note'] as String? ?? '';
     _internalNoteCtrl.text = seal['internalNote'] as String? ?? '';
     _baseVersion = seal['version'] as int? ?? 1;
@@ -215,33 +222,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 8),
                 itemBuilder: (_, i) {
                   final path = _photoPaths[i];
-                  return Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(path),
-                          width: 96,
-                          height: 96,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: IconButton(
-                          style: IconButton.styleFrom(
-                            backgroundColor: Colors.black54,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.all(4),
-                            minimumSize: const Size(28, 28),
-                          ),
-                          iconSize: 18,
-                          onPressed: () => _removePhotoAt(i),
-                          icon: const Icon(Icons.close),
-                        ),
-                      ),
-                    ],
+                  return PhotoThumbnailFile(
+                    path: path,
+                    size: 96,
+                    onDelete: () => _removePhotoAt(i),
                   );
                 },
               ),
@@ -275,7 +259,23 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           content: Text('Hlavní prostup potřebuje alespoň jeden materiál')));
       return;
     }
-    if (_entries.any((e) => e.dimension.trim().isEmpty)) {
+    final openingL = parseMmText(_openingLengthCtrl.text);
+    final openingW = parseMmText(_openingWidthCtrl.text);
+    if (_entries.asMap().entries.any((i) {
+      final e = i.value;
+      if (e.dimension.trim().isNotEmpty) return false;
+      final calc = computeSealEntryPreview(
+        entryType: e.entryType,
+        quantityKus: e.quantity,
+        openingLengthMm: openingL,
+        openingWidthMm: openingW,
+        itemLengthMm: parseMmText(e.itemLengthMmText),
+        itemWidthMm: parseMmText(e.itemWidthMmText),
+        allEntries: _entries,
+        entryIndex: i.key,
+      );
+      return calc.unit == 'kus';
+    })) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
       return;
@@ -297,6 +297,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     );
     if (duplicate != null) {
       if (!mounted) return;
+      setState(() => _duplicateNumberError = duplicateSealNumberMessage);
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text(duplicateSealNumberMessage)),
       );
@@ -305,15 +306,30 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 
     setState(() => _saving = true);
     final entriesPayload = sealEntriesWithSharedMaterials(
-      _entries
-          .map((e) => {
-                'entryType': e.entryType,
-                'dimension': e.dimension,
-                'quantity': e.quantity,
-                'insulation': e.insulation,
-                'materials': e.materials,
-              })
-          .toList(),
+      _entries.asMap().entries.map((i) {
+        final e = i.value;
+        final calc = computeSealEntryPreview(
+          entryType: e.entryType,
+          quantityKus: e.quantity,
+          openingLengthMm: openingL,
+          openingWidthMm: openingW,
+          itemLengthMm: parseMmText(e.itemLengthMmText),
+          itemWidthMm: parseMmText(e.itemWidthMmText),
+          allEntries: _entries,
+          entryIndex: i.key,
+        );
+        final itemL = parseMmText(e.itemLengthMmText);
+        final itemW = parseMmText(e.itemWidthMmText);
+        return {
+          'entryType': e.entryType,
+          'dimension': e.dimension,
+          'quantity': calc.unit == 'kus' ? e.quantity : calc.billableQuantity,
+          'insulation': e.insulation,
+          'materials': e.materials,
+          if (itemL != null) 'itemLengthMm': itemL,
+          if (itemW != null) 'itemWidthMm': itemW,
+        };
+      }).toList(),
     );
 
     try {
@@ -330,6 +346,15 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Map<String, dynamic> _openingPayloadFields() {
+    final openingL = parseMmText(_openingLengthCtrl.text);
+    final openingW = parseMmText(_openingWidthCtrl.text);
+    return {
+      if (openingL != null) 'openingLengthMm': openingL,
+      if (openingW != null) 'openingWidthMm': openingW,
+    };
   }
 
   Future<void> _saveCreate(
@@ -350,6 +375,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
       'internalNote':
           _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
+      ..._openingPayloadFields(),
       'entries': entriesPayload,
     };
 
@@ -449,6 +475,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
       'internalNote':
           _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
+      ..._openingPayloadFields(),
       'entries': entriesPayload,
     };
 
@@ -496,6 +523,39 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   }
 
   @override
+  void dispose() {
+    _numberCtrl.removeListener(_onSealNumberChanged);
+    _numberCtrl.dispose();
+    _openingLengthCtrl.dispose();
+    _openingWidthCtrl.dispose();
+    _noteCtrl.dispose();
+    _internalNoteCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _onSealNumberChanged() async {
+    final sealNumber = _numberCtrl.text.trim();
+    if (sealNumber.isEmpty || !_sealNumberPattern.hasMatch(sealNumber)) {
+      if (_duplicateNumberError != null) {
+        setState(() => _duplicateNumberError = null);
+      }
+      return;
+    }
+    final db = ref.read(databaseProvider);
+    final duplicate = await findLocalDuplicateSeal(
+      db,
+      jobId: widget.jobId,
+      floorId: widget.floorId,
+      sealNumber: sealNumber,
+      excludeSealId: widget.sealId,
+    );
+    final nextError = duplicate != null ? duplicateSealNumberMessage : null;
+    if (mounted && _duplicateNumberError != nextError) {
+      setState(() => _duplicateNumberError = nextError);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (_loadingInitial) {
       return Scaffold(
@@ -517,12 +577,46 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           children: [
             TextField(
               controller: _numberCtrl,
-              decoration: const InputDecoration(
+              decoration: InputDecoration(
                 labelText: 'Číslo ucpávky *',
-                border: OutlineInputBorder(),
-                helperText: 'Pouze číslice',
+                border: const OutlineInputBorder(),
+                helperText: _duplicateNumberError == null
+                    ? 'Pouze číslice — číslo musí odpovídat štítku v terénu'
+                    : null,
+                errorText: _duplicateNumberError,
               ),
               keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            const Text('Rozměr prostupu (volitelné)',
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _openingLengthCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Délka prostupu (mm)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextField(
+                    controller: _openingWidthCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Šířka prostupu (mm)',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    onChanged: (_) => setState(() {}),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             ChipSelector(
@@ -536,6 +630,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   index: i.key,
                   entry: i.value,
                   system: _system,
+                  openingLengthText: _openingLengthCtrl.text,
+                  openingWidthText: _openingWidthCtrl.text,
+                  allEntries: _entries,
                   canRemove: _entries.length > 1,
                   onRemove: () => _removeEntry(i.key),
                   onChanged: () => setState(() {}),
@@ -607,6 +704,9 @@ class _EntryEditor extends StatefulWidget {
     required this.index,
     required this.entry,
     required this.system,
+    required this.openingLengthText,
+    required this.openingWidthText,
+    required this.allEntries,
     required this.onChanged,
     this.canRemove = false,
     this.onRemove,
@@ -614,6 +714,9 @@ class _EntryEditor extends StatefulWidget {
   final int index;
   final SealEntryDraftData entry;
   final String? system;
+  final String openingLengthText;
+  final String openingWidthText;
+  final List<SealEntryDraftData> allEntries;
   final VoidCallback onChanged;
   final bool canRemove;
   final VoidCallback? onRemove;
@@ -624,17 +727,147 @@ class _EntryEditor extends StatefulWidget {
 
 class _EntryEditorState extends State<_EntryEditor> {
   final _ocelDiameterCtrl = TextEditingController();
-  final _vztWidthCtrl = TextEditingController();
-  final _vztLengthCtrl = TextEditingController();
+  final _itemLengthCtrl = TextEditingController();
+  final _itemWidthCtrl = TextEditingController();
 
   SealEntryDraftData get entry => widget.entry;
 
   @override
+  void initState() {
+    super.initState();
+    _itemLengthCtrl.text = entry.itemLengthMmText;
+    _itemWidthCtrl.text = entry.itemWidthMmText;
+  }
+
+  @override
   void dispose() {
     _ocelDiameterCtrl.dispose();
-    _vztWidthCtrl.dispose();
-    _vztLengthCtrl.dispose();
+    _itemLengthCtrl.dispose();
+    _itemWidthCtrl.dispose();
     super.dispose();
+  }
+
+  void _syncItemDims() {
+    entry.itemLengthMmText = _itemLengthCtrl.text;
+    entry.itemWidthMmText = _itemWidthCtrl.text;
+    final l = parseMmText(entry.itemLengthMmText);
+    final w = parseMmText(entry.itemWidthMmText);
+    if (entry.entryType == 'VZT' && l != null && w != null) {
+      entry.dimension = '${l}x$w mm';
+    } else if (entry.entryType == 'PROSTUP' && l != null && w != null) {
+      entry.dimension = '${l}x$w mm';
+    }
+    widget.onChanged();
+  }
+
+  SealCalculationResult get _calc => computeSealEntryPreview(
+        entryType: entry.entryType,
+        quantityKus: entry.quantity,
+        openingLengthMm: parseMmText(widget.openingLengthText),
+        openingWidthMm: parseMmText(widget.openingWidthText),
+        itemLengthMm: parseMmText(entry.itemLengthMmText),
+        itemWidthMm: parseMmText(entry.itemWidthMmText),
+        allEntries: widget.allEntries,
+        entryIndex: widget.index,
+      );
+
+  Widget _calculationPanel() {
+    final calc = _calc;
+    if (calc.unit == 'kus' &&
+        calc.openingAreaM2 == null &&
+        calc.linearMeters == null) {
+      return const SizedBox.shrink();
+    }
+
+    final lines = <String>[];
+    final oL = parseMmText(widget.openingLengthText);
+    final oW = parseMmText(widget.openingWidthText);
+    if (oL != null && oW != null) {
+      lines.add('Rozměr prostupu: $oL × $oW mm');
+    }
+    final iL = parseMmText(entry.itemLengthMmText);
+    final iW = parseMmText(entry.itemWidthMmText);
+    if (iL != null && iW != null && entry.entryType != 'PROSTUP') {
+      lines.add('${entry.entryType}: $iL × $iW mm');
+    }
+    lines.add('Výpočet:');
+    if (calc.openingAreaM2 != null) {
+      lines.add('Plocha prostupu: ${formatArea(calc.openingAreaM2!)} m²');
+    }
+    if (calc.deductionAreaM2 != null && calc.deductionAreaM2! > 0) {
+      lines.add(
+          'Odečet prvku + 50 mm: ${formatArea(calc.deductionAreaM2!)} m²');
+    }
+    if (calc.netAreaM2 != null) {
+      lines.add('Čistá plocha: ${formatArea(calc.netAreaM2!)} m²');
+    }
+    if (calc.linearMeters != null) {
+      lines.add('Běžné metry: ${formatMb(calc.linearMeters!)} mb');
+    }
+    lines.add(
+        'Množství: ${calc.unit == 'm2' ? formatArea(calc.billableQuantity) : formatMb(calc.billableQuantity)} ${unitLabel(calc.unit)}');
+
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ...lines.map((l) => Text(l, style: Theme.of(context).textTheme.bodySmall)),
+          if (calc.netAreaWasNegative)
+            Text(
+              'Upozornění: čistá plocha by byla záporná — použito 0',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _itemDimensionFields(String lengthLabel, String widthLabel) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 8),
+        Text(lengthLabel,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _itemLengthCtrl,
+                decoration: InputDecoration(
+                  labelText: lengthLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => _syncItemDims(),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _itemWidthCtrl,
+                decoration: InputDecoration(
+                  labelText: widthLabel,
+                  border: const OutlineInputBorder(),
+                ),
+                keyboardType: TextInputType.number,
+                onChanged: (_) => _syncItemDims(),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   void _applyEntryType(String v) {
@@ -658,15 +891,37 @@ class _EntryEditorState extends State<_EntryEditor> {
     widget.onChanged();
   }
 
-  void _applyVztCustomSize() {
-    final w = _vztWidthCtrl.text.trim();
-    final l = _vztLengthCtrl.text.trim();
-    if (w.isEmpty || l.isEmpty) return;
-    entry.dimension = '${w}x$l mm';
-    widget.onChanged();
-  }
-
   Widget _dimensionSection() {
+    if (entry.entryType == 'PROSTUP') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _itemDimensionFields('Délka (mm)', 'Šířka (mm)'),
+          _calculationPanel(),
+        ],
+      );
+    }
+
+    if (entry.entryType == 'VZT') {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ChipSelector(
+            label: 'Rozměr (průměr)',
+            options: dimensionPresetsForEntry(entry.entryType, entry.insulation),
+            selected: entry.dimension.isEmpty ? null : entry.dimension,
+            onSelected: (v) {
+              entry.dimension = v;
+              widget.onChanged();
+            },
+            allowCustom: true,
+          ),
+          _itemDimensionFields('Délka D (mm)', 'Šířka Š (mm)'),
+          _calculationPanel(),
+        ],
+      );
+    }
+
     if (entry.entryType == 'OCEL') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -715,39 +970,6 @@ class _EntryEditorState extends State<_EntryEditor> {
           },
           allowCustom: true,
         ),
-        if (entry.entryType == 'VZT') ...[
-          const SizedBox(height: 8),
-          const Text('Vlastní rozměr VZT (mm)',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _vztWidthCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Šířka', border: OutlineInputBorder()),
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _vztLengthCtrl,
-                  decoration: const InputDecoration(
-                      labelText: 'Délka', border: OutlineInputBorder()),
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-                onPressed: _applyVztCustomSize,
-                child: const Text('Použít vlastní rozměr')),
-          ),
-        ],
       ],
     );
   }
@@ -816,28 +1038,37 @@ class _EntryEditorState extends State<_EntryEditor> {
             ),
             const SizedBox(height: 8),
             _dimensionSection(),
-            Row(
-              children: [
-                const Text('Kusy: '),
-                IconButton(
-                  onPressed: entry.quantity > 1
-                      ? () {
-                          entry.quantity--;
-                          widget.onChanged();
-                        }
-                      : null,
-                  icon: const Icon(Icons.remove),
+            if (_calc.unit == 'kus')
+              Row(
+                children: [
+                  const Text('Kusy: '),
+                  IconButton(
+                    onPressed: entry.quantity > 1
+                        ? () {
+                            entry.quantity--;
+                            widget.onChanged();
+                          }
+                        : null,
+                    icon: const Icon(Icons.remove),
+                  ),
+                  Text('${entry.quantity}'),
+                  IconButton(
+                    onPressed: () {
+                      entry.quantity++;
+                      widget.onChanged();
+                    },
+                    icon: const Icon(Icons.add),
+                  ),
+                ],
+              )
+            else
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: Text(
+                  'Množství: ${_calc.unit == 'm2' ? formatArea(_calc.billableQuantity) : formatMb(_calc.billableQuantity)} ${unitLabel(_calc.unit)}',
                 ),
-                Text('${entry.quantity}'),
-                IconButton(
-                  onPressed: () {
-                    entry.quantity++;
-                    widget.onChanged();
-                  },
-                  icon: const Icon(Icons.add),
-                ),
-              ],
-            ),
+                subtitle: const Text('Vypočteno automaticky z rozměrů'),
+              ),
             ChipSelector(
               label: 'Izolace',
               options: insulations,

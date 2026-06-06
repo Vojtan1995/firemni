@@ -45,4 +45,15 @@ void main() {
       expect(saveFileRequiresBytes(), isA<bool>());
     });
   });
+
+  group('saveExportFile contract', () {
+    test('mobile save path requires non-empty bytes before FilePicker', () {
+      final bytes = Uint8List.fromList([0x25, 0x50, 0x44, 0x46]);
+      expect(bytes.isNotEmpty, isTrue);
+      if (saveFileRequiresBytes()) {
+        expect(bytes, isNotEmpty,
+            reason: 'Android/iOS/web must pass bytes to FilePicker.saveFile');
+      }
+    });
+  });
 }

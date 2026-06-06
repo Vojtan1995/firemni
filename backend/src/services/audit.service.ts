@@ -26,6 +26,7 @@ export async function logChange(
   fieldName: string,
   oldValue: string | null,
   newValue: string | null,
+  metadata?: Record<string, unknown>,
 ) {
   await prisma.changeLog.create({
     data: {
@@ -35,6 +36,7 @@ export async function logChange(
       fieldName,
       oldValue,
       newValue,
+      metadata: metadata ? (metadata as Prisma.InputJsonValue) : undefined,
     },
   });
 }
@@ -53,4 +55,55 @@ export async function logError(
       metadata: opts?.metadata ? (opts.metadata as Prisma.InputJsonValue) : undefined,
     },
   });
+}
+
+export async function getSealHistory(sealId: string) {
+  const [changes, activities] = await Promise.all([
+    prisma.changeLog.findMany({
+      where: { entityType: 'seal', entityId: sealId },
+      include: { user: { select: { id: true, displayName: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+    prisma.activityLog.findMany({
+      where: { entityType: 'seal', entityId: sealId },
+      include: { user: { select: { id: true, displayName: true, username: true } } },
+      orderBy: { createdAt: 'desc' },
+    }),
+  ]);
+
+  type HistoryEntry = {
+    id: string;
+    type: 'change' | 'activity';
+    timestamp: Date;
+    editor: { id: string; displayName: string; username: string };
+    action?: string;
+    fieldName?: string | null;
+    oldValue?: string | null;
+    newValue?: string | null;
+    metadata?: unknown;
+  };
+
+  const entries: HistoryEntry[] = [
+    ...changes.map((c) => ({
+      id: c.id,
+      type: 'change' as const,
+      timestamp: c.createdAt,
+      editor: c.user,
+      fieldName: c.fieldName,
+      oldValue: c.oldValue,
+      newValue: c.newValue,
+      metadata: c.metadata,
+    })),
+    ...activities.map((a) => ({
+      id: a.id,
+      type: 'activity' as const,
+      timestamp: a.createdAt,
+      editor: a.user,
+      action: a.action,
+      metadata: a.metadata,
+    })),
+  ];
+
+  entries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+  return entries;
 }

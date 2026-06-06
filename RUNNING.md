@@ -329,6 +329,9 @@ Před testem: backend + seed (sekce 3), `adb reverse` (emulátor).
 
 - [ ] Aplikace naběhne bez crash (logcat bez `FATAL`)
 - [ ] Login `worker1` / `1234`
+- [ ] Worker: **Můj soupis prací** – jen vlastní ucpávky; export CSV/PDF
+- [ ] Worker: **Ceník** – jen prohlížení (bez seed/edit)
+- [ ] Worker: detail ucpávky – jednotková/celková cena u prostupu (nebo „Bez ceny“ u starých záznamů)
 - [ ] Worker: stavba `12345678` → patro → seznam
 - [ ] Offline: vypnout Wi‑Fi → nová ucpávka → Sync pending
 - [ ] Online: Sync → odeslání
@@ -357,6 +360,7 @@ flutter test test/integration/runtime_verification_test.dart
   - **OCEL** – pouze průměr trubky v mm
 - **Správa staveb:** účet `vedeni` / `admin` → Správa staveb – úprava, archivace, soft delete stavby i patra (409 pokud existují aktivní ucpávky).
 - **Správa uživatelů:** Správa → Uživatelé – `GET/POST/PATCH /api/users`; deaktivace přes `isActive: false`. Vedení může spravovat role `worker` a `management`, roli `admin` pouze účet `admin`.
+- **Worker soupis a ceny:** soupis filtruje server-side na `createdById = přihlášený worker` (query `workerId` se ignoruje). Prázdné ceny ve soupisu = stará ucpávka bez snapshotu nebo rozměr mimo ceník – přeuložit ucpávku s platným rozměrem (např. EL.V. Ø20).
 
 ---
 

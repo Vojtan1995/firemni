@@ -8,7 +8,7 @@ import { prisma } from '../lib/prisma.js';
 import { config } from '../config.js';
 import { AppError, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertSealEditable } from '../services/seal.service.js';
-import { logActivity } from '../services/audit.service.js';
+import { logActivity, logChange } from '../services/audit.service.js';
 import { UserRole } from '@prisma/client';
 import { paramId } from '../lib/params.js';
 
@@ -131,6 +131,10 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
     });
 
     await logActivity(req.user!.id, 'photo_upload', 'seal', sealId, { photoId: photo.id });
+    await logChange(req.user!.id, 'seal', sealId, 'photos', null, 'added', {
+      photoId: photo.id,
+      uploadedById: req.user!.id,
+    });
     res.status(201).json({
       ...photo,
       url: `/uploads/${outputName}`,
@@ -161,22 +165,8 @@ router.get('/photos/:photoId/file', async (req, res, next) => {
   }
 });
 
-router.delete('/photos/:photoId', async (req, res, next) => {
-  try {
-    if (req.user!.role === UserRole.worker) {
-      throw forbidden('Worker nemůže mazat fotky');
-    }
-    const photo = await prisma.sealPhoto.findUnique({ where: { id: paramId(req.params.photoId) } });
-    if (!photo) throw notFound('Fotka nenalezena');
-
-    removeFileIfExists(resolveUploadFilePath(photo.filePath));
-
-    await prisma.sealPhoto.delete({ where: { id: photo.id } });
-    await logActivity(req.user!.id, 'photo_delete', 'seal', photo.sealId);
-    res.json({ ok: true });
-  } catch (e) {
-    next(e);
-  }
+router.delete('/photos/:photoId', async (_req, _res, next) => {
+  next(forbidden('Fotografie nelze mazat – historie musí zůstat zachována'));
 });
 
 export default router;

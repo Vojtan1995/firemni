@@ -16,6 +16,9 @@ import reportsRoutes from './routes/reports.routes.js';
 import logsRoutes from './routes/logs.routes.js';
 import usersRoutes from './routes/users.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
+import priceListRoutes from './routes/price-list.routes.js';
+import worksheetsRoutes from './routes/worksheets.routes.js';
+import statsRoutes from './routes/stats.routes.js';
 
 export function createApp() {
   const app = express();
@@ -56,6 +59,9 @@ export function createApp() {
   app.use('/api/logs', logsRoutes);
   app.use('/api/users', usersRoutes);
   app.use('/api/messages', messagesRoutes);
+  app.use('/api/price-list', priceListRoutes);
+  app.use('/api/worksheets', worksheetsRoutes);
+  app.use('/api/stats', statsRoutes);
 
   app.use(errorMiddleware);
 

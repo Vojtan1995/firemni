@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/design_tokens.dart';
 
 class ChipSelector extends StatelessWidget {
   const ChipSelector({
@@ -21,20 +22,43 @@ class ChipSelector extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        const SizedBox(height: 8),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+        ),
+        const SizedBox(height: AppSpacing.sm),
         Wrap(
-          spacing: 8,
-          runSpacing: 8,
+          spacing: AppSpacing.sm,
+          runSpacing: AppSpacing.sm,
           children: [
-            ...options.map((o) => ChoiceChip(
-              label: Text(o),
-              selected: selected == o,
-              onSelected: (_) => onSelected(o),
-            )),
+            ...options.map((o) {
+              final isSelected = selected == o;
+              return ChoiceChip(
+                label: Text(o),
+                selected: isSelected,
+                onSelected: (_) => onSelected(o),
+                selectedColor: AppColors.accent.withValues(alpha: 0.2),
+                backgroundColor: AppColors.bgSecondary,
+                labelStyle: TextStyle(
+                  color: isSelected ? AppColors.accent : AppColors.textPrimary,
+                  fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                ),
+                side: BorderSide(
+                  color: isSelected ? AppColors.accent : AppColors.border,
+                ),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.smAll),
+              );
+            }),
             if (allowCustom)
               ActionChip(
                 label: const Text('Vlastní'),
+                backgroundColor: AppColors.bgSecondary,
+                labelStyle: const TextStyle(color: AppColors.textSecondary),
+                side: const BorderSide(color: AppColors.border),
+                shape: RoundedRectangleBorder(borderRadius: AppRadius.smAll),
                 onPressed: () async {
                   final v = await showDialog<String>(
                     context: context,

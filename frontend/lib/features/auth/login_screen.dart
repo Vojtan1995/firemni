@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 import 'auth_provider.dart';
 import '../sync/sync_service.dart';
 
@@ -46,55 +48,73 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 48),
-              Text('Ucpávky',
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 8),
-              Text('Přihlášení jménem a PIN',
-                  style: Theme.of(context).textTheme.bodyMedium),
-              const SizedBox(height: 32),
-              TextField(
+              const SizedBox(height: AppSpacing.xxl),
+              Center(
+                child: Container(
+                  width: 72,
+                  height: 72,
+                  decoration: BoxDecoration(
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                    borderRadius: AppRadius.lgAll,
+                  ),
+                  child: const Icon(Icons.shield_outlined, size: 36, color: AppColors.accent),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.xl),
+              Text(
+                'Ucpávky',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineLarge,
+              ),
+              const SizedBox(height: AppSpacing.sm),
+              Text(
+                'Přihlášení jménem a PIN',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: AppSpacing.xxl),
+              AppTextField(
                 key: const Key('login_username'),
                 controller: _userCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'Uživatelské jméno',
-                    border: OutlineInputBorder()),
+                label: 'Uživatelské jméno',
                 textInputAction: TextInputAction.next,
+                prefixIcon: const Icon(Icons.person_outline),
               ),
-              const SizedBox(height: 16),
-              TextField(
+              const SizedBox(height: AppSpacing.lg),
+              AppTextField(
                 key: const Key('login_pin'),
                 controller: _pinCtrl,
-                decoration: const InputDecoration(
-                    labelText: 'PIN', border: OutlineInputBorder()),
+                label: 'PIN',
                 obscureText: true,
                 keyboardType: TextInputType.number,
+                prefixIcon: const Icon(Icons.lock_outline),
                 onSubmitted: (_) => _login(),
               ),
               if (_error != null) ...[
-                const SizedBox(height: 12),
-                Text(_error!, style: const TextStyle(color: Colors.red)),
+                const SizedBox(height: AppSpacing.md),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: AppColors.error),
+                ),
               ],
-              const SizedBox(height: 24),
-              ElevatedButton(
+              const SizedBox(height: AppSpacing.xl),
+              AppPrimaryButton(
                 key: const Key('login_submit'),
-                onPressed: _loading ? null : _login,
-                child: _loading
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Přihlásit',
-                        style: TextStyle(
-                            fontSize: 16, fontWeight: FontWeight.w600)),
+                label: 'Přihlásit',
+                loading: _loading,
+                onPressed: _login,
               ),
-              const SizedBox(height: 32),
-              Text('Seed: worker1 / 1234',
-                  style: Theme.of(context).textTheme.bodySmall),
+              const SizedBox(height: AppSpacing.xxl),
+              Text(
+                'Seed: worker1 / 1234',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ],
           ),
         ),

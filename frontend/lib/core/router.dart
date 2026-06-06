@@ -17,10 +17,15 @@ import '../features/management/management_home_screen.dart';
 import '../features/management/jobs_admin_screen.dart';
 import '../features/management/users_admin_screen.dart';
 import '../features/reports/reports_screen.dart';
+import '../features/pricing/price_list_screen.dart';
 import '../features/logs/logs_screen.dart';
 import '../features/jobs/my_jobs_screen.dart';
 import '../features/messages/messages_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
+import '../features/stats/stats_screen.dart';
+import '../features/worksheets/worksheets_screen.dart';
+import '../features/worksheets/soupisy_screen.dart';
+import '../features/worksheets/worksheet_detail_screen.dart';
 
 /// Keeps a single [GoRouter] instance; re-runs redirect when auth changes.
 class GoRouterRefresh extends ChangeNotifier {
@@ -54,29 +59,39 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (mustChangePin && !onChangePin) return '/change-pin';
         if (!mustChangePin && onChangePin) return '/';
         final role = authUser['role'] as String?;
-        const reportsOnly = ['/reports'];
         const manageOnly = [
           '/jobs-admin',
           '/users-admin',
           '/logs',
           '/management',
         ];
-        const superAdminBlocked = [
-          '/reports',
-          '/jobs-admin',
-          '/users-admin',
-          '/management',
-        ];
         if (!AppPermissions.canAccessReports(role) &&
-            reportsOnly.contains(state.matchedLocation)) {
+            !AppPermissions.canManageWorksheets(role) &&
+            (state.matchedLocation == '/reports' ||
+                state.matchedLocation == '/soupisy' ||
+                state.matchedLocation == '/worksheets' ||
+                state.matchedLocation.startsWith('/worksheets/'))) {
+          return '/';
+        }
+        if (state.matchedLocation == '/reports' ||
+            state.matchedLocation == '/worksheets') {
+          return '/soupisy';
+        }
+        if (!AppPermissions.canViewStats(role) &&
+            state.matchedLocation == '/stats') {
+          return '/';
+        }
+        if (!AppPermissions.canManageWorksheets(role) &&
+            (state.matchedLocation == '/worksheets' ||
+                state.matchedLocation.startsWith('/worksheets/'))) {
+          return '/';
+        }
+        if (!AppPermissions.canViewPriceList(role) &&
+            state.matchedLocation == '/price-list') {
           return '/';
         }
         if (!AppPermissions.canManageJobs(role) &&
             manageOnly.contains(state.matchedLocation)) {
-          return '/';
-        }
-        if (role == 'admin' &&
-            superAdminBlocked.contains(state.matchedLocation)) {
           return '/';
         }
         if (role != 'admin' && state.matchedLocation == '/trash') {
@@ -137,6 +152,16 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: 'users-admin',
               builder: (_, __) => const UsersAdminScreen()),
           GoRoute(path: 'reports', builder: (_, __) => const ReportsScreen()),
+          GoRoute(path: 'soupisy', builder: (_, __) => const SoupisyScreen()),
+          GoRoute(path: 'worksheets', builder: (_, __) => const WorksheetsScreen()),
+          GoRoute(
+            path: 'worksheets/:id',
+            builder: (c, s) => WorksheetDetailScreen(
+              worksheetId: s.pathParameters['id']!,
+            ),
+          ),
+          GoRoute(path: 'stats', builder: (_, __) => const StatsScreen()),
+          GoRoute(path: 'price-list', builder: (_, __) => const PriceListScreen()),
           GoRoute(path: 'logs', builder: (_, __) => const LogsScreen()),
           GoRoute(path: 'trash', builder: (_, __) => const AdminTrashScreen()),
         ],

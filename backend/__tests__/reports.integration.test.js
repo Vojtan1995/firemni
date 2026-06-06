@@ -16,10 +16,10 @@ function sealBody(jobId, floorId, sealNumber) {
     fireRating: 'EI 60',
     entries: [
       {
-        entryType: 'Kabel',
-        dimension: '50',
+        entryType: 'EL.V.',
+        dimension: 'Ø20',
         quantity: 2,
-        insulation: 'Minerál',
+        insulation: 'žádná',
         materials: ['Pěna', 'Malta'],
       },
     ],
@@ -113,29 +113,52 @@ describe('Reports and exports (BE-05)', () => {
   const reportQuery = { jobId };
 
   describe('role access', () => {
-    it('worker cannot access work-summary (403)', async () => {
+    it('worker can access work-summary for own seals only', async () => {
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${worker1Token}`)
         .query(reportQuery);
-      expect(res.status).toBe(403);
-      expect(res.body.code).toBe('FORBIDDEN');
+      expect(res.status).toBe(200);
+      const numbers = res.body.rows.map((r) => r.cisloUcpavky);
+      expect(numbers).toContain(`${SEAL_PREFIX}1`);
+      expect(numbers).toContain(`${SEAL_PREFIX}3`);
+      expect(numbers).not.toContain(`${SEAL_PREFIX}2`);
     });
 
-    it('worker cannot access CSV export (403)', async () => {
+    it('worker cannot see other workers data via workerId query override', async () => {
       const res = await request(app)
+        .get('/api/reports/work-summary')
+        .set('Authorization', `Bearer ${worker1Token}`)
+        .query({ jobId, workerId: worker2Id });
+      expect(res.status).toBe(200);
+      const numbers = res.body.rows.map((r) => r.cisloUcpavky);
+      expect(numbers).toContain(`${SEAL_PREFIX}1`);
+      expect(numbers).toContain(`${SEAL_PREFIX}3`);
+      expect(numbers).not.toContain(`${SEAL_PREFIX}2`);
+    });
+
+    it('worker can export CSV and PDF for own work', async () => {
+      const csv = await request(app)
         .get('/api/reports/export/csv')
         .set('Authorization', `Bearer ${worker1Token}`)
         .query(reportQuery);
-      expect(res.status).toBe(403);
-    });
+      expect(csv.status).toBe(200);
+      expect(csv.text).toContain(`${SEAL_PREFIX}1`);
+      expect(csv.text).not.toContain(`${SEAL_PREFIX}2`);
 
-    it('worker cannot access PDF export (403)', async () => {
-      const res = await request(app)
+      const pdf = await request(app)
         .get('/api/reports/export/pdf')
         .set('Authorization', `Bearer ${worker1Token}`)
-        .query(reportQuery);
-      expect(res.status).toBe(403);
+        .query(reportQuery)
+        .buffer(true)
+        .parse((res, callback) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => callback(null, Buffer.concat(chunks)));
+        });
+      expect(pdf.status).toBe(200);
+      expect(Buffer.isBuffer(pdf.body)).toBe(true);
+      expect(pdf.body.length).toBeGreaterThan(100);
     });
 
     it('management can access work-summary', async () => {
@@ -260,6 +283,50 @@ describe('Reports and exports (BE-05)', () => {
     });
   });
 
+  describe('GET /api/reports/filter-options', () => {
+    it('ucetni gets jobs and workers for filter dropdowns', async () => {
+      const ucetniToken = (await login('ucetni')).token;
+      const res = await request(app)
+        .get('/api/reports/filter-options')
+        .set('Authorization', `Bearer ${ucetniToken}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.jobs)).toBe(true);
+      expect(Array.isArray(res.body.workers)).toBe(true);
+      expect(res.body.jobs.length).toBeGreaterThan(0);
+      expect(res.body.workers.length).toBeGreaterThan(0);
+      expect(res.body.jobs[0]).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          projectNumber: expect.any(String),
+          name: expect.any(String),
+        }),
+      );
+      expect(res.body.workers[0]).toEqual(
+        expect.objectContaining({
+          id: expect.any(String),
+          displayName: expect.any(String),
+        }),
+      );
+    });
+
+    it('worker gets own jobs and empty workers list', async () => {
+      const res = await request(app)
+        .get('/api/reports/filter-options')
+        .set('Authorization', `Bearer ${worker1Token}`);
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.jobs)).toBe(true);
+      expect(res.body.workers).toEqual([]);
+    });
+
+    it('ucetni still cannot access GET /api/jobs', async () => {
+      const ucetniToken = (await login('ucetni')).token;
+      const res = await request(app)
+        .get('/api/jobs')
+        .set('Authorization', `Bearer ${ucetniToken}`);
+      expect(res.status).toBe(403);
+    });
+  });
+
   describe('export endpoints', () => {
     it('GET /api/reports/export/csv returns UTF-8 CSV with data', async () => {
       const res = await request(app)
@@ -270,7 +337,8 @@ describe('Reports and exports (BE-05)', () => {
       expect(res.headers['content-type']).toMatch(/text\/csv/);
       expect(res.headers['content-disposition']).toMatch(/soupis-praci\.csv/);
       expect(res.text.startsWith('\uFEFF')).toBe(true);
-      expect(res.text).toContain('Číslo ucpávky');
+      expect(res.text).toContain('Prostup');
+      expect(res.text).toContain('Jednotková cena');
       expect(res.text).toContain(`${SEAL_PREFIX}1`);
       expect(res.text).not.toContain(`${SEAL_PREFIX}2`);
     });

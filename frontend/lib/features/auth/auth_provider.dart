@@ -137,11 +137,22 @@ class AuthService {
   bool get isAdmin => role == 'admin';
   bool get isSuperAdmin => isAdmin;
   bool get isManagement => isVedeni || isAdmin;
+  bool get canChangeSealStatus => AppPermissions.has(role, 'seal.status');
+  bool get canReviewSeal => isVedeni || isAdmin;
+  bool get canInvoiceSeal => canChangeSealStatus;
   bool get canAccessReports => AppPermissions.canAccessReports(role);
+  bool get canViewPriceList => AppPermissions.canViewPriceList(role);
   bool get canManageJobs => AppPermissions.canManageJobs(role);
   bool get canManageUsers => AppPermissions.canManageUsers(role);
   bool get canViewLogs => AppPermissions.canViewLogs(role);
   bool get canAccessTrash => AppPermissions.canAccessTrash(role);
+  bool get canViewSealHistory => AppPermissions.canViewSealHistory(role);
+  bool get canViewStats => AppPermissions.canViewStats(role);
+  bool get canManageWorksheets => AppPermissions.canManageWorksheets(role);
+  bool get canCreateWorksheet => AppPermissions.canCreateWorksheet(role);
+  bool get canSubmitWorksheet => AppPermissions.canSubmitWorksheet(role);
+  bool get canReviewWorksheet => AppPermissions.canReviewWorksheet(role);
+  bool get canInvoiceWorksheet => AppPermissions.canInvoiceWorksheet(role);
   bool get mustChangePin =>
       _ref.read(authUserProvider)?['mustChangePin'] == true;
 }

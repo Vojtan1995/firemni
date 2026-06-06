@@ -16,10 +16,10 @@ function sealBody(jobId, floorId, sealNumber) {
     fireRating: 'EI 60',
     entries: [
       {
-        entryType: 'Kabel',
-        dimension: '50',
+        entryType: 'EL.V.',
+        dimension: 'Ø20',
         quantity: 1,
-        insulation: 'Minerál',
+        insulation: 'žádná',
         materials: ['Pěna'],
       },
     ],
@@ -97,7 +97,7 @@ describe('Seals HTTP integration (BE-03)', () => {
 
       const del = await request(app)
         .delete(`/api/seals/${existing.id}`)
-        .set('Authorization', `Bearer ${workerToken}`);
+        .set('Authorization', `Bearer ${managementToken}`);
       expect(del.status).toBe(200);
 
       const res = await createSeal(workerToken, jobId, floor1Id, sealNumber);
@@ -137,7 +137,7 @@ describe('Seals HTTP integration (BE-03)', () => {
       const res = await request(app)
         .patch(`/api/seals/${sealId}/status`)
         .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'draft' });
+        .send({ status: 'draft', comment: 'Nutná oprava rozměru' });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('draft');
     });
@@ -155,6 +155,32 @@ describe('Seals HTTP integration (BE-03)', () => {
         .send({ status: 'invoiced' });
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('invoiced');
+    });
+
+    it('ucetni can invoice checked seal but not review draft', async () => {
+      const created = await createSeal(workerToken, jobId, floor1Id, `${SEAL_PREFIX}21`);
+      expect(created.status).toBe(201);
+      const ucetniSealId = created.body.id;
+      const ucetniToken = await login('ucetni');
+
+      const review = await request(app)
+        .patch(`/api/seals/${ucetniSealId}/status`)
+        .set('Authorization', `Bearer ${ucetniToken}`)
+        .send({ status: 'checked' });
+      expect(review.status).toBe(403);
+
+      await request(app)
+        .patch(`/api/seals/${ucetniSealId}/status`)
+        .set('Authorization', `Bearer ${managementToken}`)
+        .send({ status: 'checked' })
+        .expect(200);
+
+      const invoice = await request(app)
+        .patch(`/api/seals/${ucetniSealId}/status`)
+        .set('Authorization', `Bearer ${ucetniToken}`)
+        .send({ status: 'invoiced' });
+      expect(invoice.status).toBe(200);
+      expect(invoice.body.status).toBe('invoiced');
     });
   });
 

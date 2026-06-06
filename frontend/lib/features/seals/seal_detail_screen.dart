@@ -9,17 +9,24 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
-import '../../core/theme.dart';
+import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../sync/sync_retry.dart';
 import '../sync/sync_service.dart';
 import 'seal_photo_storage.dart';
 import 'seal_photo_upload.dart';
+import 'seal_calculations.dart';
 
 /// Zda detail pochází z API nebo z lokální cache (offline detail).
 enum SealDetailDataSource { online, offline }
+
+double _num(dynamic value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(value?.toString() ?? '') ?? 0;
+}
 
 /// Uloží metadata fotek z API do Drift (server ID, status done).
 Future<void> cacheSealPhotosFromApiList(
@@ -195,10 +202,12 @@ class SealDetailScreen extends ConsumerStatefulWidget {
 
 class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   Map<String, dynamic>? _seal;
+  List<Map<String, dynamic>> _history = [];
   bool _loading = true;
   bool _uploadingPhoto = false;
   SealDetailDataSource? _dataSource;
   String? _offlineHint;
+  final Map<String, Uint8List> _photoBytesCache = {};
 
   @override
   void initState() {
@@ -232,6 +241,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         _dataSource = SealDetailDataSource.online;
         _loading = false;
       });
+      await _loadHistory();
     } on DioException catch (_) {
       await _loadFromDrift(db);
     } catch (_) {
@@ -275,10 +285,57 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
   Future<void> _changeStatus(String status) async {
     if (_dataSource == SealDetailDataSource.offline) return;
-    await ref
-        .read(dioProvider)
-        .patch('/api/seals/${widget.sealId}/status', data: {'status': status});
+    String? comment;
+    if (status == 'draft') {
+      comment = await showDialog<String>(
+        context: context,
+        builder: (ctx) {
+          final ctrl = TextEditingController();
+          return AlertDialog(
+            title: const Text('Vrátit k opravě'),
+            content: TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(labelText: 'Komentář (povinný)'),
+              maxLines: 3,
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+                child: const Text('Potvrdit'),
+              ),
+            ],
+          );
+        },
+      );
+      if (comment == null || comment.isEmpty) return;
+    }
+    await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {
+      'status': status,
+      if (comment != null) 'comment': comment,
+    });
     await _load();
+  }
+
+  Future<void> _loadHistory() async {
+    final auth = ref.read(authServiceProvider);
+    if (!auth.canViewSealHistory) return;
+    try {
+      final res = await ref.read(dioProvider).get('/api/seals/${widget.sealId}/history');
+      if (!mounted) return;
+      setState(() {
+        _history = (res.data as List).cast<Map<String, dynamic>>();
+      });
+    } catch (_) {}
+  }
+
+  String _formatDate(String? iso) {
+    if (iso == null || iso.isEmpty) return '—';
+    final dt = DateTime.tryParse(iso);
+    if (dt == null) return iso;
+    final local = dt.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year} '
+        '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
@@ -405,17 +462,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
   Color _photoStatusColor(String? status) {
     switch (status) {
       case 'pending':
-        return Colors.orange;
+        return AppColors.warning;
       case 'failed':
-        return Colors.red;
+        return AppColors.error;
       case 'done':
-        return Colors.green;
+        return AppColors.success;
       default:
-        return Colors.grey;
+        return AppColors.textMuted;
     }
   }
 
-  Widget _photoTile(Map<String, dynamic> m) {
+  Widget _photoTile(Map<String, dynamic> m, int index, List<Map<String, dynamic>> allPhotos) {
     final status = m['status'] as String?;
     final lastError = m['lastError'] as String?;
 
@@ -437,7 +494,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             if (snapshot.connectionState != ConnectionState.done) {
               return Container(
                 height: 200,
-                color: Colors.grey.shade200,
+                color: AppColors.bgSecondary,
                 child: const Center(child: CircularProgressIndicator()),
               );
             }
@@ -448,6 +505,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 child: Center(child: Icon(Icons.broken_image, size: 100)),
               );
             }
+            _photoBytesCache[id!] = Uint8List.fromList(bytes);
             return Image.memory(Uint8List.fromList(bytes),
                 height: 200, fit: BoxFit.cover);
           },
@@ -456,7 +514,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         final filePath = m['filePath'] as String?;
         image = Container(
           height: 120,
-          color: Colors.grey.shade200,
+          color: AppColors.bgSecondary,
           child: Center(
             child: Text(
               filePath != null
@@ -473,7 +531,13 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        image,
+        GestureDetector(
+          onTap: () => _openPhotoGallery(index, allPhotos),
+          child: ClipRRect(
+            borderRadius: AppRadius.mdAll,
+            child: image,
+          ),
+        ),
         if (status != null && status.isNotEmpty) ...[
           const SizedBox(height: 4),
           Row(
@@ -495,7 +559,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               child: Text(
                 lastError,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.red.shade700,
+                      color: AppColors.error,
                     ),
               ),
             ),
@@ -512,6 +576,61 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             ),
         ],
       ],
+    );
+  }
+
+  Future<ImageProvider?> _photoProviderFor(Map<String, dynamic> m) async {
+    final localPath = m['localPath'] as String?;
+    if (localPath != null &&
+        localPath.isNotEmpty &&
+        File(localPath).existsSync()) {
+      return FileImage(File(localPath));
+    }
+    final id = m['id'] as String?;
+    if (id != null && _photoBytesCache.containsKey(id)) {
+      return MemoryImage(_photoBytesCache[id]!);
+    }
+    if (_dataSource == SealDetailDataSource.online && id != null) {
+      try {
+        final res = await ref.read(dioProvider).get<List<int>>(
+              '/api/photos/$id/file',
+              options: Options(responseType: ResponseType.bytes),
+            );
+        final bytes = res.data;
+        if (bytes != null && bytes.isNotEmpty) {
+          _photoBytesCache[id] = Uint8List.fromList(bytes);
+          return MemoryImage(_photoBytesCache[id]!);
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  Future<void> _openPhotoGallery(
+    int initialIndex,
+    List<Map<String, dynamic>> photos,
+  ) async {
+    if (photos.isEmpty) return;
+
+    final providers = <ImageProvider>[];
+    final indexMap = <int, int>{};
+
+    for (var i = 0; i < photos.length; i++) {
+      final provider = await _photoProviderFor(photos[i]);
+      if (provider != null) {
+        indexMap[i] = providers.length;
+        providers.add(provider);
+      }
+    }
+
+    if (providers.isEmpty || !mounted) return;
+
+    final galleryIndex = indexMap[initialIndex] ?? 0;
+    await showPhotoFullscreen(
+      context,
+      image: providers[galleryIndex],
+      gallery: providers,
+      initialIndex: galleryIndex,
     );
   }
 
@@ -547,51 +666,67 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         actions: [
           if (offline)
             const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Chip(
-                avatar: Icon(Icons.cloud_off, size: 18),
-                label: Text('Offline data'),
-                visualDensity: VisualDensity.compact,
-              ),
+              padding: EdgeInsets.only(right: AppSpacing.sm),
+              child: Center(child: OfflineIndicator(label: 'Offline data', compact: true)),
             ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           if (offline)
-            MaterialBanner(
-              content: Text(
-                _offlineHint ??
-                    'Zobrazena poslední uložená data z zařízení. Po připojení k serveru obnovte detail.',
+            Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
+              padding: const EdgeInsets.all(AppSpacing.lg),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: AppRadius.mdAll,
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
               ),
-              leading: const Icon(Icons.cloud_off),
-              actions: [
-                TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
-              ],
+              child: Row(
+                children: [
+                  const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
+                  const SizedBox(width: AppSpacing.md),
+                  Expanded(
+                    child: Text(
+                      _offlineHint ??
+                          'Zobrazena poslastní uložená data z zařízení. Po připojení k serveru obnovte detail.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: AppColors.warning,
+                          ),
+                    ),
+                  ),
+                  TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+                ],
+              ),
             ),
-          Row(
-            children: [
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                    color: AppTheme.statusColor(status),
-                    shape: BoxShape.circle),
-              ),
-              const SizedBox(width: 8),
-              Text(status, style: const TextStyle(fontWeight: FontWeight.bold)),
-            ],
-          ),
-          const SizedBox(height: 12),
+          StatusBadge(status: status),
+          const SizedBox(height: AppSpacing.lg),
           Text('Systém: ${seal['system']}'),
           Text('Konstrukce: ${seal['construction']}'),
           Text('Umístění: ${seal['location']}'),
           Text('Odolnost: ${seal['fireRating']}'),
+          if (seal['openingLengthMm'] != null && seal['openingWidthMm'] != null)
+            Text(
+              'Rozměr prostupu: ${seal['openingLengthMm']} × ${seal['openingWidthMm']} mm',
+            ),
           if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
-          if (seal['internalNote'] != null)
+          if (seal['internalNote'] != null &&
+              (auth.isVedeni || auth.isAdmin || auth.isUcetni))
             Text('Interní poznámka: ${seal['internalNote']}'),
+          if (auth.isVedeni || auth.isAdmin || auth.isUcetni) ...[
+            const Divider(height: 24),
+            const Text('Evidence', style: TextStyle(fontWeight: FontWeight.bold)),
+            Text(
+              'Vytvořil: ${(seal['createdBy'] as Map?)?['displayName'] ?? '—'}',
+            ),
+            Text('Datum vytvoření: ${_formatDate(seal['createdAt'] as String?)}'),
+            Text(
+              'Poslední editor: ${(seal['updatedBy'] as Map?)?['displayName'] ?? '—'}',
+            ),
+            Text('Poslední editace: ${_formatDate(seal['updatedAt'] as String?)}'),
+          ],
           if (status == 'draft' || status == 'checked') ...[
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -608,8 +743,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                   : 'Upravit ucpávku'),
             ),
           ],
-          const Divider(),
-          const Text('Prostupy', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SectionHeader(title: 'Prostupy', style: SectionHeaderStyle.h3),
           if ((seal['entries'] as List? ?? []).isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 8),
@@ -624,14 +758,84 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                   : materials
                       .map((x) => x is Map ? x['material'] : x.toString())
                       .join(', ');
-              return ListTile(
-                title: Text('${m['entryType']} – ${m['dimension']}'),
-                subtitle: Text('${m['quantity']} ks, ${m['insulation']}'),
-                trailing: Text(matText),
+              final unitPrice = m['unitPrice'];
+              final totalPrice = m['totalPrice'];
+              final priceVersion = m['priceListVersion'] as String?;
+              final unit = (m['unit'] as String?) ?? 'kus';
+              final qty = m['quantity'];
+              final qtyNum = qty is num
+                  ? qty.toDouble()
+                  : double.tryParse(qty?.toString() ?? '') ?? 1;
+              final hasPrice = unitPrice != null && totalPrice != null;
+              String formatCzk(dynamic value) {
+                if (value == null) return '—';
+                final n = value is num
+                    ? value.toDouble()
+                    : double.tryParse(value.toString());
+                if (n == null) return '—';
+                return '${n.toStringAsFixed(0)} Kč';
+              }
+
+              String qtyDisplay() {
+                if (unit == 'm2') return '${formatArea(qtyNum)} ${unitLabel(unit)}';
+                if (unit == 'mb') return '${formatMb(qtyNum)} ${unitLabel(unit)}';
+                return '${qtyNum.round()} ${unitLabel(unit)}';
+              }
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${m['entryType']} – ${m['dimension']}',
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      Text('${qtyDisplay()}, ${m['insulation']}'),
+                      if (matText.isNotEmpty) Text('Materiály: $matText'),
+                      if (m['calculatedAreaM2'] != null)
+                        Text(
+                          'Plocha: ${formatArea(_num(m['calculatedAreaM2']))} m²',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      if (m['calculatedNetAreaM2'] != null)
+                        Text(
+                          'Čistá plocha: ${formatArea(_num(m['calculatedNetAreaM2']))} m²',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      if (m['calculatedLinearMeters'] != null)
+                        Text(
+                          'Běžné metry: ${formatMb(_num(m['calculatedLinearMeters']))} mb',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      const SizedBox(height: 8),
+                      if (hasPrice) ...[
+                        Text('Cena celkem: ${formatCzk(totalPrice)}'),
+                        if (qtyNum > 1 || unit != 'kus')
+                          Text(
+                            'Jednotková cena: ${formatCzk(unitPrice)} / ${unitLabel(unit)}',
+                          )
+                        else
+                          Text('Jednotková cena: ${formatCzk(unitPrice)}'),
+                        if (priceVersion != null && priceVersion.isNotEmpty)
+                          Text(
+                            'Ceník: $priceVersion',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                      ] else
+                        Chip(
+                          label: const Text('Bez ceny'),
+                          visualDensity: VisualDensity.compact,
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                    ],
+                  ),
+                ),
               );
             }),
-          const Divider(),
-          const Text('Fotky', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SectionHeader(title: 'Fotky', style: SectionHeaderStyle.h3),
           if (status == 'draft') ...[
             const SizedBox(height: 8),
             Row(
@@ -669,26 +873,63 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               child: Text('Žádné fotky v cache.'),
             )
           else
-            ...(seal['photos'] as List).map((p) {
-              final m = p as Map<String, dynamic>;
+            ...(seal['photos'] as List).toList().asMap().entries.map((entry) {
+              final m = entry.value as Map<String, dynamic>;
+              final allPhotos = (seal['photos'] as List)
+                  .cast<Map<String, dynamic>>();
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _photoTile(m),
+                child: _photoTile(m, entry.key, allPhotos),
               );
             }),
-          if (auth.isManagement && !offline) ...[
+          if (auth.canViewSealHistory && _history.isNotEmpty) ...[
+            const Divider(height: 24),
+            const Text('Historie změn', style: TextStyle(fontWeight: FontWeight.bold)),
+            ..._history.take(20).map((h) {
+              final editor = h['editor'] as Map<String, dynamic>?;
+              final ts = h['timestamp'] as String?;
+              final field = h['fieldName'] as String?;
+              final oldV = h['oldValue'];
+              final newV = h['newValue'];
+              final action = h['action'] as String?;
+              String desc;
+              if (field != null) {
+                desc = '$field: $oldV → $newV';
+              } else if (action == 'photo_upload') {
+                desc = 'Přidána fotografie';
+              } else {
+                desc = action ?? 'Akce';
+              }
+              return ListTile(
+                dense: true,
+                title: Text(desc, style: const TextStyle(fontSize: 13)),
+                subtitle: Text(
+                  '${_formatDate(ts)} · ${editor?['displayName'] ?? ''}',
+                  style: const TextStyle(fontSize: 11),
+                ),
+              );
+            }),
+          ],
+          if (auth.canChangeSealStatus && !offline) ...[
             const SizedBox(height: 16),
-            if (status == 'draft')
-              ElevatedButton(
-                  onPressed: () => _changeStatus('checked'),
-                  child: const Text('Zkontrolovat')),
+            if (auth.canReviewSeal && status == 'draft')
+              AppPrimaryButton(
+                label: 'Zkontrolovat',
+                onPressed: () => _changeStatus('checked'),
+              ),
             if (status == 'checked') ...[
-              ElevatedButton(
+              if (auth.canInvoiceSeal)
+                AppPrimaryButton(
+                  label: 'Fakturovat',
                   onPressed: () => _changeStatus('invoiced'),
-                  child: const Text('Fakturovat')),
-              OutlinedButton(
+                ),
+              if (auth.canReviewSeal) ...[
+                const SizedBox(height: AppSpacing.sm),
+                AppSecondaryButton(
+                  label: 'Vrátit na rozpracováno',
                   onPressed: () => _changeStatus('draft'),
-                  child: const Text('Vrátit na rozpracováno')),
+                ),
+              ],
             ],
           ],
         ],

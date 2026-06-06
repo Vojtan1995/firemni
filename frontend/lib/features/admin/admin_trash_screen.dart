@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
+import '../../core/design_tokens.dart';
+import '../../widgets/widgets.dart';
 
 class AdminTrashScreen extends ConsumerStatefulWidget {
   const AdminTrashScreen({super.key});
@@ -71,7 +73,7 @@ class _AdminTrashScreenState extends ConsumerState<AdminTrashScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(_messageFromDio(e, 'Obnovení selhalo')),
-          backgroundColor: Colors.red.shade700,
+          backgroundColor: AppColors.error,
         ),
       );
     }
@@ -118,43 +120,46 @@ class _AdminTrashScreenState extends ConsumerState<AdminTrashScreen> {
                   ),
                 )
               : _items.isEmpty
-                  ? const Center(child: Text('Koš je prázdný.'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(12),
+                  ? const EmptyState(
+                      message: 'Koš je prázdný.',
+                      icon: Icons.delete_outline,
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
                       itemCount: _items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (_, i) {
                         final item = _items[i];
                         final entityType = item['entityType'] as String? ?? 'seal';
-                        return Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Text(
-                                  'Typ: $entityType · Ucpávka #${item['sealNumber']}',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
+                        return AppCard(
+                          showChevron: false,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Typ: $entityType · Ucpávka #${item['sealNumber']}',
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
+                              const SizedBox(height: AppSpacing.sm),
+                              Text('Stavba: ${item['stavba']} – ${item['nazevStavby']}'),
+                              Text('Patro: ${item['patro']}'),
+                              Text('Smazal: ${item['deletedByName'] ?? '—'}'),
+                              Text('Smazáno: ${_formatDeletedAt(item['deletedAt'])}'),
+                              if (item['deleteReason'] != null &&
+                                  (item['deleteReason'] as String).isNotEmpty)
+                                Text('Důvod: ${item['deleteReason']}'),
+                              const SizedBox(height: AppSpacing.sm),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: AppPrimaryButton(
+                                  label: 'Obnovit',
+                                  icon: Icons.restore,
+                                  fullWidth: false,
+                                  onPressed: () => _restore(item),
                                 ),
-                                const SizedBox(height: 6),
-                                Text('Stavba: ${item['stavba']} – ${item['nazevStavby']}'),
-                                Text('Patro: ${item['patro']}'),
-                                Text('Smazal: ${item['deletedByName'] ?? '—'}'),
-                                Text('Smazáno: ${_formatDeletedAt(item['deletedAt'])}'),
-                                if (item['deleteReason'] != null &&
-                                    (item['deleteReason'] as String).isNotEmpty)
-                                  Text('Důvod: ${item['deleteReason']}'),
-                                const SizedBox(height: 8),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _restore(item),
-                                    icon: const Icon(Icons.restore),
-                                    label: const Text('Obnovit'),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                         );
                       },

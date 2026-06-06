@@ -80,8 +80,9 @@ Přehled pro beta a release: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §5.
 
 ### 6.5 Export CSV/PDF na Androidu
 
-- **Chování:** `getDownloadsDirectory()` nemusí být dostupné → fallback `getApplicationDocumentsDirectory()`.
-- **Dopad:** soubor je v app-specific složce; cesta se zobrazí ve SnackBar (scoped storage, bez legacy permission).
+- **Opraveno (PDF-EXPORT-01):** export používá `FilePicker.platform.saveFile` s povinným parametrem `bytes` na Android/iOS (viz `export_service.dart`).
+- **Chování:** uživatel vybere cíl v systémovém dialogu; zrušení → SnackBar „Uložení zrušeno“.
+- **Manuální QA:** ověřit na fyzickém zařízení CSV i PDF export se všemi filtry.
 
 ## 7. Fotky – zbývající rizika (po PHOTO-01, 2026-06-03)
 

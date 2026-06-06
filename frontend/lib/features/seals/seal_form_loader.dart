@@ -17,15 +17,26 @@ List<SealEntryDraftData> entryDraftsFromSealMap(Map<String, dynamic> seal) {
     list.add(SealEntryDraftData(
       entryType: m['entryType'] as String? ?? 'EL.V.',
       dimension: m['dimension'] as String? ?? '',
-      quantity: m['quantity'] as int? ?? 1,
+      quantity: _quantityFromApi(m['quantity']),
       insulation: m['insulation'] as String? ?? 'žádná',
       materials: materials,
+      itemLengthMmText: m['itemLengthMm']?.toString() ?? '',
+      itemWidthMmText: m['itemWidthMm']?.toString() ?? '',
     ));
   }
   if (list.isEmpty) {
     return [SealEntryDraftData()];
   }
   return list;
+}
+
+int _quantityFromApi(dynamic value) {
+  if (value == null) return 1;
+  if (value is int) return value;
+  if (value is num) return value.round();
+  final parsed = double.tryParse(value.toString());
+  if (parsed == null) return 1;
+  return parsed.round();
 }
 
 /// Mutable entry fields shared by form and loader.
@@ -36,6 +47,8 @@ class SealEntryDraftData {
     this.quantity = 1,
     this.insulation = 'žádná',
     List<String>? materials,
+    this.itemLengthMmText = '',
+    this.itemWidthMmText = '',
   })  : dimension = dimension ?? defaultDimensionForEntry('EL.V.', 'žádná'),
         materials = materials ?? [];
 
@@ -44,4 +57,6 @@ class SealEntryDraftData {
   int quantity;
   String insulation;
   List<String> materials;
+  String itemLengthMmText;
+  String itemWidthMmText;
 }
