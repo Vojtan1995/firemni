@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { Prisma, PriceList, PriceListItem } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../lib/prisma.js';
-import { toNumber } from '../lib/decimal.js';
+import { toNumber, multiplyMoney } from '../lib/decimal.js';
 import { computeEntryValues } from './seal-calculations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -173,7 +173,7 @@ export function buildPricingData(
   unit: string,
 ): Prisma.SealEntryUpdateInput {
   const unitPrice = Number(item.priceWithMaterial);
-  const totalPrice = Math.round(unitPrice * quantity * 100) / 100;
+  const totalPrice = multiplyMoney(item.priceWithMaterial, quantity);
   return {
     unitPrice,
     totalPrice,
@@ -282,12 +282,22 @@ export async function priceSealEntries(
 }
 
 export async function seedDefaultPriceList(version = '2026-06') {
+  const active = await getActivePriceList();
+  if (active) return active;
+
   const data = loadDefaultPriceList();
   const existing = await prisma.priceList.findUnique({
     where: { version },
     include: { items: true },
   });
-  if (existing) return existing;
+  if (existing) {
+    await prisma.priceList.updateMany({ where: { active: true }, data: { active: false } });
+    return prisma.priceList.update({
+      where: { id: existing.id },
+      data: { active: true },
+      include: { items: true },
+    });
+  }
 
   await prisma.priceList.updateMany({ where: { active: true }, data: { active: false } });
 

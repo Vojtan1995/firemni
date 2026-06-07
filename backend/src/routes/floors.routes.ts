@@ -6,6 +6,7 @@ import { notFound, badRequest, conflict } from '../lib/errors.js';
 import { logActivity } from '../services/audit.service.js';
 import { MANAGEMENT_ROLES } from '../services/seal.service.js';
 import { paramId } from '../lib/params.js';
+import { assertJobReadable } from '../services/authorization.service.js';
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
@@ -13,8 +14,7 @@ router.use(authMiddleware);
 router.get('/', async (req, res, next) => {
   try {
     const jobId = paramId((req.params as { jobId: string }).jobId);
-    const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
-    if (!job) throw notFound('Stavba nenalezena');
+    await assertJobReadable(jobId, req.user!.role, req.user!.id);
 
     const floors = await prisma.jobFloor.findMany({
       where: { jobId, deletedAt: null },

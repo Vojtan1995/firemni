@@ -5,6 +5,12 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 import * as jobParticipantService from '../services/job-participant.service.js';
+import { assertJobReadable } from '../services/authorization.service.js';
+import { badRequest } from '../lib/errors.js';
+import { writePdfHeading, writePdfTextLine } from '../lib/pdf-pagination.js';
+import { parseIsoDateQuery, parseIsoDateQueryEnd } from '../lib/zod-helpers.js';
+import { REPORT_ROW_LIMIT, REPORT_SEAL_BATCH_LIMIT } from '../lib/limits.js';
+import { anonymizeUserForViewer } from '../lib/user-privacy.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -26,17 +32,19 @@ function buildWhere(query: Record<string, unknown>) {
   if (query.workerId) where.createdById = String(query.workerId);
   if (query.floorId) where.floorId = String(query.floorId);
   if (query.system) where.system = String(query.system);
-  if (query.from || query.to) {
+  const from = parseIsoDateQuery(query.from);
+  const to = parseIsoDateQueryEnd(query.to);
+  if (from || to) {
     where.createdAt = {};
-    if (query.from) (where.createdAt as Record<string, Date>).gte = new Date(String(query.from));
-    if (query.to) (where.createdAt as Record<string, Date>).lte = new Date(String(query.to));
+    if (from) (where.createdAt as Record<string, Date>).gte = from;
+    if (to) (where.createdAt as Record<string, Date>).lte = to;
   }
   return where;
 }
 
 type SummaryRow = Record<string, string | number | null>;
 
-async function fetchSummaryRows(query: Record<string, unknown>) {
+async function fetchSummaryRows(query: Record<string, unknown>, viewerRole: UserRole) {
   const sealWhere = buildWhere(query);
   const entryType = query.entryType ? String(query.entryType) : undefined;
   const material = query.material ? String(query.material) : undefined;
@@ -46,7 +54,7 @@ async function fetchSummaryRows(query: Record<string, unknown>) {
     include: {
       job: true,
       floor: true,
-      createdBy: { select: { displayName: true } },
+      createdBy: { select: { displayName: true, role: true } },
       entries: {
         where: {
           deletedAt: null,
@@ -63,11 +71,23 @@ async function fetchSummaryRows(query: Record<string, unknown>) {
       },
     },
     orderBy: [{ jobId: 'asc' }, { floorId: 'asc' }, { sealNumber: 'asc' }],
+    take: REPORT_SEAL_BATCH_LIMIT,
   });
 
   const rows: SummaryRow[] = [];
   for (const seal of seals) {
+    const workerLabel = anonymizeUserForViewer(
+      {
+        id: seal.createdById,
+        displayName: seal.createdBy.displayName,
+        role: seal.createdBy.role,
+      },
+      viewerRole,
+    ).displayName;
     for (const entry of seal.entries) {
+      if (rows.length >= REPORT_ROW_LIMIT) {
+        return rows;
+      }
       if (entry.materials.length === 0 && material) continue;
       const mats = entry.materials.map((m) => m.material).join(', ');
       const unitPrice = entry.unitPrice != null ? Number(entry.unitPrice) : null;
@@ -81,12 +101,13 @@ async function fetchSummaryRows(query: Record<string, unknown>) {
         system: seal.system,
         typProstupu: entry.entryType,
         rozmery: entry.dimension,
+        jednotka: entry.unit ?? 'kus',
         kusy: Number(entry.quantity),
         izolace: entry.insulation,
         umisteni: seal.location,
         materialy: mats,
         katalogId: mats,
-        pracovnik: seal.createdBy.displayName,
+        pracovnik: workerLabel,
         datum: seal.createdAt.toISOString().split('T')[0],
         jednotkovaCena: unitPrice,
         cenaCelkem: totalPrice,
@@ -111,6 +132,37 @@ function groupByFloor(rows: SummaryRow[]) {
     groups.set(key, list);
   }
   return groups;
+}
+
+async function assertReportQueryAccess(
+  query: Record<string, unknown>,
+  role: UserRole,
+  userId: string,
+) {
+  if (query.jobId) {
+    await assertJobReadable(String(query.jobId), role, userId);
+  }
+}
+
+async function assertReportsPdfQuery(
+  query: Record<string, unknown>,
+  role: UserRole,
+  userId: string,
+  _rows: SummaryRow[],
+) {
+  const jobId = query.jobId ? String(query.jobId) : undefined;
+  if (!jobId) {
+    throw badRequest('Export PDF vyžaduje parametr jobId');
+  }
+  await assertJobReadable(jobId, role, userId);
+
+  const job = await prisma.job.findFirst({
+    where: { id: jobId, deletedAt: null },
+    select: { projectNumber: true, name: true },
+  });
+  if (!job) throw badRequest('Zakázka nenalezena');
+
+  return job;
 }
 
 router.get('/filter-options', async (req, res, next) => {
@@ -151,7 +203,9 @@ router.get('/filter-options', async (req, res, next) => {
 
 router.get('/work-summary', async (req, res, next) => {
   try {
-    const rows = await fetchSummaryRows(req.query as Record<string, unknown>);
+    const query = req.query as Record<string, unknown>;
+    await assertReportQueryAccess(query, req.user!.role, req.user!.id);
+    const rows = await fetchSummaryRows(query, req.user!.role);
     const total = sumRows(rows);
     res.json({ count: rows.length, totalCzk: total, rows });
   } catch (e) {
@@ -183,7 +237,9 @@ const CSV_COLUMNS: Record<string, string> = {
 
 router.get('/export/csv', async (req, res, next) => {
   try {
-    const rows = await fetchSummaryRows(req.query as Record<string, unknown>);
+    const query = req.query as Record<string, unknown>;
+    await assertReportQueryAccess(query, req.user!.role, req.user!.id);
+    const rows = await fetchSummaryRows(query, req.user!.role);
     const colsParam = req.query.columns ? String(req.query.columns).split(',') : Object.keys(CSV_COLUMNS);
     const cols = colsParam.filter((c) => CSV_COLUMNS[c]);
 
@@ -209,7 +265,8 @@ router.get('/export/csv', async (req, res, next) => {
 router.get('/export/pdf', async (req, res, next) => {
   try {
     const query = req.query as Record<string, unknown>;
-    const rows = await fetchSummaryRows(query);
+    const rows = await fetchSummaryRows(query, req.user!.role);
+    const job = await assertReportsPdfQuery(query, req.user!.role, req.user!.id, rows);
     const total = sumRows(rows);
     const floorGroups = groupByFloor(rows);
 
@@ -219,35 +276,36 @@ router.get('/export/pdf', async (req, res, next) => {
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
 
-    const jobLabel = rows[0]?.stavba ? String(rows[0].stavba) : '—';
-    const jobName = rows[0]?.nazevStavby ? String(rows[0].nazevStavby) : '—';
     const periodFrom = query.from ? String(query.from) : '—';
     const periodTo = query.to ? String(query.to) : '—';
 
     doc.fontSize(16).text('Soupis prací', { underline: true });
     doc.moveDown(0.5);
     doc.fontSize(10);
-    doc.text(`Zakázka: ${jobLabel} – ${jobName}`);
+    doc.text(`Zakázka: ${job.projectNumber} – ${job.name}`);
     doc.text(`Období: ${periodFrom} – ${periodTo}`);
     doc.text(`Počet řádků: ${rows.length}`);
     doc.moveDown();
 
     for (const [floor, floorRows] of floorGroups) {
-      doc.fontSize(12).text(`Podlaží: ${floor}`, { underline: true });
-      doc.moveDown(0.3);
+      writePdfHeading(doc, `Podlaží: ${floor}`);
       doc.fontSize(8);
 
-      for (const row of floorRows.slice(0, 500)) {
-        const unit = row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
+      for (const row of floorRows) {
+        const unitPrice =
+          row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
         const line = row.cenaCelkem != null ? `${Number(row.cenaCelkem).toFixed(2)} Kč` : '—';
-        doc.text(
-          `#${row.cisloUcpavky} | ${row.typProstupu} | ${row.rozmery} | ${row.kusy} ks | Katalog: ${row.katalogId} | ${unit} | ${line} | ${row.pracovnik}`,
+        const qtyUnit = `${row.kusy} ${row.jednotka ?? 'kus'}`;
+        writePdfTextLine(
+          doc,
+          `#${row.cisloUcpavky} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | Katalog: ${row.katalogId} | ${unitPrice} | ${line} | ${row.pracovnik}`,
         );
       }
 
       const floorTotal = sumRows(floorRows);
-      doc.moveDown(0.3);
-      doc.fontSize(10).text(`Cena za podlaží ${floor}: ${floorTotal.toFixed(2)} Kč bez DPH`);
+      writePdfTextLine(doc, `Cena za podlaží ${floor}: ${floorTotal.toFixed(2)} Kč bez DPH`, {
+        fontSize: 10,
+      });
       doc.moveDown();
     }
 

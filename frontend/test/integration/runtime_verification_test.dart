@@ -144,7 +144,9 @@ void main() {
 
       final client = HttpClient();
       try {
-        final uri = Uri.parse('$_apiBase/api/reports/export/pdf');
+        final uri = Uri.parse('$_apiBase/api/reports/export/pdf').replace(
+          queryParameters: {'jobId': jobId},
+        );
         final req = await client.getUrl(uri);
         req.headers.set('Authorization', 'Bearer $mgmtToken');
         final res = await req.close();
@@ -169,7 +171,9 @@ void main() {
 
       final client = HttpClient();
       try {
-        final uri = Uri.parse('$_apiBase/api/reports/export/pdf');
+        final uri = Uri.parse('$_apiBase/api/reports/export/pdf').replace(
+          queryParameters: {'jobId': jobId},
+        );
         final req = await client.getUrl(uri);
         req.headers.set('Authorization', 'Bearer $workerToken');
         final res = await req.close();

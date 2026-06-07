@@ -1,18 +1,24 @@
 import 'package:flutter/foundation.dart';
 
 class AppConfig {
-  /// Volitelné přepsání při buildu: `--dart-define=API_BASE_URL=...`
+  /// Povinné v release buildu: `--dart-define=API_BASE_URL=https://api.example.com`
   static const String _envApiBaseUrl = String.fromEnvironment('API_BASE_URL');
-
-  /// Release / výchozí (beze změny – produkce se nastavuje až přes dart-define).
-  static const String _releaseDefaultApiBaseUrl = 'http://localhost:3000';
 
   /// Debug APK na fyzickém zařízení ve stejné Wi‑Fi → backend na PC.
   static const String _debugLanApiBaseUrl = 'http://192.168.1.110:3000';
 
-  static String get apiBaseUrl {
-    if (_envApiBaseUrl.isNotEmpty) return _envApiBaseUrl;
-    if (kDebugMode) return _debugLanApiBaseUrl;
-    return _releaseDefaultApiBaseUrl;
+  @visibleForTesting
+  static String resolveApiBaseUrl({
+    required String envApiBaseUrl,
+    required bool debugMode,
+  }) {
+    if (envApiBaseUrl.isNotEmpty) return envApiBaseUrl;
+    if (debugMode) return _debugLanApiBaseUrl;
+    throw StateError(
+      'Release build vyžaduje --dart-define=API_BASE_URL=<url backendu>',
+    );
   }
+
+  static String get apiBaseUrl =>
+      resolveApiBaseUrl(envApiBaseUrl: _envApiBaseUrl, debugMode: kDebugMode);
 }

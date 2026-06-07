@@ -1,13 +1,13 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import multer from 'multer';
 import path from 'path';
-import fs from 'fs';
 import sharp from 'sharp';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
-import { config } from '../config.js';
 import { AppError, badRequest, forbidden, notFound } from '../lib/errors.js';
+import { assertSealReadable } from '../services/authorization.service.js';
 import { assertSealEditable } from '../services/seal.service.js';
+import { getObjectStorage, sanitizeObjectKey } from '../services/storage.service.js';
 import { logActivity, logChange } from '../services/audit.service.js';
 import { UserRole } from '@prisma/client';
 import { paramId } from '../lib/params.js';
@@ -15,18 +15,6 @@ import { paramId } from '../lib/params.js';
 const router = Router();
 router.use(authMiddleware);
 const maxPhotoSizeBytes = 15 * 1024 * 1024;
-
-if (!fs.existsSync(config.uploadPath)) {
-  fs.mkdirSync(config.uploadPath, { recursive: true });
-}
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, config.uploadPath),
-  filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    cb(null, `${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
-  },
-});
 
 function isAllowedImageMime(mimetype: string, originalname: string): boolean {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
@@ -39,7 +27,7 @@ function isAllowedImageMime(mimetype: string, originalname: string): boolean {
 }
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: maxPhotoSizeBytes },
   fileFilter: (_req, file, cb) => {
     if (isAllowedImageMime(file.mimetype, file.originalname)) cb(null, true);
@@ -49,33 +37,15 @@ const upload = multer({
 
 const uploadSinglePhoto = upload.single('photo');
 
-function removeFileIfExists(filePath: string | undefined) {
-  if (!filePath || !fs.existsSync(filePath)) return;
-  try {
-    fs.unlinkSync(filePath);
-  } catch {
-    // Ignore EBUSY on Windows when sharp/multer still holds the handle.
-  }
-}
-
-function resolveUploadFilePath(fileName: string) {
-  const uploadRoot = path.resolve(config.uploadPath);
-  const filePath = path.resolve(uploadRoot, fileName);
-  if (!filePath.startsWith(uploadRoot + path.sep) && filePath !== uploadRoot) {
-    throw forbidden('Neplatna cesta souboru');
-  }
-  return filePath;
-}
-
-async function convertUploadToWebp(inputPath: string, outputPath: string) {
-  const meta = await sharp(inputPath, { failOn: 'error' }).metadata();
+async function convertBufferToWebp(input: Buffer): Promise<Buffer> {
+  const meta = await sharp(input, { failOn: 'error' }).metadata();
   if (!meta.format) {
     throw badRequest('Soubor není platný obrázek (nelze rozpoznat formát)');
   }
-  await sharp(inputPath, { failOn: 'error' })
+  return sharp(input, { failOn: 'error' })
     .resize(1920, 1920, { fit: 'inside', withoutEnlargement: true })
     .webp({ quality: 85 })
-    .toFile(outputPath);
+    .toBuffer();
 }
 
 function photoUploadMiddleware(req: Request, res: Response, next: NextFunction) {
@@ -93,7 +63,8 @@ function photoUploadMiddleware(req: Request, res: Response, next: NextFunction) 
 }
 
 router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, next) => {
-  let outputPath: string | undefined;
+  let outputName: string | undefined;
+  const storage = getObjectStorage();
   try {
     const sealId = paramId(req.params.sealId);
     if (!req.file) {
@@ -103,29 +74,25 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
     if (req.user!.role === UserRole.worker) {
       await assertSealEditable(sealId, req.user!.role, req.user!.id);
     } else {
-      const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
-      if (!seal) throw notFound('Ucpávka nenalezena');
+      await assertSealReadable(sealId, req.user!.role, req.user!.id);
     }
 
-    const outputName = `${path.parse(req.file.filename).name}-${Date.now()}.webp`;
-    outputPath = resolveUploadFilePath(outputName);
-
+    outputName = sanitizeObjectKey(`${Date.now()}-${Math.random().toString(36).slice(2)}.webp`);
+    let webpBuffer: Buffer;
     try {
-      await convertUploadToWebp(req.file.path, outputPath);
+      webpBuffer = await convertBufferToWebp(req.file.buffer);
     } catch (e) {
       if (e instanceof AppError) throw e;
       throw badRequest('Soubor není platný obrázek (poškozený nebo nepodporovaný formát)');
-    } finally {
-      removeFileIfExists(req.file.path);
     }
+    await storage.put(outputName, webpBuffer, 'image/webp');
 
-    const stats = fs.statSync(outputPath);
     const photo = await prisma.sealPhoto.create({
       data: {
         sealId,
         filePath: outputName,
         mimeType: 'image/webp',
-        fileSize: stats.size,
+        fileSize: webpBuffer.length,
         uploadedById: req.user!.id,
       },
     });
@@ -141,8 +108,13 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
       authUrl: `/api/photos/${photo.id}/file`,
     });
   } catch (e) {
-    removeFileIfExists(req.file?.path);
-    removeFileIfExists(outputPath);
+    if (outputName) {
+      try {
+        await storage.delete(outputName);
+      } catch {
+        // Best-effort rollback when DB write fails after upload.
+      }
+    }
     next(e);
   }
 });
@@ -154,12 +126,16 @@ router.get('/photos/:photoId/file', async (req, res, next) => {
       include: { seal: true },
     });
     if (!photo || photo.seal.deletedAt) throw notFound('Fotka nenalezena');
+    await assertSealReadable(photo.sealId, req.user!.role, req.user!.id);
 
-    const filePath = resolveUploadFilePath(photo.filePath);
-    if (!fs.existsSync(filePath)) throw notFound('Soubor fotky nenalezen');
+    const storage = getObjectStorage();
+    if (!(await storage.exists(photo.filePath))) {
+      throw notFound('Soubor fotky nenalezen');
+    }
 
+    const body = await storage.get(photo.filePath);
     res.type(photo.mimeType);
-    res.sendFile(filePath);
+    res.send(body);
   } catch (e) {
     next(e);
   }

@@ -1,11 +1,9 @@
-import fs from 'fs';
-import path from 'path';
 import sharp from 'sharp';
 import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
-import { config } from '../dist/config.js';
+import { getObjectStorage } from '../dist/services/storage.service.js';
 
 const PHOTO_PREFIX = '9977';
 const tinyPng = Buffer.from(
@@ -75,8 +73,7 @@ describe('Photos upload integration', () => {
       where: { seal: { sealNumber: { startsWith: PHOTO_PREFIX } } },
     });
     for (const photo of photos) {
-      const filePath = path.join(config.uploadPath, photo.filePath);
-      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+      await getObjectStorage().delete(photo.filePath);
     }
     await prisma.seal.deleteMany({ where: { sealNumber: { startsWith: PHOTO_PREFIX } } });
     await prisma.$disconnect();
@@ -96,7 +93,7 @@ describe('Photos upload integration', () => {
 
     const stored = await prisma.sealPhoto.findUnique({ where: { id: photoId } });
     expect(stored).toBeTruthy();
-    expect(fs.existsSync(path.join(config.uploadPath, stored.filePath))).toBe(true);
+    expect(await getObjectStorage().exists(stored.filePath)).toBe(true);
   });
 
   it('worker cannot delete uploaded photos', async () => {

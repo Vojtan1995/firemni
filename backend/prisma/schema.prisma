@@ -52,6 +52,7 @@ model User {
   messagesReceived PrivateMessage[] @relation("MessageRecipient")
   worksheetsCreated WorkSheet[] @relation("WorkSheetCreator")
   worksheetAssignments WorkSheetWorker[]
+  worksheetItems WorkSheetItem[] @relation("WorkSheetItemWorker")
 
   @@map("users")
 }
@@ -104,7 +105,9 @@ model JobFloor {
 
   job   Job    @relation(fields: [jobId], references: [id])
   seals Seal[]
+  worksheetItems WorkSheetItem[]
 
+  @@index([jobId])
   @@map("job_floors")
 }
 
@@ -141,6 +144,9 @@ model Seal {
 
   @@index([floorId])
   @@index([jobId, floorId, sealNumber])
+  @@index([createdById])
+  @@index([updatedAt])
+  @@index([jobId, updatedAt])
   // Partial unique (deleted_at IS NULL): migration 20250528000000_seals_active_number_unique
   @@index([status])
   @@map("seals")
@@ -178,6 +184,7 @@ model SealEntry {
   priceListItem  PriceListItem?       @relation(fields: [priceListItemId], references: [id])
   worksheetItems WorkSheetItem[]
 
+  @@index([sealId])
   @@map("seal_entries")
 }
 
@@ -205,6 +212,7 @@ model SealPhoto {
   seal       Seal @relation(fields: [sealId], references: [id], onDelete: Cascade)
   uploadedBy User @relation(fields: [uploadedById], references: [id])
 
+  @@index([sealId])
   @@map("seal_photos")
 }
 
@@ -220,6 +228,7 @@ model SyncMutation {
   processedAt DateTime? @map("processed_at")
   createdAt   DateTime  @default(now()) @map("created_at")
 
+  @@index([userId, createdAt])
   @@map("sync_mutations")
 }
 
@@ -235,6 +244,7 @@ model ActivityLog {
   user User @relation(fields: [userId], references: [id])
 
   @@index([createdAt])
+  @@index([userId, createdAt])
   @@map("activity_log")
 }
 
@@ -305,6 +315,7 @@ model WorkSheetItem {
   entryType    String   @map("entry_type")
   dimension    String
   quantity     Decimal  @default(1) @db.Decimal(12, 3)
+  unit         String?  @default("kus")
   unitPrice    Decimal? @map("unit_price") @db.Decimal(10, 2)
   totalPrice   Decimal? @map("total_price") @db.Decimal(10, 2)
   sortOrder    Int      @default(0) @map("sort_order")
@@ -313,6 +324,8 @@ model WorkSheetItem {
   worksheet WorkSheet @relation(fields: [worksheetId], references: [id], onDelete: Cascade)
   seal      Seal      @relation(fields: [sealId], references: [id])
   sealEntry SealEntry @relation(fields: [sealEntryId], references: [id])
+  floor     JobFloor  @relation(fields: [floorId], references: [id])
+  worker    User      @relation("WorkSheetItemWorker", fields: [workerId], references: [id])
 
   @@unique([worksheetId, sealEntryId])
   @@index([worksheetId])
@@ -330,6 +343,7 @@ model LoginLog {
 
   user User? @relation(fields: [userId], references: [id])
 
+  @@index([createdAt])
   @@map("login_log")
 }
 
@@ -359,6 +373,7 @@ model JobParticipant {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([jobId, userId])
+  @@index([userId])
   @@map("job_participants")
 }
 

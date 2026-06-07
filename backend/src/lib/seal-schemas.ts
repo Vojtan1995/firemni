@@ -1,31 +1,45 @@
 import { z } from 'zod';
+import {
+  assertPairedMm,
+  refineSealEntriesDimensions,
+  refineSealOpeningDimensions,
+} from './zod-helpers.js';
 
 const optionalMm = z.number().int().positive().optional();
 
-export const sealEntrySchema = z.object({
-  entryType: z.string().min(1),
-  dimension: z.string().min(1),
-  quantity: z.number().positive(),
-  insulation: z.string().min(1),
-  materials: z.array(z.string().min(1)).min(1),
-  itemLengthMm: optionalMm,
-  itemWidthMm: optionalMm,
-});
+export const sealEntrySchema = z
+  .object({
+    entryType: z.string().min(1),
+    dimension: z.string().min(1),
+    quantity: z.number().positive(),
+    insulation: z.string().min(1),
+    materials: z.array(z.string().min(1)).min(1),
+    itemLengthMm: optionalMm,
+    itemWidthMm: optionalMm,
+  })
+  .superRefine((entry, ctx) => {
+    assertPairedMm(entry.itemLengthMm, entry.itemWidthMm, ctx, []);
+  });
 
-export const sealBodySchema = z.object({
+export const sealBodyBaseSchema = z.object({
   jobId: z.string().uuid(),
   floorId: z.string().uuid(),
   sealNumber: z.string().regex(/^\d+$/, 'Číslo ucpávky musí být číselné'),
-  system: z.string(),
-  construction: z.string(),
-  location: z.string(),
-  fireRating: z.string(),
+  system: z.string().min(1),
+  construction: z.string().min(1),
+  location: z.string().min(1),
+  fireRating: z.string().min(1),
   note: z.string().optional(),
   internalNote: z.string().optional(),
   openingLengthMm: optionalMm,
   openingWidthMm: optionalMm,
   entries: z.array(sealEntrySchema).min(1),
   baseVersion: z.number().int().optional(),
+});
+
+export const sealBodySchema = sealBodyBaseSchema.superRefine((data, ctx) => {
+  refineSealOpeningDimensions(data, ctx);
+  refineSealEntriesDimensions(data.entries, ctx);
 });
 
 export function entryCreateData(

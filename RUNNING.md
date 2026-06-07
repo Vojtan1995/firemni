@@ -182,7 +182,9 @@ docker compose up -d
 
 Adresář: `c:\Users\vojte\Desktop\unifast\frontend`
 
-API URL: `lib/core/config.dart` → `http://localhost:3000` (stejné v debug i release).
+API URL v debug: `lib/core/config.dart` (LAN adresa) nebo `--dart-define=API_BASE_URL=http://localhost:3000`.
+
+Release Android **vyžaduje** `--dart-define=API_BASE_URL=...` a `android/key.properties` – viz [README.md](README.md).
 
 ### 5.1 Debug (vývoj)
 
@@ -265,7 +267,7 @@ flutter pub get
 flutter build apk --release --dart-define=API_BASE_URL=https://firemni-production.up.railway.app
 ```
 
-Bez `--dart-define` APK volá `http://localhost:3000` (na telefonu nefunguje). Při startu s uloženým tokenem pak může dlouho „točit kolečko“.
+Bez `--dart-define=API_BASE_URL` release build **selže při kompilaci** (viz `lib/core/config.dart`). Pro lokální dev použij debug build nebo explicitní URL.
 
 **Lokální dev build:**
 

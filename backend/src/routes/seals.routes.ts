@@ -18,7 +18,14 @@ import {
   softDeleteSeal,
   statusAfterWorkerEdit,
 } from '../services/seal.service.js';
-import { entryCreateData, sealBodySchema, sealEntrySchema } from '../lib/seal-schemas.js';
+import { entryCreateData, sealBodyBaseSchema, sealBodySchema, sealEntrySchema } from '../lib/seal-schemas.js';
+import { refineSealEntriesDimensions, refineSealOpeningDimensions } from '../lib/zod-helpers.js';
+import {
+  assertFloorBelongsToJob,
+  assertFloorReadable,
+  assertJobWritable,
+  assertSealReadable,
+} from '../services/authorization.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -73,9 +80,12 @@ router.get('/trash', requirePermission('admin.trash'), async (_req, res, next) =
 router.get('/floors/:floorId/seals', async (req, res, next) => {
   try {
     const role = req.user!.role;
+    const userId = req.user!.id;
+    const floorId = paramId(req.params.floorId);
+    await assertFloorReadable(floorId, role, userId);
     const showWorker = showWorkerInList(role);
     const seals = await prisma.seal.findMany({
-      where: { floorId: paramId(req.params.floorId), deletedAt: null },
+      where: { floorId, deletedAt: null },
       select: {
         id: true,
         sealNumber: true,
@@ -142,9 +152,8 @@ router.post('/bulk-status', requirePermission('seal.status'), async (req, res, n
 router.get('/:id/history', requirePermission('seal.history'), async (req, res, next) => {
   try {
     const sealId = paramId(req.params.id);
-    const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
-    if (!seal) throw notFound('Ucpávka nenalezena');
-    const history = await getSealHistory(sealId);
+    await assertSealReadable(sealId, req.user!.role, req.user!.id);
+    const history = await getSealHistory(sealId, req.user!.role);
     res.json(history);
   } catch (e) {
     next(e);
@@ -153,8 +162,10 @@ router.get('/:id/history', requirePermission('seal.history'), async (req, res, n
 
 router.get('/:id', async (req, res, next) => {
   try {
+    const sealId = paramId(req.params.id);
+    await assertSealReadable(sealId, req.user!.role, req.user!.id);
     const seal = await prisma.seal.findFirst({
-      where: { id: paramId(req.params.id), deletedAt: null },
+      where: { id: sealId, deletedAt: null },
       include: {
         createdBy: { select: { id: true, displayName: true, username: true } },
         updatedBy: { select: { id: true, displayName: true, username: true } },
@@ -179,48 +190,46 @@ router.get('/:id', async (req, res, next) => {
 router.post('/', requirePermission('seal.create'), async (req, res, next) => {
   try {
     const body = sealBodySchema.parse(req.body);
+    await assertJobWritable(body.jobId, req.user!.role, req.user!.id);
+    await assertFloorBelongsToJob(body.floorId, body.jobId);
     await checkDuplicateSealNumber(body.jobId, body.floorId, body.sealNumber);
 
-    const seal = await prisma.seal.create({
-      data: {
-        jobId: body.jobId,
-        floorId: body.floorId,
-        sealNumber: body.sealNumber,
-        system: body.system,
-        construction: body.construction,
-        location: body.location,
-        fireRating: body.fireRating,
-        note: body.note,
-        internalNote: body.internalNote,
-        openingLengthMm: body.openingLengthMm ?? null,
-        openingWidthMm: body.openingWidthMm ?? null,
-        status: SealStatus.draft,
-        createdById: req.user!.id,
-        updatedById: req.user!.id,
-        entries: {
-          create: body.entries.map((e, i) => entryCreateData(e, i)),
+    const priced = await prisma.$transaction(async (tx) => {
+      const seal = await tx.seal.create({
+        data: {
+          jobId: body.jobId,
+          floorId: body.floorId,
+          sealNumber: body.sealNumber,
+          system: body.system,
+          construction: body.construction,
+          location: body.location,
+          fireRating: body.fireRating,
+          note: body.note,
+          internalNote: body.internalNote,
+          openingLengthMm: body.openingLengthMm ?? null,
+          openingWidthMm: body.openingWidthMm ?? null,
+          status: SealStatus.draft,
+          createdById: req.user!.id,
+          updatedById: req.user!.id,
+          entries: {
+            create: body.entries.map((e, i) => entryCreateData(e, i)),
+          },
         },
-      },
-      include: {
-        entries: { include: { materials: true } },
-        photos: true,
-        createdBy: { select: { id: true, displayName: true } },
-        updatedBy: { select: { id: true, displayName: true } },
-      },
+      });
+      await priceSealEntries(seal.id, req.user!.id, tx);
+      return tx.seal.findFirst({
+        where: { id: seal.id },
+        include: {
+          entries: { where: { deletedAt: null }, include: { materials: true } },
+          photos: true,
+          createdBy: { select: { id: true, displayName: true } },
+          updatedBy: { select: { id: true, displayName: true } },
+        },
+      });
     });
 
-    await logActivity(req.user!.id, 'create', 'seal', seal.id);
+    await logActivity(req.user!.id, 'create', 'seal', priced!.id);
     await touchJobParticipant(body.jobId, req.user!.id, 'worker');
-    await priceSealEntries(seal.id, req.user!.id);
-    const priced = await prisma.seal.findFirst({
-      where: { id: seal.id },
-      include: {
-        entries: { where: { deletedAt: null }, include: { materials: true } },
-        photos: true,
-        createdBy: { select: { id: true, displayName: true } },
-        updatedBy: { select: { id: true, displayName: true } },
-      },
-    });
     res.status(201).json(priced);
   } catch (e) {
     next(e);
@@ -229,10 +238,27 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
 
 router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
   try {
-    const body = sealBodySchema.partial().extend({
-      entries: z.array(sealEntrySchema).optional(),
-      baseVersion: z.number().int(),
-    }).parse(req.body);
+    const body = sealBodyBaseSchema
+      .partial()
+      .extend({
+        entries: z.array(sealEntrySchema).optional(),
+        baseVersion: z.number().int(),
+      })
+      .superRefine((data, ctx) => {
+        if (data.openingLengthMm != null || data.openingWidthMm != null) {
+          refineSealOpeningDimensions(
+            {
+              openingLengthMm: data.openingLengthMm,
+              openingWidthMm: data.openingWidthMm,
+            },
+            ctx,
+          );
+        }
+        if (data.entries?.length) {
+          refineSealEntriesDimensions(data.entries, ctx);
+        }
+      })
+      .parse(req.body);
 
     const existing = await assertSealEditable(paramId(req.params.id), req.user!.role, req.user!.id);
 
@@ -279,9 +305,10 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       }
     }
 
+    let seal;
     if (body.entries) {
       await logChange(req.user!.id, 'seal', existing.id, 'entries', 'updated', 'updated');
-      await prisma.$transaction(async (tx) => {
+      seal = await prisma.$transaction(async (tx) => {
         await tx.sealEntry.updateMany({
           where: { sealId: existing.id },
           data: { deletedAt: new Date() },
@@ -308,20 +335,32 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
             })),
           });
         }
+        await tx.seal.update({ where: { id: existing.id }, data: updateData });
+        await priceSealEntries(existing.id, req.user!.id, tx);
+        return tx.seal.findFirst({
+          where: { id: existing.id },
+          include: {
+            entries: { where: { deletedAt: null }, include: { materials: true } },
+            photos: true,
+            createdBy: { select: { id: true, displayName: true } },
+            updatedBy: { select: { id: true, displayName: true } },
+          },
+        });
       });
-      await priceSealEntries(existing.id, req.user!.id);
+    } else {
+      seal = await prisma.seal.update({
+        where: { id: existing.id },
+        data: updateData,
+        include: {
+          entries: { where: { deletedAt: null }, include: { materials: true } },
+          photos: true,
+          createdBy: { select: { id: true, displayName: true } },
+          updatedBy: { select: { id: true, displayName: true } },
+        },
+      });
     }
 
-    const seal = await prisma.seal.update({
-      where: { id: existing.id },
-      data: updateData,
-      include: {
-        entries: { where: { deletedAt: null }, include: { materials: true } },
-        photos: true,
-        createdBy: { select: { id: true, displayName: true } },
-        updatedBy: { select: { id: true, displayName: true } },
-      },
-    });
+    if (!seal) throw notFound('Ucpávka nenalezena');
 
     await logActivity(req.user!.id, 'update', 'seal', seal.id);
     await touchJobParticipant(existing.jobId, req.user!.id, 'worker');

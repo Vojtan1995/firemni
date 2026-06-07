@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { loginRateLimiter } from '../middleware/security.middleware.js';
 import * as authService from '../services/auth.service.js';
 
 const router = Router();
@@ -15,7 +16,7 @@ const changePinSchema = z.object({
   newPin: z.string().min(4).max(8),
 });
 
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginRateLimiter, async (req, res, next) => {
   try {
     const body = loginSchema.parse(req.body);
     const result = await authService.login(body.username, body.pin, {

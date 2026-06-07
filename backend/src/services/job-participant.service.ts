@@ -1,5 +1,7 @@
 import { prisma } from '../lib/prisma.js';
 
+export { getParticipantJobIds, isJobParticipant } from './authorization.service.js';
+
 export async function touchJobParticipant(
   jobId: string,
   userId: string,

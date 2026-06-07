@@ -6,3 +6,11 @@ export function toNumber(value: Decimal | number | string | null | undefined): n
   if (typeof value === 'number') return value;
   return Number(value);
 }
+
+/** Násobení cen s přesností na 2 desetinná místa (bez float chyb). */
+export function multiplyMoney(
+  unitPrice: Decimal | number | string,
+  quantity: number,
+): number {
+  return new Decimal(unitPrice.toString()).mul(quantity).toDecimalPlaces(2).toNumber();
+}

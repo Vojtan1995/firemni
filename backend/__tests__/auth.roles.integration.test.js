@@ -72,6 +72,17 @@ describe('Auth and role authorization (BE-02)', () => {
     await prisma.$disconnect();
   });
 
+  it('stores hashed session token, not raw JWT', async () => {
+    const res = await login('worker1');
+    expect(res.status).toBe(200);
+    const token = res.body.token;
+    const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+    const session = await prisma.userSession.findUnique({ where: { id: payload.sid } });
+    expect(session).toBeTruthy();
+    expect(session.token).not.toBe(token);
+    expect(session.token).toMatch(/^[a-f0-9]{64}$/);
+  });
+
   it('GET /api/jobs without token → 401', async () => {
     const res = await request(app).get('/api/jobs');
     expect(res.status).toBe(401);

@@ -5,6 +5,7 @@ import { logActivity, logChange } from './audit.service.js';
 import { assertSealEntriesPriced } from './pricing.service.js';
 
 import { VEDENI_ROLES } from '../lib/permissions.js';
+import { assertSealReadable } from './authorization.service.js';
 
 export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
@@ -24,11 +25,7 @@ export function isSealLocked(status: SealStatus) {
 }
 
 export async function assertSealEditable(sealId: string, userRole: UserRole, userId: string) {
-  const seal = await prisma.seal.findFirst({
-    where: { id: sealId, deletedAt: null },
-    include: { job: true },
-  });
-  if (!seal) throw notFound('Ucpávka nenalezena');
+  const seal = await assertSealReadable(sealId, userRole, userId);
   if (seal.job.isArchived) throw forbidden('Stavba je archivována');
   if (isSealLocked(seal.status)) throw forbidden('Ucpávka je zamčena (fakturováno)');
   if (userRole === UserRole.worker && !canWorkerEdit(seal.status)) {

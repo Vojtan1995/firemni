@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import { pinoHttp } from 'pino-http';
 import { config } from './config.js';
@@ -29,6 +30,7 @@ export function createApp() {
       autoLogging: config.nodeEnv !== 'test',
     }),
   );
+  app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cors({ origin: config.corsOrigin }));
   app.use(express.json({ limit: '2mb' }));
 
@@ -45,7 +47,7 @@ export function createApp() {
     }
   });
 
-  if (config.publicUploads) {
+  if (config.publicUploads && config.storageDriver === 'local') {
     app.use('/uploads', express.static(path.resolve(config.uploadPath)));
   }
 

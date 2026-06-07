@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../lib/prisma.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
+import { hashSessionToken } from '../lib/session-token.js';
 import { logActivity } from './audit.service.js';
 
 export async function login(username: string, pin: string, meta?: { ip?: string; userAgent?: string }) {
@@ -37,7 +38,7 @@ export async function login(username: string, pin: string, meta?: { ip?: string;
   expiresAt.setDate(expiresAt.getDate() + config.sessionDays);
 
   await prisma.userSession.create({
-    data: { id: sessionId, userId: user.id, token, expiresAt },
+    data: { id: sessionId, userId: user.id, token: hashSessionToken(token), expiresAt },
   });
 
   await logActivity(user.id, 'login', 'user', user.id);
@@ -55,7 +56,7 @@ export async function login(username: string, pin: string, meta?: { ip?: string;
 }
 
 export async function logout(token: string, userId: string) {
-  await prisma.userSession.deleteMany({ where: { token, userId } });
+  await prisma.userSession.deleteMany({ where: { token: hashSessionToken(token), userId } });
   await logActivity(userId, 'logout', 'user', userId);
 }
 
@@ -88,7 +89,7 @@ export async function changeOwnPin(userId: string, currentPin: string, newPin: s
   });
 
   await prisma.userSession.deleteMany({
-    where: { userId, token: { not: currentToken } },
+    where: { userId, token: { not: hashSessionToken(currentToken) } },
   });
   await logActivity(userId, 'change_pin', 'user', userId);
 

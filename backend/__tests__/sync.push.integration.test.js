@@ -347,6 +347,35 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(updated.location).toBe('Worker sync edit checked');
   });
 
+  it('sync update clears note when payload sends null', async () => {
+    const sealNumber = `${SEAL_PREFIX}9`;
+    const createPayload = { ...sealCreatePayload(jobId, floorId, sealNumber), note: 'Poznámka test' };
+    const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: createPayload,
+      }),
+    ]);
+    expect(createRes.body.results[0].status).toBe('ok');
+    const sealId = createRes.body.results[0].entityId;
+    const seal = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(seal.note).toBe('Poznámka test');
+
+    const updateRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: seal.version,
+        payload: {
+          id: sealId,
+          note: null,
+        },
+      }),
+    ]);
+    expect(updateRes.body.results[0].status).toBe('ok');
+    const updated = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(updated.note).toBeNull();
+  });
+
   it('management can push status mutation via sync', async () => {
     const sealNumber = `${Date.now()}`;
     const createRes = await push(workerToken, [

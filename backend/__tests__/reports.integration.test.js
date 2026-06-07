@@ -110,14 +110,14 @@ describe('Reports and exports (BE-05)', () => {
     await prisma.$disconnect();
   });
 
-  const reportQuery = { jobId };
+  const reportQuery = () => ({ jobId });
 
   describe('role access', () => {
     it('worker can access work-summary for own seals only', async () => {
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${worker1Token}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(res.status).toBe(200);
       const numbers = res.body.rows.map((r) => r.cisloUcpavky);
       expect(numbers).toContain(`${SEAL_PREFIX}1`);
@@ -141,7 +141,7 @@ describe('Reports and exports (BE-05)', () => {
       const csv = await request(app)
         .get('/api/reports/export/csv')
         .set('Authorization', `Bearer ${worker1Token}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(csv.status).toBe(200);
       expect(csv.text).toContain(`${SEAL_PREFIX}1`);
       expect(csv.text).not.toContain(`${SEAL_PREFIX}2`);
@@ -149,7 +149,7 @@ describe('Reports and exports (BE-05)', () => {
       const pdf = await request(app)
         .get('/api/reports/export/pdf')
         .set('Authorization', `Bearer ${worker1Token}`)
-        .query(reportQuery)
+        .query(reportQuery())
         .buffer(true)
         .parse((res, callback) => {
           const chunks = [];
@@ -165,7 +165,7 @@ describe('Reports and exports (BE-05)', () => {
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${managementToken}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(res.status).toBe(200);
       expect(res.body.count).toBeGreaterThanOrEqual(3);
       expect(Array.isArray(res.body.rows)).toBe(true);
@@ -175,7 +175,7 @@ describe('Reports and exports (BE-05)', () => {
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${adminToken}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(res.status).toBe(200);
       expect(res.body.count).toBeGreaterThanOrEqual(3);
     });
@@ -185,12 +185,12 @@ describe('Reports and exports (BE-05)', () => {
       const summary = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${ucetniToken}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(summary.status).toBe(200);
       const csv = await request(app)
         .get('/api/reports/export/csv')
         .set('Authorization', `Bearer ${ucetniToken}`)
-        .query(reportQuery);
+        .query(reportQuery());
       expect(csv.status).toBe(200);
     });
   });
@@ -269,14 +269,15 @@ describe('Reports and exports (BE-05)', () => {
       from.setDate(from.getDate() - 1);
       const to = new Date(today);
       to.setDate(to.getDate() + 1);
+      const fmt = (d) => d.toISOString().slice(0, 10);
 
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${managementToken}`)
         .query({
           jobId,
-          from: from.toISOString(),
-          to: to.toISOString(),
+          from: fmt(from),
+          to: fmt(to),
         });
       expect(res.status).toBe(200);
       expect(res.body.rows.some((r) => r.cisloUcpavky === `${SEAL_PREFIX}1`)).toBe(true);

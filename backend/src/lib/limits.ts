@@ -1,0 +1,4 @@
+export const SYNC_PULL_BATCH_LIMIT = 500;
+export const SYNC_PUSH_BATCH_LIMIT = 50;
+export const REPORT_SEAL_BATCH_LIMIT = 2000;
+export const REPORT_ROW_LIMIT = 10000;

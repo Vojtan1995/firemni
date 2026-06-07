@@ -24,9 +24,17 @@ void main() {
     expect(offline, hasLength(1));
     expect(offline.first['projectNumber'], '12345678');
 
-    final byNumber = await cache.findJobByProjectNumber('12345678');
+    final byNumber = await cache.findJobByProjectNumber(
+      '12345678',
+      userId: 'user-1',
+    );
     expect(byNumber?['id'], 'job-1');
     expect(byNumber?['floors'], hasLength(1));
+
+    expect(
+      await cache.findJobByProjectNumber('12345678', userId: 'other-user'),
+      isNull,
+    );
 
     await db.close();
   });

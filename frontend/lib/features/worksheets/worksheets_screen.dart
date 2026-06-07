@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../auth/auth_provider.dart';
+import 'worksheet_create_helpers.dart';
 
 class WorksheetsScreen extends ConsumerStatefulWidget {
   const WorksheetsScreen({super.key});
@@ -15,6 +16,7 @@ class WorksheetsScreen extends ConsumerStatefulWidget {
 class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
   List<Map<String, dynamic>> _worksheets = [];
   List<Map<String, dynamic>> _jobs = [];
+  List<Map<String, dynamic>> _workers = [];
   bool _loading = true;
   String? _statusFilter;
 
@@ -37,6 +39,11 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
     final dio = ref.read(dioProvider);
     final auth = ref.read(authServiceProvider);
     try {
+      if (!auth.isWorker) {
+        final filterRes = await dio.get('/api/reports/filter-options');
+        _workers = ((filterRes.data as Map)['workers'] as List? ?? [])
+            .cast<Map<String, dynamic>>();
+      }
       if (!auth.isWorker) {
         final jobsRes = await dio.get('/api/jobs');
         _jobs = (jobsRes.data as List).cast<Map<String, dynamic>>();
@@ -61,6 +68,7 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
   }
 
   Future<void> _createWorksheet() async {
+    final auth = ref.read(authServiceProvider);
     if (_jobs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Nejdříve vyberte dostupnou zakázku')),
@@ -74,7 +82,8 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Nový soupis práce'),
           content: DropdownButtonFormField<String>(
-            value: selectedJobId,
+            key: ValueKey(selectedJobId),
+            initialValue: selectedJobId,
             decoration: const InputDecoration(labelText: 'Zakázka'),
             items: _jobs
                 .map((j) => DropdownMenuItem(
@@ -91,9 +100,19 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
                 if (selectedJobId == null) return;
                 Navigator.pop(ctx);
                 try {
-                  final res = await ref.read(dioProvider).post('/api/worksheets', data: {
-                    'jobId': selectedJobId,
-                  });
+                  List<String>? workerIds;
+                  if (!auth.isWorker) {
+                    workerIds = await pickWorksheetWorkerIds(
+                      ctx,
+                      workers: _workers,
+                    );
+                    if (workerIds == null || workerIds.isEmpty) return;
+                  }
+
+                  final body = <String, dynamic>{'jobId': selectedJobId};
+                  if (workerIds != null) body['workerIds'] = workerIds;
+
+                  final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
                   final ws = res.data as Map<String, dynamic>;
                   await ref.read(dioProvider).post(
                     '/api/worksheets/${ws['id']}/populate',

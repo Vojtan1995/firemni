@@ -56,6 +56,19 @@ android {
     }
 }
 
+if (!hasReleaseKeystore) {
+    gradle.taskGraph.whenReady {
+        val buildingRelease = gradle.startParameter.taskNames.any { task ->
+            task.contains("Release", ignoreCase = true)
+        }
+        if (buildingRelease) {
+            throw GradleException(
+                "Release build vyžaduje android/key.properties (viz key.properties.example)",
+            )
+        }
+    }
+}
+
 kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17

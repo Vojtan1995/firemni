@@ -35,7 +35,26 @@ Nastavte:
 - `JWT_SECRET=<silny_secret>` (vytvořit v Railway ručně)
 - `CORS_ORIGIN=https://<frontend-nebo-app-domain>` pro ostrý provoz whitelist
 - `PUBLIC_UPLOADS=false`
-- `UPLOAD_PATH=./uploads`
+- `UPLOAD_PATH=./uploads` (pouze pro `STORAGE_DRIVER=local`)
+
+### Perzistentní fotky (doporučeno pro produkci)
+Railway filesystem není perzistentní. Pro ostrý provoz nastavte S3-kompatibilní bucket (Railway Object Storage, Cloudflare R2, AWS S3, MinIO):
+
+- `STORAGE_DRIVER=s3`
+- `S3_BUCKET=<název bucketu>`
+- `S3_ACCESS_KEY_ID=<access key>`
+- `S3_SECRET_ACCESS_KEY=<secret>`
+- `S3_REGION=auto` (nebo region poskytovatele)
+- `S3_ENDPOINT=https://<endpoint>` (u Railway/R2/MinIO povinné)
+- `S3_KEY_PREFIX=photos` (volitelný prefix klíčů)
+- `S3_FORCE_PATH_STYLE=true` (u některých providerů nutné)
+
+Při `STORAGE_DRIVER=s3`:
+- soubory přežijí restart/redeploy,
+- stažení fotek probíhá přes autentizované `GET /api/photos/:id/file` (`PUBLIC_UPLOADS=false`).
+
+Při `STORAGE_DRIVER=local` (default pro vývoj):
+- `UPLOAD_PATH=./uploads` ukládá na disk instance (vhodné jen lokálně / demo).
 
 Pro uzavrenou demo betu lze docasne pouzit `CORS_ORIGIN=*`, ale jen pokud je v Railway explicitne nastaveno `ALLOW_WILDCARD_CORS=true`.
 
@@ -68,12 +87,11 @@ Po nasazení backendu sestavte APK:
 
 `flutter build apk --release --dart-define=API_BASE_URL=https://<backend-domain>`
 
-## 7) Důležité omezení uploadů (demo-only)
-Aktuální uploady (`UPLOAD_PATH=./uploads`) používají lokální filesystem instance.
-Na Railway to není perzistentní úložiště pro ostrý provoz.
+## 7) Uploady a úložiště fotek
 
-To znamená:
-- po restartu/redeploy mohou soubory zmizet,
-- v DB zůstanou metadata bez fyzických souborů.
+| Režim | Env | Použití |
+|-------|-----|---------|
+| **local** (default) | `STORAGE_DRIVER=local`, `UPLOAD_PATH=./uploads` | lokální vývoj, CI testy |
+| **s3** | `STORAGE_DRIVER=s3` + `S3_*` proměnné | Railway / produkce |
 
-Tato varianta je pouze pro demo/beta.
+Bez S3 na Railway po restartu/redeploy mohou fyzické soubory zmizet, v DB zůstanou metadata bez souboru. Pro produkci použijte `STORAGE_DRIVER=s3`.

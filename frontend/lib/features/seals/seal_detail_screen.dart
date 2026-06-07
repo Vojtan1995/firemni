@@ -485,9 +485,10 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     } else {
       final id = m['id'] as String?;
       if (_dataSource == SealDetailDataSource.online && id != null) {
+        final photoId = id;
         image = FutureBuilder<Response<List<int>>>(
           future: ref.read(dioProvider).get<List<int>>(
-                '/api/photos/$id/file',
+                '/api/photos/$photoId/file',
                 options: Options(responseType: ResponseType.bytes),
               ),
           builder: (context, snapshot) {
@@ -505,7 +506,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 child: Center(child: Icon(Icons.broken_image, size: 100)),
               );
             }
-            _photoBytesCache[id!] = Uint8List.fromList(bytes);
+            _photoBytesCache[photoId] = Uint8List.fromList(bytes);
             return Image.memory(Uint8List.fromList(bytes),
                 height: 200, fit: BoxFit.cover);
           },

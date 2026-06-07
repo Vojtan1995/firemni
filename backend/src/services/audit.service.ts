@@ -1,5 +1,6 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { anonymizeUserForViewer } from '../lib/user-privacy.js';
 
 export async function logActivity(
   userId: string,
@@ -57,16 +58,17 @@ export async function logError(
   });
 }
 
-export async function getSealHistory(sealId: string) {
+export async function getSealHistory(sealId: string, viewerRole: UserRole) {
+  const userSelect = { id: true, displayName: true, username: true, role: true } as const;
   const [changes, activities] = await Promise.all([
     prisma.changeLog.findMany({
       where: { entityType: 'seal', entityId: sealId },
-      include: { user: { select: { id: true, displayName: true, username: true } } },
+      include: { user: { select: userSelect } },
       orderBy: { createdAt: 'desc' },
     }),
     prisma.activityLog.findMany({
       where: { entityType: 'seal', entityId: sealId },
-      include: { user: { select: { id: true, displayName: true, username: true } } },
+      include: { user: { select: userSelect } },
       orderBy: { createdAt: 'desc' },
     }),
   ]);
@@ -88,7 +90,7 @@ export async function getSealHistory(sealId: string) {
       id: c.id,
       type: 'change' as const,
       timestamp: c.createdAt,
-      editor: c.user,
+      editor: anonymizeUserForViewer(c.user, viewerRole),
       fieldName: c.fieldName,
       oldValue: c.oldValue,
       newValue: c.newValue,
@@ -98,7 +100,7 @@ export async function getSealHistory(sealId: string) {
       id: a.id,
       type: 'activity' as const,
       timestamp: a.createdAt,
-      editor: a.user,
+      editor: anonymizeUserForViewer(a.user, viewerRole),
       action: a.action,
       metadata: a.metadata,
     })),

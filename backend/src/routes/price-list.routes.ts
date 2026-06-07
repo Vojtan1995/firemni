@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
+import { notFound } from '../lib/errors.js';
 import { getActivePriceList, seedDefaultPriceList } from '../services/pricing.service.js';
 
 const router = Router();
@@ -8,9 +9,9 @@ router.use(authMiddleware);
 
 router.get('/', requirePermission('priceList.view'), async (_req, res, next) => {
   try {
-    let list = await getActivePriceList();
+    const list = await getActivePriceList();
     if (!list) {
-      list = await seedDefaultPriceList();
+      throw notFound('Aktivní ceník není k dispozici');
     }
     res.json(list);
   } catch (e) {

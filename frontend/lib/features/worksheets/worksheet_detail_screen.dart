@@ -141,7 +141,8 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
                 Text('Aktuální stav: ${_statusLabels[current] ?? current}'),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selected,
+                  key: ValueKey(selected),
+                  initialValue: selected,
                   decoration: const InputDecoration(labelText: 'Nový stav'),
                   items: allowed
                       .map((s) => DropdownMenuItem(

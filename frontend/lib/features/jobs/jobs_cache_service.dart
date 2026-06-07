@@ -50,6 +50,18 @@ class JobsCacheService {
             ),
           );
     }
+
+    final currentJobIds = jobs.map((j) => j['id'] as String).toSet();
+    if (currentJobIds.isEmpty) {
+      await (db.delete(db.localMyJobAssignments)
+            ..where((a) => a.userId.equals(userId)))
+          .go();
+    } else {
+      await (db.delete(db.localMyJobAssignments)
+            ..where((a) =>
+                a.userId.equals(userId) & a.jobId.isNotIn(currentJobIds.toList())))
+          .go();
+    }
   }
 
   Future<List<Map<String, dynamic>>> loadMyJobsOffline(String userId) async {
@@ -90,12 +102,20 @@ class JobsCacheService {
     return result;
   }
 
-  Future<Map<String, dynamic>?> findJobByProjectNumber(String number) async {
+  Future<Map<String, dynamic>?> findJobByProjectNumber(
+    String number, {
+    required String userId,
+  }) async {
     final job = await (db.select(db.localJobs)
           ..where((j) =>
               j.projectNumber.equals(number) & j.deletedAt.isNull()))
         .getSingleOrNull();
     if (job == null) return null;
+
+    final assignment = await (db.select(db.localMyJobAssignments)
+          ..where((a) => a.userId.equals(userId) & a.jobId.equals(job.id)))
+        .getSingleOrNull();
+    if (assignment == null) return null;
 
     final floors = await (db.select(db.localFloors)
           ..where((f) => f.jobId.equals(job.id) & f.deletedAt.isNull())
@@ -160,5 +180,14 @@ class JobsCacheService {
       jobName = job?.name;
     }
     return (jobId: jobId, floorId: floorId, jobName: jobName);
+  }
+
+  Future<void> clearUserScopedCache(String userId) async {
+    await (db.delete(db.localMyJobAssignments)
+          ..where((a) => a.userId.equals(userId)))
+        .go();
+    await (db.delete(db.syncCursor)
+          ..where((c) => c.key.equals('last_pull_$userId')))
+        .go();
   }
 }

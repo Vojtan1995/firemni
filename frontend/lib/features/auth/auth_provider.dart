@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../../database/database_provider.dart';
+import '../jobs/jobs_cache_service.dart';
 import '../../core/api/api_client.dart';
 import '../../core/permissions.dart';
 
@@ -127,6 +129,10 @@ class AuthService {
     try {
       await _dio.post('/api/auth/logout');
     } catch (_) {}
+    final userId = _ref.read(currentUserIdProvider);
+    if (userId != null) {
+      await JobsCacheService(_ref.read(databaseProvider)).clearUserScopedCache(userId);
+    }
     await clearLocalSession();
   }
 

@@ -29,6 +29,7 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
       setState(() => _error = 'Zadejte 8místné číslo stavby');
       return;
     }
+    final userId = ref.read(currentUserIdProvider);
     setState(() {
       _loading = true;
       _error = null;
@@ -70,19 +71,23 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
       if (mounted) context.push('/floors/${job['id']}');
     } catch (_) {
       final cache = JobsCacheService(ref.read(databaseProvider));
-      final job = await cache.findJobByProjectNumber(_ctrl.text);
-      if (job != null && mounted) {
-        final userId = ref.read(currentUserIdProvider);
-        if (userId != null) {
-          await cache.saveLastOpened(userId: userId, jobId: job['id'] as String);
-        }
-        setState(() {
-          _offline = true;
-          _error = null;
-        });
-        if (mounted) context.push('/floors/${job['id']}');
-      } else {
+      if (userId == null) {
         setState(() => _error = 'Stavba s tímto číslem neexistuje');
+      } else {
+        final job = await cache.findJobByProjectNumber(
+          _ctrl.text,
+          userId: userId,
+        );
+        if (job != null && mounted) {
+          await cache.saveLastOpened(userId: userId, jobId: job['id'] as String);
+          setState(() {
+            _offline = true;
+            _error = null;
+          });
+          if (mounted) context.push('/floors/${job['id']}');
+        } else {
+          setState(() => _error = 'Stavba s tímto číslem neexistuje');
+        }
       }
     } finally {
       if (mounted) setState(() => _loading = false);

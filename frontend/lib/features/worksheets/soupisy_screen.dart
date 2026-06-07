@@ -7,6 +7,7 @@ import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../reports/reports_screen.dart';
+import 'worksheet_create_helpers.dart';
 
 /// Sloučená obrazovka: export soupisu nahoře, uložené soupisy dole.
 class SoupisyScreen extends ConsumerStatefulWidget {
@@ -20,6 +21,7 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
   final _reportsKey = GlobalKey<ReportsScreenState>();
   List<Map<String, dynamic>> _worksheets = [];
   List<Map<String, dynamic>> _jobs = [];
+  List<Map<String, dynamic>> _workers = [];
   bool _loadingWorksheets = true;
   String? _statusFilter;
   String? _jobIdFilter;
@@ -75,6 +77,8 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
       if (!mounted) return;
       _jobs = ((filterRes.data as Map)['jobs'] as List)
           .cast<Map<String, dynamic>>();
+      _workers = ((filterRes.data as Map)['workers'] as List? ?? [])
+          .cast<Map<String, dynamic>>();
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -128,9 +132,23 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
       return;
     }
     try {
-      final res = await ref.read(dioProvider).post('/api/worksheets', data: {
-        'jobId': jobId,
-      });
+      final auth = ref.read(authServiceProvider);
+      List<String>? workerIds;
+      if (!auth.isWorker) {
+        final reportWorker = params['workerId'];
+        workerIds = await pickWorksheetWorkerIds(
+          context,
+          workers: _workers,
+          initialSelected:
+              reportWorker != null ? [reportWorker] : const [],
+        );
+        if (workerIds == null || workerIds.isEmpty) return;
+      }
+
+      final body = <String, dynamic>{'jobId': jobId};
+      if (workerIds != null) body['workerIds'] = workerIds;
+
+      final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
       final ws = res.data as Map<String, dynamic>;
       final populateBody = <String, dynamic>{};
       if (params['floorId'] != null) {
@@ -171,7 +189,8 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
         builder: (ctx, setDialogState) => AlertDialog(
           title: const Text('Nový soupis práce'),
           content: DropdownButtonFormField<String>(
-            value: selectedJobId,
+            key: ValueKey(selectedJobId),
+            initialValue: selectedJobId,
             decoration: const InputDecoration(labelText: 'Zakázka'),
             items: _jobs
                 .map((j) => DropdownMenuItem(
@@ -189,9 +208,20 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
                 if (selectedJobId == null) return;
                 Navigator.pop(ctx);
                 try {
-                  final res = await ref.read(dioProvider).post('/api/worksheets', data: {
-                    'jobId': selectedJobId,
-                  });
+                  final auth = ref.read(authServiceProvider);
+                  List<String>? workerIds;
+                  if (!auth.isWorker) {
+                    workerIds = await pickWorksheetWorkerIds(
+                      ctx,
+                      workers: _workers,
+                    );
+                    if (workerIds == null || workerIds.isEmpty) return;
+                  }
+
+                  final body = <String, dynamic>{'jobId': selectedJobId};
+                  if (workerIds != null) body['workerIds'] = workerIds;
+
+                  final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
                   final ws = res.data as Map<String, dynamic>;
                   await ref.read(dioProvider).post(
                         '/api/worksheets/${ws['id']}/populate',

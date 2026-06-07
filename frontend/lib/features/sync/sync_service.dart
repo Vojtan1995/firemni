@@ -82,10 +82,12 @@ class SyncService {
     required String operation,
     required Map<String, dynamic> payload,
     int? baseVersion,
+    AppDatabase? db,
   }) async {
+    final database = db ?? _db;
     final deviceId = await _deviceId();
     final userId = _ref.read(currentUserIdProvider);
-    await _db.into(_db.localOutbox).insert(LocalOutboxCompanion.insert(
+    await database.into(database.localOutbox).insert(LocalOutboxCompanion.insert(
           id: _uuid.v4(),
           mutationId: _uuid.v4(),
           userId: Value(userId),
@@ -234,146 +236,155 @@ class SyncService {
   }
 
   Future<void> _pullChanges() async {
-    final cursor = await (_db.select(_db.syncCursor)
-          ..where((c) => c.key.equals('last_pull')))
-        .getSingleOrNull();
-    final since = cursor?.lastPull ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final userId = _ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    final cursorKey = 'last_pull_$userId';
 
-    final res = await _dio.get('/api/sync/pull', queryParameters: {
-      'since': since.toIso8601String(),
-    });
-    final data = res.data as Map<String, dynamic>;
-
-    for (final j in (data['jobs'] as List? ?? [])) {
-      final m = j as Map<String, dynamic>;
-      await _db
-          .into(_db.localJobs)
-          .insertOnConflictUpdate(LocalJobsCompanion.insert(
-            id: m['id'] as String,
-            projectNumber: m['projectNumber'] as String,
-            name: m['name'] as String,
-            address: Value(m['address'] as String?),
-            isArchived: Value(m['isArchived'] as bool? ?? false),
-            deletedAt: const Value(null),
-            updatedAt: DateTime.parse(m['updatedAt'] as String),
-          ));
-    }
-
-    for (final f in (data['floors'] as List? ?? [])) {
-      final m = f as Map<String, dynamic>;
-      await _db
-          .into(_db.localFloors)
-          .insertOnConflictUpdate(LocalFloorsCompanion.insert(
-            id: m['id'] as String,
-            jobId: m['jobId'] as String,
-            name: m['name'] as String,
-            sortOrder: Value(m['sortOrder'] as int? ?? 0),
-            deletedAt: const Value(null),
-            updatedAt: DateTime.parse(m['updatedAt'] as String),
-          ));
-    }
-
-    final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(
-      _db,
-      userId: _ref.read(currentUserIdProvider),
-    );
-
-    for (final s in (data['seals'] as List? ?? [])) {
-      final m = s as Map<String, dynamic>;
-      final sealId = m['id'] as String;
-      final existing = await (_db.select(_db.localSeals)
-            ..where((row) => row.id.equals(sealId)))
+    var hasMore = true;
+    while (hasMore) {
+      final cursor = await (_db.select(_db.syncCursor)
+            ..where((c) => c.key.equals(cursorKey)))
           .getSingleOrNull();
-      final syncFlags = pullSealSyncFlags(
-        existing: existing,
-        hasActiveOutbox: activeOutboxSealIds.contains(sealId),
-      );
-      await _db
-          .into(_db.localSeals)
-          .insertOnConflictUpdate(LocalSealsCompanion.insert(
-            id: sealId,
-            jobId: m['jobId'] as String,
-            floorId: m['floorId'] as String,
-            sealNumber: m['sealNumber'] as String,
-            system: m['system'] as String,
-            construction: m['construction'] as String,
-            location: m['location'] as String,
-            fireRating: m['fireRating'] as String,
-            note: Value(m['note'] as String?),
-            internalNote: Value(m['internalNote'] as String?),
-            status: Value(m['status'] as String? ?? 'draft'),
-            version: Value(m['version'] as int? ?? 1),
-            isSynced: Value(syncFlags.isSynced),
-            syncConflict: Value(syncFlags.syncConflict),
-            deletedAt: const Value(null),
-            updatedAt: DateTime.parse(m['updatedAt'] as String),
-          ));
-      await cacheSealPhotosFromApiList(
+      final since = cursor?.lastPull ?? DateTime.fromMillisecondsSinceEpoch(0);
+
+      final res = await _dio.get('/api/sync/pull', queryParameters: {
+        'since': since.toIso8601String(),
+      });
+      final data = res.data as Map<String, dynamic>;
+      hasMore = data['hasMore'] as bool? ?? false;
+      final serverTime =
+          DateTime.tryParse(data['serverTime'] as String? ?? '') ?? DateTime.now();
+
+      for (final j in (data['jobs'] as List? ?? [])) {
+        final m = j as Map<String, dynamic>;
+        await _db
+            .into(_db.localJobs)
+            .insertOnConflictUpdate(LocalJobsCompanion.insert(
+              id: m['id'] as String,
+              projectNumber: m['projectNumber'] as String,
+              name: m['name'] as String,
+              address: Value(m['address'] as String?),
+              isArchived: Value(m['isArchived'] as bool? ?? false),
+              deletedAt: const Value(null),
+              updatedAt: DateTime.parse(m['updatedAt'] as String),
+            ));
+      }
+
+      for (final f in (data['floors'] as List? ?? [])) {
+        final m = f as Map<String, dynamic>;
+        await _db
+            .into(_db.localFloors)
+            .insertOnConflictUpdate(LocalFloorsCompanion.insert(
+              id: m['id'] as String,
+              jobId: m['jobId'] as String,
+              name: m['name'] as String,
+              sortOrder: Value(m['sortOrder'] as int? ?? 0),
+              deletedAt: const Value(null),
+              updatedAt: DateTime.parse(m['updatedAt'] as String),
+            ));
+      }
+
+      final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(
         _db,
-        sealId,
-        m['photos'] as List?,
+        userId: userId,
       );
-    }
 
-    final deleted = data['deleted'] as Map<String, dynamic>? ?? const {};
-    for (final j in (deleted['jobs'] as List? ?? [])) {
-      final m = j as Map<String, dynamic>;
-      await (_db.update(_db.localJobs)
-            ..where((row) => row.id.equals(m['id'] as String)))
-          .write(
-        LocalJobsCompanion(
-          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-              DateTime.now()),
-          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-              DateTime.now()),
-        ),
-      );
-    }
-    for (final f in (deleted['floors'] as List? ?? [])) {
-      final m = f as Map<String, dynamic>;
-      await (_db.update(_db.localFloors)
-            ..where((row) => row.id.equals(m['id'] as String)))
-          .write(
-        LocalFloorsCompanion(
-          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-              DateTime.now()),
-          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-              DateTime.now()),
-        ),
-      );
-    }
-    for (final s in (deleted['seals'] as List? ?? [])) {
-      final m = s as Map<String, dynamic>;
-      await (_db.update(_db.localSeals)
-            ..where((row) => row.id.equals(m['id'] as String)))
-          .write(
-        LocalSealsCompanion(
-          deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-              DateTime.now()),
-          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-              DateTime.now()),
-        ),
-      );
-    }
-
-    final archived = data['archived'] as Map<String, dynamic>? ?? const {};
-    for (final j in (archived['jobs'] as List? ?? [])) {
-      final m = j as Map<String, dynamic>;
-      await (_db.update(_db.localJobs)
-            ..where((row) => row.id.equals(m['id'] as String)))
-          .write(
-        LocalJobsCompanion(
-          isArchived: const Value(true),
-          updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-              DateTime.now()),
-        ),
-      );
-    }
-
-    await _db.into(_db.syncCursor).insertOnConflictUpdate(
-          SyncCursorCompanion.insert(
-              key: 'last_pull', lastPull: DateTime.now()),
+      for (final s in (data['seals'] as List? ?? [])) {
+        final m = s as Map<String, dynamic>;
+        final sealId = m['id'] as String;
+        final existing = await (_db.select(_db.localSeals)
+              ..where((row) => row.id.equals(sealId)))
+            .getSingleOrNull();
+        final syncFlags = pullSealSyncFlags(
+          existing: existing,
+          hasActiveOutbox: activeOutboxSealIds.contains(sealId),
         );
+        await _db
+            .into(_db.localSeals)
+            .insertOnConflictUpdate(LocalSealsCompanion.insert(
+              id: sealId,
+              jobId: m['jobId'] as String,
+              floorId: m['floorId'] as String,
+              sealNumber: m['sealNumber'] as String,
+              system: m['system'] as String,
+              construction: m['construction'] as String,
+              location: m['location'] as String,
+              fireRating: m['fireRating'] as String,
+              note: Value(m['note'] as String?),
+              internalNote: Value(m['internalNote'] as String?),
+              status: Value(m['status'] as String? ?? 'draft'),
+              version: Value(m['version'] as int? ?? 1),
+              isSynced: Value(syncFlags.isSynced),
+              syncConflict: Value(syncFlags.syncConflict),
+              deletedAt: const Value(null),
+              updatedAt: DateTime.parse(m['updatedAt'] as String),
+            ));
+        await cacheSealPhotosFromApiList(
+          _db,
+          sealId,
+          m['photos'] as List?,
+        );
+      }
+
+      final deleted = data['deleted'] as Map<String, dynamic>? ?? const {};
+      for (final j in (deleted['jobs'] as List? ?? [])) {
+        final m = j as Map<String, dynamic>;
+        await (_db.update(_db.localJobs)
+              ..where((row) => row.id.equals(m['id'] as String)))
+            .write(
+          LocalJobsCompanion(
+            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                DateTime.now()),
+            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                DateTime.now()),
+          ),
+        );
+      }
+      for (final f in (deleted['floors'] as List? ?? [])) {
+        final m = f as Map<String, dynamic>;
+        await (_db.update(_db.localFloors)
+              ..where((row) => row.id.equals(m['id'] as String)))
+            .write(
+          LocalFloorsCompanion(
+            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                DateTime.now()),
+            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                DateTime.now()),
+          ),
+        );
+      }
+      for (final s in (deleted['seals'] as List? ?? [])) {
+        final m = s as Map<String, dynamic>;
+        await (_db.update(_db.localSeals)
+              ..where((row) => row.id.equals(m['id'] as String)))
+            .write(
+          LocalSealsCompanion(
+            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                DateTime.now()),
+            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                DateTime.now()),
+          ),
+        );
+      }
+
+      final archived = data['archived'] as Map<String, dynamic>? ?? const {};
+      for (final j in (archived['jobs'] as List? ?? [])) {
+        final m = j as Map<String, dynamic>;
+        await (_db.update(_db.localJobs)
+              ..where((row) => row.id.equals(m['id'] as String)))
+            .write(
+          LocalJobsCompanion(
+            isArchived: const Value(true),
+            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                DateTime.now()),
+          ),
+        );
+      }
+
+      await _db.into(_db.syncCursor).insertOnConflictUpdate(
+            SyncCursorCompanion.insert(key: cursorKey, lastPull: serverTime),
+          );
+    }
   }
 
   Future<void> _uploadPendingPhotos(

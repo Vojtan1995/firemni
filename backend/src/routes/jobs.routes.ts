@@ -9,6 +9,7 @@ import { MANAGEMENT_ROLES } from '../services/seal.service.js';
 import { paramId } from '../lib/params.js';
 import { requirePermission } from '../lib/permissions.js';
 import * as jobParticipantService from '../services/job-participant.service.js';
+import { assertJobReadable } from '../services/authorization.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -80,9 +81,7 @@ router.get('/by-number/:projectNumber', async (req, res, next) => {
       include: { floors: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!job) throw notFound('Stavba s tímto číslem neexistuje');
-    if (job.isArchived && req.user!.role === UserRole.worker) {
-      throw notFound('Stavba není aktivní');
-    }
+    await assertJobReadable(job.id, req.user!.role, req.user!.id);
     res.json(job);
   } catch (e) {
     next(e);

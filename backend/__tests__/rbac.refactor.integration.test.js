@@ -175,7 +175,7 @@ describe('RBAC refactor integration', () => {
       .send({ name: 'P1' });
     const otherSeal = await request(app)
       .post('/api/seals')
-      .set('Authorization', `Bearer ${workerToken}`)
+      .set('Authorization', `Bearer ${vedeniToken}`)
       .send({
         jobId: otherJob.body.id,
         floorId: otherFloor.body.id,
@@ -194,6 +194,7 @@ describe('RBAC refactor integration', () => {
           },
         ],
       });
+    expect(otherSeal.status).toBe(201);
     const entryId = otherSeal.body.entries[0].id;
 
     const ws = await request(app)

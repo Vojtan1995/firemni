@@ -4,6 +4,7 @@ import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { hasPermission } from '../lib/permissions.js';
 import { logActivity, logChange } from './audit.service.js';
+import { writePdfTextLine } from '../lib/pdf-pagination.js';
 
 const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
   [WorkSheetStatus.draft]: [WorkSheetStatus.submitted],
@@ -221,9 +222,8 @@ export async function getWorksheet(id: string, role: UserRole, userId: string) {
   };
 }
 
-async function assertWorksheetEditable(worksheetId: string) {
-  const ws = await prisma.workSheet.findUnique({ where: { id: worksheetId } });
-  if (!ws) throw notFound('Soupis nenalezen');
+async function assertWorksheetEditable(worksheetId: string, role: UserRole, userId: string) {
+  const ws = await assertWorksheetAccess(worksheetId, role, userId);
   if (ws.status !== WorkSheetStatus.draft) {
     throw badRequest('Upravit lze pouze rozpracovaný soupis');
   }
@@ -236,7 +236,7 @@ export async function addWorksheetItems(
   userId: string,
   sealEntryIds: string[],
 ) {
-  const ws = await assertWorksheetEditable(worksheetId);
+  const ws = await assertWorksheetEditable(worksheetId, role, userId);
 
   const entries = await prisma.sealEntry.findMany({
     where: { id: { in: sealEntryIds }, deletedAt: null },
@@ -279,6 +279,7 @@ export async function addWorksheetItems(
           entryType: entry.entryType,
           dimension: entry.dimension,
           quantity: entry.quantity,
+          unit: entry.unit ?? 'kus',
           unitPrice: entry.unitPrice,
           totalPrice: entry.totalPrice,
           sortOrder: existingCount + i,
@@ -357,7 +358,7 @@ export async function populateWorksheetFromFilters(
   userId: string,
   filters: { floorIds?: string[]; status?: string; from?: string; to?: string },
 ) {
-  const ws = await assertWorksheetEditable(worksheetId);
+  const ws = await assertWorksheetEditable(worksheetId, role, userId);
   const workerIds = (
     await prisma.workSheetWorker.findMany({ where: { worksheetId }, select: { userId: true } })
   ).map((w) => w.userId);
@@ -429,6 +430,8 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
     cisloUcpavky: item.sealNumber,
     typProstupu: item.entryType,
     rozmery: item.dimension,
+    jednotka: item.unit ?? 'kus',
+    mnozstvi: Number(item.quantity),
     kusy: Number(item.quantity),
     pracovnik: workerMap.get(item.workerId) ?? '',
     jednotkovaCena: item.unitPrice != null ? Number(item.unitPrice) : null,
@@ -445,6 +448,8 @@ const CSV_COLUMNS: Record<string, string> = {
   cisloUcpavky: 'Prostup',
   typProstupu: 'Typ',
   rozmery: 'Rozměr',
+  jednotka: 'Jednotka',
+  mnozstvi: 'Množství',
   kusy: 'Počet',
   pracovnik: 'Provedl',
   jednotkovaCena: 'Jednotková cena',
@@ -496,11 +501,14 @@ export async function exportWorksheetPdf(
   doc.moveDown();
 
   doc.fontSize(8);
-  for (const row of rows.slice(0, 500)) {
-    const unit = row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
+  for (const row of rows) {
+    const unitPrice =
+      row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
     const line = row.cenaCelkem != null ? `${Number(row.cenaCelkem).toFixed(2)} Kč` : '—';
-    doc.text(
-      `#${row.cisloUcpavky} | ${row.patro} | ${row.typProstupu} | ${row.rozmery} | ${row.kusy} ks | ${unit} | ${line} | ${row.pracovnik}`,
+    const qtyUnit = `${row.mnozstvi} ${row.jednotka ?? 'kus'}`;
+    writePdfTextLine(
+      doc,
+      `#${row.cisloUcpavky} | ${row.patro} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | ${unitPrice} | ${line} | ${row.pracovnik}`,
     );
   }
 

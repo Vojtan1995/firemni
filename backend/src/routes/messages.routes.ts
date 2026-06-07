@@ -5,9 +5,12 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { paramId } from '../lib/params.js';
+import { mapMessageUsers } from '../lib/user-privacy.js';
 
 const router = Router();
 router.use(authMiddleware);
+
+const messageUserSelect = { id: true, displayName: true, username: true, role: true } as const;
 
 const sendSchema = z.object({
   recipientId: z.string().uuid(),
@@ -43,13 +46,13 @@ router.get('/', async (req, res, next) => {
     const messages = await prisma.privateMessage.findMany({
       where,
       include: {
-        sender: { select: { id: true, displayName: true, username: true } },
-        recipient: { select: { id: true, displayName: true, username: true } },
+        sender: { select: messageUserSelect },
+        recipient: { select: messageUserSelect },
       },
       orderBy: { createdAt: 'desc' },
       take: 100,
     });
-    res.json(messages);
+    res.json(mapMessageUsers(messages, req.user!.role));
   } catch (e) {
     next(e);
   }
@@ -84,11 +87,11 @@ router.post('/', async (req, res, next) => {
         body: body.body.trim(),
       },
       include: {
-        sender: { select: { id: true, displayName: true, username: true } },
-        recipient: { select: { id: true, displayName: true, username: true } },
+        sender: { select: messageUserSelect },
+        recipient: { select: messageUserSelect },
       },
     });
-    res.status(201).json(message);
+    res.status(201).json(mapMessageUsers([message], req.user!.role)[0]);
   } catch (e) {
     next(e);
   }

@@ -4,6 +4,7 @@ import { UserRole } from '@prisma/client';
 import { config } from '../config.js';
 import { prisma } from '../lib/prisma.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
+import { hashSessionToken } from '../lib/session-token.js';
 
 export interface AuthUser {
   id: string;
@@ -29,7 +30,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
   try {
     const payload = jwt.verify(token, config.jwtSecret) as { sub: string; sid: string };
     const session = await prisma.userSession.findFirst({
-      where: { id: payload.sid, token, expiresAt: { gt: new Date() } },
+      where: { id: payload.sid, token: hashSessionToken(token), expiresAt: { gt: new Date() } },
       include: { user: true },
     });
     if (!session || !session.user.isActive) {

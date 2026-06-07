@@ -379,38 +379,41 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'entries': entriesPayload,
     };
 
-    await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
-          id: sealId,
-          jobId: widget.jobId,
-          floorId: widget.floorId,
-          sealNumber: sealNumber,
-          system: _system!,
-          construction: _construction!,
-          location: _location!,
-          fireRating: _fireRating!,
-          note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-          internalNote: Value(
-              _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
-          status: const Value('draft'),
-          isSynced: const Value(false),
-          jsonPayload: Value(jsonEncode(payload)),
-          updatedAt: DateTime.now(),
-        ));
-
-    for (final path in _photoPaths) {
-      await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
-            id: const Uuid().v4(),
-            sealId: sealId,
-            localPath: path,
-            createdAt: DateTime.now(),
+    await db.transaction(() async {
+      await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
+            id: sealId,
+            jobId: widget.jobId,
+            floorId: widget.floorId,
+            sealNumber: sealNumber,
+            system: _system!,
+            construction: _construction!,
+            location: _location!,
+            fireRating: _fireRating!,
+            note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+            internalNote: Value(
+                _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
+            status: const Value('draft'),
+            isSynced: const Value(false),
+            jsonPayload: Value(jsonEncode(payload)),
+            updatedAt: DateTime.now(),
           ));
-    }
 
-    await ref.read(syncServiceProvider).enqueueMutation(
-          entityType: 'seal',
-          operation: 'create',
-          payload: payload,
-        );
+      for (final path in _photoPaths) {
+        await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
+              id: const Uuid().v4(),
+              sealId: sealId,
+              localPath: path,
+              createdAt: DateTime.now(),
+            ));
+      }
+
+      await ref.read(syncServiceProvider).enqueueMutation(
+            db: db,
+            entityType: 'seal',
+            operation: 'create',
+            payload: payload,
+          );
+    });
 
     await ref.read(syncServiceProvider).syncAll();
 
@@ -479,29 +482,32 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'entries': entriesPayload,
     };
 
-    await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
-      LocalSealsCompanion(
-        sealNumber: Value(sealNumber),
-        system: Value(_system!),
-        construction: Value(_construction!),
-        location: Value(_location!),
-        fireRating: Value(_fireRating!),
-        note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-        internalNote: Value(
-            _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
-        isSynced: const Value(false),
-        syncConflict: const Value(false),
-        jsonPayload: Value(jsonEncode(payload)),
-        updatedAt: Value(DateTime.now()),
-      ),
-    );
+    await db.transaction(() async {
+      await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
+        LocalSealsCompanion(
+          sealNumber: Value(sealNumber),
+          system: Value(_system!),
+          construction: Value(_construction!),
+          location: Value(_location!),
+          fireRating: Value(_fireRating!),
+          note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
+          internalNote: Value(
+              _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
+          isSynced: const Value(false),
+          syncConflict: const Value(false),
+          jsonPayload: Value(jsonEncode(payload)),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
 
-    await ref.read(syncServiceProvider).enqueueMutation(
-          entityType: 'seal',
-          operation: 'update',
-          payload: payload,
-          baseVersion: _baseVersion,
-        );
+      await ref.read(syncServiceProvider).enqueueMutation(
+            db: db,
+            entityType: 'seal',
+            operation: 'update',
+            payload: payload,
+            baseVersion: _baseVersion,
+          );
+    });
 
     await ref.read(syncServiceProvider).syncAll();
 
