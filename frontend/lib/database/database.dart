@@ -110,6 +110,30 @@ class LocalUserPrefs extends Table {
   Set<Column> get primaryKey => {key};
 }
 
+class LocalFloorDrawings extends Table {
+  TextColumn get floorId => text()();
+  TextColumn get jobId => text()();
+  TextColumn get filePath => text()();
+  TextColumn get localPath => text().nullable()();
+  TextColumn get mimeType => text()();
+  IntColumn get width => integer()();
+  IntColumn get height => integer()();
+  DateTimeColumn get updatedAt => dateTime()();
+  @override
+  Set<Column> get primaryKey => {floorId};
+}
+
+class LocalSealMarkers extends Table {
+  TextColumn get sealId => text()();
+  TextColumn get floorId => text()();
+  TextColumn get sealNumber => text()();
+  RealColumn get x => real()();
+  RealColumn get y => real()();
+  DateTimeColumn get updatedAt => dateTime()();
+  @override
+  Set<Column> get primaryKey => {sealId};
+}
+
 @DriftDatabase(tables: [
   LocalJobs,
   LocalFloors,
@@ -117,6 +141,8 @@ class LocalUserPrefs extends Table {
   LocalSeals,
   LocalOutbox,
   LocalPhotos,
+  LocalFloorDrawings,
+  LocalSealMarkers,
   SyncCursor,
   LocalUserPrefs,
 ])
@@ -127,7 +153,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -159,6 +185,10 @@ class AppDatabase extends _$AppDatabase {
             await migrator.addColumn(localJobs, localJobs.lastSyncedAt);
             await migrator.createTable(localMyJobAssignments);
             await migrator.createTable(localUserPrefs);
+          }
+          if (from < 8) {
+            await migrator.createTable(localFloorDrawings);
+            await migrator.createTable(localSealMarkers);
           }
         },
       );

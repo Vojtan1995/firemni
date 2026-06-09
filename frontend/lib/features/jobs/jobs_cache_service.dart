@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import '../../database/database.dart';
+import 'work_context_service.dart';
 
 class JobsCacheService {
   JobsCacheService(this.db);
@@ -14,6 +15,7 @@ class JobsCacheService {
     for (final j in jobs) {
       final jobId = j['id'] as String;
       final isArchived = j['isArchived'] as bool? ?? false;
+      final status = j['status'] as String? ?? (isArchived ? 'archived' : 'active');
       await db.into(db.localJobs).insertOnConflictUpdate(
             LocalJobsCompanion.insert(
               id: jobId,
@@ -21,7 +23,7 @@ class JobsCacheService {
               name: j['name'] as String,
               address: Value(j['address'] as String?),
               isArchived: Value(isArchived),
-              status: Value(isArchived ? 'archived' : 'active'),
+              status: Value(status),
               lastSyncedAt: Value(now),
               updatedAt: now,
             ),
@@ -76,6 +78,8 @@ class JobsCacheService {
             ..where((j) => j.id.equals(a.jobId)))
           .getSingleOrNull();
       if (job == null || job.deletedAt != null) continue;
+      final status = job.status ?? (job.isArchived ? 'archived' : 'active');
+      if (status != 'active') continue;
 
       final floors = await (db.select(db.localFloors)
             ..where((f) => f.jobId.equals(job.id) & f.deletedAt.isNull())
@@ -108,7 +112,9 @@ class JobsCacheService {
   }) async {
     final job = await (db.select(db.localJobs)
           ..where((j) =>
-              j.projectNumber.equals(number) & j.deletedAt.isNull()))
+              j.projectNumber.equals(number) &
+              j.deletedAt.isNull() &
+              (j.status.equals('active') | j.status.isNull())))
         .getSingleOrNull();
     if (job == null) return null;
 
@@ -137,49 +143,35 @@ class JobsCacheService {
     };
   }
 
-  Future<void> _setPref(String key, String value) async {
-    await db.into(db.localUserPrefs).insertOnConflictUpdate(
-          LocalUserPrefsCompanion.insert(key: key, value: value),
-        );
-  }
-
-  Future<String?> _getPref(String key) async {
-    final row = await (db.select(db.localUserPrefs)
-          ..where((p) => p.key.equals(key)))
-        .getSingleOrNull();
-    return row?.value;
-  }
-
   Future<void> saveLastOpened({
     required String userId,
     required String jobId,
     String? floorId,
+    String? jobName,
+    String? floorName,
   }) async {
-    final now = DateTime.now();
-    await _setPref('last_job_id_$userId', jobId);
+    final work = WorkContextService(db);
     if (floorId != null) {
-      await _setPref('last_floor_id_$userId', floorId);
+      await work.saveFloor(
+        userId: userId,
+        jobId: jobId,
+        floorId: floorId,
+        jobName: jobName,
+        floorName: floorName,
+      );
+      return;
     }
-    await _setPref('last_opened_at_$userId', now.toIso8601String());
-
-    await (db.update(db.localMyJobAssignments)
-          ..where((a) => a.userId.equals(userId) & a.jobId.equals(jobId)))
-        .write(LocalMyJobAssignmentsCompanion(lastActivityAt: Value(now)));
+    await work.saveJob(userId: userId, jobId: jobId, jobName: jobName);
   }
 
   Future<({String? jobId, String? floorId, String? jobName})> loadLastOpened(
     String userId,
   ) async {
-    final jobId = await _getPref('last_job_id_$userId');
-    final floorId = await _getPref('last_floor_id_$userId');
-    String? jobName;
-    if (jobId != null) {
-      final job = await (db.select(db.localJobs)
-            ..where((j) => j.id.equals(jobId)))
-          .getSingleOrNull();
-      jobName = job?.name;
+    final ctx = await WorkContextService(db).load(userId);
+    if (ctx == null) {
+      return (jobId: null, floorId: null, jobName: null);
     }
-    return (jobId: jobId, floorId: floorId, jobName: jobName);
+    return (jobId: ctx.jobId, floorId: ctx.floorId, jobName: ctx.jobName);
   }
 
   Future<void> clearUserScopedCache(String userId) async {

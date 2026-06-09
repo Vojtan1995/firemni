@@ -78,6 +78,7 @@ async function main() {
       deletedById: null,
       deleteReason: null,
       isArchived: false,
+      status: 'active' as const,
       name: 'Testovací stavba',
     },
     create: {

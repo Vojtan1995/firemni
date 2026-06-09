@@ -114,7 +114,7 @@ describe('RBAC refactor integration', () => {
     const patch = await request(app)
       .patch(`/api/seals/${sealId}`)
       .set('Authorization', `Bearer ${worker2Token}`)
-      .send({ note: 'Edited by worker2', baseVersion: create.body.version });
+      .send({ internalNote: 'Edited by worker2', baseVersion: create.body.version });
     expect(patch.status).toBe(200);
     expect(patch.body.createdById).toBe(creatorId);
     expect(patch.body.updatedById).not.toBe(creatorId);
@@ -122,7 +122,7 @@ describe('RBAC refactor integration', () => {
 
   it('edit creates change log entry', async () => {
     const changes = await prisma.changeLog.findMany({
-      where: { entityType: 'seal', entityId: sealId, fieldName: 'note' },
+      where: { entityType: 'seal', entityId: sealId, fieldName: 'internalNote' },
     });
     expect(changes.length).toBeGreaterThan(0);
   });
@@ -236,16 +236,22 @@ describe('RBAC refactor integration', () => {
     expect(invoiced.status).toBe(200);
   });
 
-  it('seal history endpoint requires vedeni/admin', async () => {
-    const denied = await request(app)
+  it('seal history endpoint is denied to worker and available to vedeni and ucetni', async () => {
+    const workerHistory = await request(app)
       .get(`/api/seals/${sealId}/history`)
       .set('Authorization', `Bearer ${workerToken}`);
-    expect(denied.status).toBe(403);
+    expect(workerHistory.status).toBe(403);
 
-    const ok = await request(app)
+    const vedeniHistory = await request(app)
       .get(`/api/seals/${sealId}/history`)
       .set('Authorization', `Bearer ${vedeniToken}`);
-    expect(ok.status).toBe(200);
-    expect(Array.isArray(ok.body)).toBe(true);
+    expect(vedeniHistory.status).toBe(200);
+    expect(Array.isArray(vedeniHistory.body)).toBe(true);
+
+    const ucetniHistory = await request(app)
+      .get(`/api/seals/${sealId}/history`)
+      .set('Authorization', `Bearer ${ucetniToken}`);
+    expect(ucetniHistory.status).toBe(200);
+    expect(Array.isArray(ucetniHistory.body)).toBe(true);
   });
 });

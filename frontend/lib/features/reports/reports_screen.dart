@@ -14,6 +14,7 @@ class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({
     super.key,
     this.compact = false,
+    this.hideLoadButton = false,
     this.initialJobId,
     this.initialStatus,
     this.initialWorkerId,
@@ -21,6 +22,7 @@ class ReportsScreen extends ConsumerStatefulWidget {
 
   /// Bez Scaffold a bez tabulky — pro vložení do [SoupisyScreen].
   final bool compact;
+  final bool hideLoadButton;
   final String? initialJobId;
   final String? initialStatus;
   final String? initialWorkerId;
@@ -271,6 +273,9 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Map<String, String> get queryParams => _queryParams;
 
+  Widget _dropdownLabel(String text) =>
+      Text(text, overflow: TextOverflow.ellipsis);
+
   Widget _buildFiltersPanel(BuildContext context, bool isWorker) {
     return Padding(
             padding: const EdgeInsets.all(16),
@@ -279,20 +284,23 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
               children: [
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-job-$_filterJobId'),
+                  isExpanded: true,
                   initialValue: _filterJobId,
                   decoration: const InputDecoration(
                     labelText: 'Stavba',
                     border: OutlineInputBorder(),
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(
+                    DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Všechny stavby'),
+                      child: _dropdownLabel('Všechny stavby'),
                     ),
                     ..._jobs.map(
                       (j) => DropdownMenuItem<String?>(
                         value: j['id'] as String,
-                        child: Text('${j['projectNumber']} – ${j['name']}'),
+                        child: _dropdownLabel(
+                          '${j['projectNumber']} – ${j['name']}',
+                        ),
                       ),
                     ),
                   ],
@@ -304,20 +312,21 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
+                  isExpanded: true,
                   initialValue: _filterFloorId,
                   decoration: const InputDecoration(
                     labelText: 'Patro',
                     border: OutlineInputBorder(),
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(
+                    DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Všechna patra'),
+                      child: _dropdownLabel('Všechna patra'),
                     ),
                     ..._floors.map(
                       (f) => DropdownMenuItem<String?>(
                         value: f['id'] as String,
-                        child: Text(f['name'] as String),
+                        child: _dropdownLabel(f['name'] as String),
                       ),
                     ),
                   ],
@@ -329,20 +338,24 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                   const SizedBox(height: 12),
                   DropdownButtonFormField<String?>(
                     key: ValueKey('filter-worker-$_filterWorkerId'),
+                    isExpanded: true,
                     initialValue: _filterWorkerId,
                     decoration: const InputDecoration(
                       labelText: 'Pracovník',
                       border: OutlineInputBorder(),
                     ),
                     items: [
-                      const DropdownMenuItem<String?>(
+                      DropdownMenuItem<String?>(
                         value: null,
-                        child: Text('Všichni pracovníci'),
+                        child: _dropdownLabel('Všichni pracovníci'),
                       ),
                       ..._workers.map(
                         (w) => DropdownMenuItem<String?>(
                           value: w['id'] as String,
-                          child: Text(w['displayName'] as String? ?? w['username'] as String),
+                          child: _dropdownLabel(
+                            w['displayName'] as String? ??
+                                w['username'] as String,
+                          ),
                         ),
                       ),
                     ],
@@ -352,6 +365,7 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-status-$_filterStatus'),
+                  isExpanded: true,
                   initialValue: _filterStatus,
                   decoration: const InputDecoration(
                     labelText: 'Status',
@@ -361,7 +375,7 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                       .map(
                         (e) => DropdownMenuItem<String?>(
                           value: e.key,
-                          child: Text(e.value),
+                          child: _dropdownLabel(e.value),
                         ),
                       )
                       .toList(),
@@ -370,20 +384,21 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-system-$_filterSystem'),
+                  isExpanded: true,
                   initialValue: _filterSystem,
                   decoration: const InputDecoration(
                     labelText: 'Systém',
                     border: OutlineInputBorder(),
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(
+                    DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Všechny systémy'),
+                      child: _dropdownLabel('Všechny systémy'),
                     ),
                     ...sealSystems.map(
                       (s) => DropdownMenuItem<String?>(
                         value: s,
-                        child: Text(s),
+                        child: _dropdownLabel(s),
                       ),
                     ),
                   ],
@@ -392,20 +407,21 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String?>(
                   key: ValueKey('filter-entry-$_filterEntryType'),
+                  isExpanded: true,
                   initialValue: _filterEntryType,
                   decoration: const InputDecoration(
                     labelText: 'Typ prostupu',
                     border: OutlineInputBorder(),
                   ),
                   items: [
-                    const DropdownMenuItem<String?>(
+                    DropdownMenuItem<String?>(
                       value: null,
-                      child: Text('Všechny typy'),
+                      child: _dropdownLabel('Všechny typy'),
                     ),
                     ...entryTypes.map(
                       (t) => DropdownMenuItem<String?>(
                         value: t,
-                        child: Text(t),
+                        child: _dropdownLabel(t),
                       ),
                     ),
                   ],
@@ -441,20 +457,22 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                     child: const Text('Vymazat období'),
                   ),
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _loading ? null : _load,
-                    child: _loading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Načíst'),
+                if (!widget.hideLoadButton) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _loading ? null : _load,
+                      child: _loading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Načíst'),
+                    ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 8),
                 Row(
                   children: [
@@ -489,7 +507,7 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
                     ),
                   ],
                 ),
-                if (_totalCzk != null) ...[
+                if (!widget.hideLoadButton && _totalCzk != null) ...[
                   const SizedBox(height: 8),
                   Text(
                     'Součet bez DPH: ${_totalCzk!.toStringAsFixed(2)} Kč',

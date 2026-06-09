@@ -17,6 +17,9 @@ describe('permissions matrix', () => {
   it('ucetni can view reports and invoice worksheets but not manage users or edit seals', () => {
     expect(hasPermission(UserRole.ucetni, 'reports.view')).toBe(true);
     expect(hasPermission(UserRole.ucetni, 'reports.export')).toBe(true);
+    expect(hasPermission(UserRole.ucetni, 'floor.drawing.manage')).toBe(true);
+    expect(hasPermission(UserRole.ucetni, 'priceList.manage')).toBe(false);
+    expect(hasPermission(UserRole.ucetni, 'floor.manage')).toBe(false);
     expect(hasPermission(UserRole.ucetni, 'user.manage')).toBe(false);
     expect(hasPermission(UserRole.ucetni, 'seal.status')).toBe(true);
     expect(hasPermission(UserRole.ucetni, 'seal.create')).toBe(false);
@@ -24,10 +27,12 @@ describe('permissions matrix', () => {
     expect(hasPermission(UserRole.ucetni, 'worksheet.invoice')).toBe(true);
     expect(hasPermission(UserRole.ucetni, 'worksheet.review')).toBe(false);
     expect(hasPermission(UserRole.ucetni, 'stats.view')).toBe(true);
+    expect(hasPermission(UserRole.ucetni, 'seal.history')).toBe(true);
   });
 
   it('vedeni can manage jobs and users', () => {
     expect(hasPermission(UserRole.vedeni, 'job.manage')).toBe(true);
+    expect(hasPermission(UserRole.vedeni, 'priceList.manage')).toBe(true);
     expect(hasPermission(UserRole.vedeni, 'user.manage')).toBe(true);
     expect(hasPermission(UserRole.vedeni, 'admin.trash')).toBe(false);
     expect(hasPermission(UserRole.vedeni, 'seal.history')).toBe(true);

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Prisma, SealStatus, UserRole } from '@prisma/client';
+import { Prisma, SealStatus, UserRole, JobStatus } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError, conflict, forbidden } from '../lib/errors.js';
@@ -24,9 +24,15 @@ import { touchJobParticipant } from '../services/job-participant.service.js';
 import { priceSealEntries } from '../services/pricing.service.js';
 import { entryCreateData, sealEntrySchema } from '../lib/seal-schemas.js';
 import {
+  applySealNotePatchByRole,
+  resolveSealNotesForCreate,
+  SEAL_NOTE_MAX_LENGTH,
+} from '../lib/seal-notes.js';
+import {
   refineSealEntriesDimensions,
   refineSealOpeningDimensions,
 } from '../lib/zod-helpers.js';
+import { deleteSealMarker, upsertSealMarker } from '../services/floor-drawing.service.js';
 
 function patchPayloadField<T>(payload: Record<string, unknown>, key: string, current: T): T {
   if (Object.prototype.hasOwnProperty.call(payload, key)) {
@@ -61,8 +67,8 @@ const sealCreatePayloadSchema = z
     construction: z.string().min(1),
     location: z.string().min(1),
     fireRating: z.string().min(1),
-    note: z.string().nullable().optional(),
-    internalNote: z.string().nullable().optional(),
+    note: z.string().max(SEAL_NOTE_MAX_LENGTH).nullable().optional(),
+    internalNote: z.string().max(SEAL_NOTE_MAX_LENGTH).nullable().optional(),
     openingLengthMm: z.number().int().positive().optional(),
     openingWidthMm: z.number().int().positive().optional(),
     entries: z.array(sealEntrySchema).min(1),
@@ -163,11 +169,46 @@ router.post('/push', async (req, res, next) => {
   }
 });
 
+const markerPayloadSchema = z.object({
+  sealId: z.string().uuid(),
+  floorId: z.string().uuid(),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+});
+
+const markerDeletePayloadSchema = z.object({
+  sealId: z.string().uuid(),
+});
+
 async function processMutation(
   mut: z.infer<typeof mutationSchema>,
   userId: string,
   userRole: UserRole,
 ): Promise<{ entityId?: string }> {
+  if (mut.entityType === 'seal_marker') {
+    if (!hasPermission(userRole, 'seal.edit')) {
+      throw forbidden('Nemáte oprávnění pro umístění značky');
+    }
+    if (mut.operation === 'update') {
+      const body = markerPayloadSchema.parse(mut.payload);
+      const marker = await upsertSealMarker(
+        body.floorId,
+        body.sealId,
+        body.x,
+        body.y,
+        userId,
+        userRole,
+      );
+      return { entityId: marker.sealId };
+    }
+    if (mut.operation === 'delete') {
+      const body = markerDeletePayloadSchema.parse(mut.payload);
+      await deleteSealMarker(body.sealId, userId, userRole);
+      return { entityId: body.sealId };
+    }
+    throw conflict('Neznámá sync operace pro značku');
+  }
+
   if (mut.entityType !== 'seal') {
     throw conflict('Neznámá sync entita');
   }
@@ -186,6 +227,11 @@ async function processMutation(
       createPayload.sealNumber,
     );
 
+    const notes = resolveSealNotesForCreate(userRole, {
+      note: createPayload.note,
+      internalNote: createPayload.internalNote,
+    });
+
     const seal = await prisma.$transaction(async (tx) => {
       const created = await tx.seal.create({
         data: {
@@ -197,8 +243,8 @@ async function processMutation(
           construction: createPayload.construction,
           location: createPayload.location,
           fireRating: createPayload.fireRating,
-          note: createPayload.note ?? null,
-          internalNote: createPayload.internalNote ?? null,
+          note: notes.note,
+          internalNote: notes.internalNote,
           openingLengthMm: createPayload.openingLengthMm ?? null,
           openingWidthMm: createPayload.openingWidthMm ?? null,
           createdById: userId,
@@ -229,6 +275,18 @@ async function processMutation(
     }
     const entries = p.entries as z.infer<typeof sealEntrySchema>[] | undefined;
     const nextStatus = statusAfterWorkerEdit(seal.status, userRole);
+    const resolvedNotes = applySealNotePatchByRole(
+      userRole,
+      { note: seal.note, internalNote: seal.internalNote },
+      {
+        note: Object.prototype.hasOwnProperty.call(p, 'note')
+          ? (p.note as string | null)
+          : undefined,
+        internalNote: Object.prototype.hasOwnProperty.call(p, 'internalNote')
+          ? (p.internalNote as string | null)
+          : undefined,
+      },
+    );
     await prisma.$transaction(async (tx) => {
       if (entries?.length) {
         await tx.sealEntry.updateMany({
@@ -266,8 +324,8 @@ async function processMutation(
           construction: (p.construction as string) ?? seal.construction,
           location: (p.location as string) ?? seal.location,
           fireRating: (p.fireRating as string) ?? seal.fireRating,
-          note: patchPayloadField(p, 'note', seal.note),
-          internalNote: patchPayloadField(p, 'internalNote', seal.internalNote),
+          note: resolvedNotes.note,
+          internalNote: resolvedNotes.internalNote,
           openingLengthMm: patchPayloadField(p, 'openingLengthMm', seal.openingLengthMm),
           openingWidthMm: patchPayloadField(p, 'openingWidthMm', seal.openingWidthMm),
           status: nextStatus,
@@ -324,7 +382,7 @@ router.get('/pull', async (req, res, next) => {
       updatedAt: { gt: since },
       deletedAt: null,
       ...jobScope,
-      ...(role === UserRole.worker ? { isArchived: false } : {}),
+      ...(role === UserRole.worker ? { status: JobStatus.active } : {}),
       ...(jobId ? { id: jobId } : {}),
     };
 
@@ -347,7 +405,39 @@ router.get('/pull', async (req, res, next) => {
     };
     if (jobId) sealWhere.jobId = jobId;
 
-    const [jobs, floors, seals, jobCount, floorCount, sealCount] = await Promise.all([
+    const drawingWhere = {
+      updatedAt: { gt: since },
+      floor: {
+        deletedAt: null,
+        ...(Object.keys(jobScope).length > 0
+          ? { jobId: jobScope.id as { in: string[] } }
+          : jobId
+            ? { jobId }
+            : {}),
+      },
+    };
+
+    const markerWhere = {
+      updatedAt: { gt: since },
+      seal: {
+        deletedAt: null,
+        ...(Object.keys(jobScope).length > 0
+          ? { jobId: jobScope.id as { in: string[] } }
+          : {}),
+        ...(jobId ? { jobId } : {}),
+      },
+    };
+
+    const [
+      jobs,
+      floors,
+      seals,
+      floorDrawings,
+      sealMarkers,
+      jobCount,
+      floorCount,
+      sealCount,
+    ] = await Promise.all([
       prisma.job.findMany({
         where: jobWhere,
         include: { floors: { where: { deletedAt: null } } },
@@ -365,6 +455,16 @@ router.get('/pull', async (req, res, next) => {
           entries: { where: { deletedAt: null }, include: { materials: true } },
           photos: true,
         },
+        orderBy: { updatedAt: 'asc' },
+        take: SYNC_PULL_BATCH_LIMIT,
+      }),
+      prisma.floorDrawing.findMany({
+        where: drawingWhere,
+        orderBy: { updatedAt: 'asc' },
+        take: SYNC_PULL_BATCH_LIMIT,
+      }),
+      prisma.sealMarker.findMany({
+        where: markerWhere,
         orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
@@ -399,7 +499,7 @@ router.get('/pull', async (req, res, next) => {
     const archivedJobWhere = {
       updatedAt: { gt: since },
       deletedAt: null,
-      isArchived: true,
+      status: { in: [JobStatus.archived, JobStatus.completed] },
       ...jobScope,
       ...(jobId ? { id: jobId } : {}),
     };
@@ -422,7 +522,7 @@ router.get('/pull', async (req, res, next) => {
       }),
       prisma.job.findMany({
         where: archivedJobWhere,
-        select: { id: true, updatedAt: true },
+        select: { id: true, updatedAt: true, status: true, isArchived: true },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
     ]);
@@ -438,6 +538,8 @@ router.get('/pull', async (req, res, next) => {
       jobs,
       floors,
       seals,
+      floorDrawings,
+      sealMarkers,
       deleted: {
         jobs: deletedJobs,
         floors: deletedFloors,

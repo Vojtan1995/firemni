@@ -68,13 +68,51 @@ describe('Jobs and floors admin (management)', () => {
       .patch(`/api/jobs/${adminJobId}/archive`)
       .set('Authorization', `Bearer ${managementToken}`);
     expect(archived.status).toBe(200);
+    expect(archived.body.status).toBe('archived');
     expect(archived.body.isArchived).toBe(true);
 
     const unarchived = await request(app)
-      .patch(`/api/jobs/${adminJobId}/unarchive`)
+      .patch(`/api/jobs/${adminJobId}/activate`)
       .set('Authorization', `Bearer ${managementToken}`);
     expect(unarchived.status).toBe(200);
+    expect(unarchived.body.status).toBe('active');
     expect(unarchived.body.isArchived).toBe(false);
+  });
+
+  it('completed job is hidden from worker my jobs', async () => {
+    const vedeniUser = await prisma.user.findUnique({ where: { username: 'vedeni' } });
+    const workerUser = await prisma.user.findUnique({ where: { username: 'worker1' } });
+    await prisma.jobParticipant.upsert({
+      where: { jobId_userId: { jobId: adminJobId, userId: workerUser.id } },
+      create: {
+        jobId: adminJobId,
+        userId: workerUser.id,
+        roleOnJob: 'worker',
+        assignedById: vedeniUser.id,
+      },
+      update: { lastActivityAt: new Date() },
+    });
+
+    const before = await request(app)
+      .get('/api/jobs/my')
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(before.body.some((j) => j.id === adminJobId)).toBe(true);
+
+    await request(app)
+      .patch(`/api/jobs/${adminJobId}/complete`)
+      .set('Authorization', `Bearer ${managementToken}`);
+
+    const after = await request(app)
+      .get('/api/jobs/my')
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(after.body.some((j) => j.id === adminJobId)).toBe(false);
+
+    await request(app)
+      .patch(`/api/jobs/${adminJobId}/activate`)
+      .set('Authorization', `Bearer ${managementToken}`);
+    await prisma.jobParticipant.deleteMany({
+      where: { jobId: adminJobId, userId: workerUser.id },
+    });
   });
 
   it('management can PATCH floor name', async () => {

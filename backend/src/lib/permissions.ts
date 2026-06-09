@@ -9,16 +9,20 @@ export type Permission =
   | 'seal.delete'
   | 'seal.restore'
   | 'seal.history'
+  | 'seal.override_locked'
   | 'photo.upload'
   | 'photo.delete'
   | 'job.manage'
   | 'floor.manage'
+  | 'floor.drawing.manage'
   | 'user.manage'
   | 'reports.view'
   | 'reports.export'
   | 'priceList.view'
+  | 'priceList.manage'
   | 'logs.view'
   | 'admin.trash'
+  | 'admin.backup'
   | 'worksheet.create'
   | 'worksheet.view'
   | 'worksheet.submit'
@@ -32,17 +36,21 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'seal.status': [UserRole.vedeni, UserRole.ucetni, UserRole.admin],
   'seal.delete': [UserRole.vedeni, UserRole.admin],
   'seal.restore': [UserRole.admin],
-  'seal.history': [UserRole.vedeni, UserRole.admin],
+  'seal.history': [UserRole.vedeni, UserRole.ucetni, UserRole.admin],
+  'seal.override_locked': [UserRole.admin],
   'photo.upload': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'photo.delete': [],
   'job.manage': [UserRole.vedeni, UserRole.admin],
   'floor.manage': [UserRole.vedeni, UserRole.admin],
+  'floor.drawing.manage': [UserRole.vedeni, UserRole.ucetni, UserRole.admin],
   'user.manage': [UserRole.vedeni, UserRole.admin],
   'reports.view': [UserRole.worker, UserRole.vedeni, UserRole.ucetni, UserRole.admin],
   'reports.export': [UserRole.worker, UserRole.vedeni, UserRole.ucetni, UserRole.admin],
   'priceList.view': [UserRole.worker, UserRole.vedeni, UserRole.ucetni, UserRole.admin],
+  'priceList.manage': [UserRole.vedeni, UserRole.admin],
   'logs.view': [UserRole.vedeni, UserRole.admin],
   'admin.trash': [UserRole.admin],
+  'admin.backup': [UserRole.admin],
   'worksheet.create': [UserRole.worker, UserRole.ucetni, UserRole.vedeni, UserRole.admin],
   'worksheet.view': [UserRole.worker, UserRole.ucetni, UserRole.vedeni, UserRole.admin],
   'worksheet.submit': [UserRole.worker, UserRole.admin],

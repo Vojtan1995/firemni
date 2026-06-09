@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
+import { markSealChecked } from './helpers/integration-helpers.js';
 
 const SEAL_PREFIX = '9905';
 
@@ -96,11 +97,7 @@ describe('Reports and exports (BE-05)', () => {
     expect(s3.status).toBe(201);
     sealWorker1Floor2 = s3.body.id;
 
-    await request(app)
-      .patch(`/api/seals/${sealWorker2Floor1}/status`)
-      .set('Authorization', `Bearer ${managementToken}`)
-      .send({ status: 'checked' })
-      .expect(200);
+    await markSealChecked(app, managementToken, worker2Token, sealWorker2Floor1);
   });
 
   afterAll(async () => {

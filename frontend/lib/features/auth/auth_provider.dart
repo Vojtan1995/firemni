@@ -148,7 +148,10 @@ class AuthService {
   bool get canInvoiceSeal => canChangeSealStatus;
   bool get canAccessReports => AppPermissions.canAccessReports(role);
   bool get canViewPriceList => AppPermissions.canViewPriceList(role);
+  bool get canManagePriceList => AppPermissions.canManagePriceList(role);
   bool get canManageJobs => AppPermissions.canManageJobs(role);
+  bool get canManageFloorDrawings =>
+      AppPermissions.canManageFloorDrawings(role);
   bool get canManageUsers => AppPermissions.canManageUsers(role);
   bool get canViewLogs => AppPermissions.canViewLogs(role);
   bool get canAccessTrash => AppPermissions.canAccessTrash(role);

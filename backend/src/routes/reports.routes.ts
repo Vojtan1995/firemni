@@ -1,5 +1,4 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import PDFDocument from 'pdfkit';
 import { SealStatus, UserRole } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
@@ -7,7 +6,8 @@ import { prisma } from '../lib/prisma.js';
 import * as jobParticipantService from '../services/job-participant.service.js';
 import { assertJobReadable } from '../services/authorization.service.js';
 import { badRequest } from '../lib/errors.js';
-import { writePdfHeading, writePdfTextLine } from '../lib/pdf-pagination.js';
+import { csvWithBom, CSV_CONTENT_TYPE } from '../lib/csv-export.js';
+import { createCzechPdfDocument, writePdfHeading, writePdfTextLine } from '../lib/pdf-pagination.js';
 import { parseIsoDateQuery, parseIsoDateQueryEnd } from '../lib/zod-helpers.js';
 import { REPORT_ROW_LIMIT, REPORT_SEAL_BATCH_LIMIT } from '../lib/limits.js';
 import { anonymizeUserForViewer } from '../lib/user-privacy.js';
@@ -112,7 +112,7 @@ async function fetchSummaryRows(query: Record<string, unknown>, viewerRole: User
         jednotkovaCena: unitPrice,
         cenaCelkem: totalPrice,
         cenaVerze: entry.priceListVersion,
-        interniPoznamka: seal.internalNote,
+        poznamka: seal.note,
       });
     }
   }
@@ -180,8 +180,8 @@ router.get('/filter-options', async (req, res, next) => {
       }));
     } else {
       jobs = await prisma.job.findMany({
-        where: { deletedAt: null, isArchived: false },
-        select: { id: true, projectNumber: true, name: true },
+        where: { deletedAt: null },
+        select: { id: true, projectNumber: true, name: true, status: true },
         orderBy: { createdAt: 'desc' },
       });
     }
@@ -232,7 +232,7 @@ const CSV_COLUMNS: Record<string, string> = {
   cenaVerze: 'Ceník verze',
   materialy: 'Materiály',
   datum: 'Datum',
-  interniPoznamka: 'Interní poznámka',
+  poznamka: 'Poznámka',
 };
 
 router.get('/export/csv', async (req, res, next) => {
@@ -249,12 +249,11 @@ router.get('/export/csv', async (req, res, next) => {
     );
 
     const total = sumRows(rows);
-    const footer = `"Součet bez DPH";"";"";"";"";"";"";"";"";"";"";"";"";"";"";"${total.toFixed(2)}"`;
+    const footer = `"Součet bez DPH";${cols.map((c, i) => (i === cols.length - 1 ? `"${total.toFixed(2)}"` : '""')).join(';')}`;
 
-    const bom = '\uFEFF';
-    const csv = bom + [header, ...lines, footer].join('\n');
+    const csv = csvWithBom([header, ...lines, footer].join('\n'));
 
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Type', CSV_CONTENT_TYPE);
     res.setHeader('Content-Disposition', 'attachment; filename="soupis-praci.csv"');
     res.send(csv);
   } catch (e) {
@@ -273,7 +272,7 @@ router.get('/export/pdf', async (req, res, next) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="soupis-praci.pdf"');
 
-    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const doc = createCzechPdfDocument({ margin: 40, size: 'A4' });
     doc.pipe(res);
 
     const periodFrom = query.from ? String(query.from) : '—';
@@ -296,9 +295,13 @@ router.get('/export/pdf', async (req, res, next) => {
           row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
         const line = row.cenaCelkem != null ? `${Number(row.cenaCelkem).toFixed(2)} Kč` : '—';
         const qtyUnit = `${row.kusy} ${row.jednotka ?? 'kus'}`;
+        const noteSuffix =
+          row.poznamka != null && String(row.poznamka).trim().length > 0
+            ? ` | Pozn.: ${String(row.poznamka).trim().slice(0, 80)}${String(row.poznamka).length > 80 ? '…' : ''}`
+            : '';
         writePdfTextLine(
           doc,
-          `#${row.cisloUcpavky} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | Katalog: ${row.katalogId} | ${unitPrice} | ${line} | ${row.pracovnik}`,
+          `#${row.cisloUcpavky} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | Katalog: ${row.katalogId} | ${unitPrice} | ${line} | ${row.pracovnik}${noteSuffix}`,
         );
       }
 

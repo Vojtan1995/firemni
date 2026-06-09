@@ -3,10 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/design_tokens.dart';
 import '../../core/permissions.dart';
-import '../../database/database_provider.dart';
+import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
-import '../jobs/jobs_cache_service.dart';
+import '../jobs/resume_work_context_card.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -21,6 +21,7 @@ class HomeScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Hlavní menu'),
         actions: [
+          const AppTopActions(),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () async {
@@ -56,7 +57,12 @@ class HomeScreen extends ConsumerWidget {
             onTap: () => context.push('/profile'),
           ),
           const SizedBox(height: AppSpacing.sm),
-          const _LastOpenedJobCard(),
+          const ResumeWorkContextCard(),
+          _MenuTile(
+            icon: Icons.search,
+            title: 'Vyhledávání',
+            onTap: () => context.push('/search'),
+          ),
           _MenuTile(
             icon: Icons.construction,
             title: 'Stavba',
@@ -66,16 +72,6 @@ class HomeScreen extends ConsumerWidget {
             icon: Icons.work,
             title: 'Moje zakázky',
             onTap: () => context.push('/my-jobs'),
-          ),
-          _MenuTile(
-            icon: Icons.mail_outline,
-            title: 'Zprávy',
-            onTap: () => context.push('/messages'),
-          ),
-          _MenuTile(
-            icon: Icons.sync,
-            title: 'Synchronizace',
-            onTap: () => context.push('/sync'),
           ),
           if (auth.canAccessReports || auth.canManageWorksheets)
             _MenuTile(
@@ -136,48 +132,6 @@ class HomeScreen extends ConsumerWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _LastOpenedJobCard extends ConsumerStatefulWidget {
-  const _LastOpenedJobCard();
-
-  @override
-  ConsumerState<_LastOpenedJobCard> createState() => _LastOpenedJobCardState();
-}
-
-class _LastOpenedJobCardState extends ConsumerState<_LastOpenedJobCard> {
-  String? _jobId;
-  String? _jobName;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final userId = ref.read(currentUserIdProvider);
-    if (userId == null) return;
-    final last = await JobsCacheService(ref.read(databaseProvider))
-        .loadLastOpened(userId);
-    if (!mounted) return;
-    setState(() {
-      _jobId = last.jobId;
-      _jobName = last.jobName;
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_jobId == null) return const SizedBox.shrink();
-    return AppCard(
-      borderColor: AppColors.accent.withValues(alpha: 0.4),
-      leading: const AppIconBox(icon: Icons.history),
-      title: 'Pokračovat na stavbu',
-      subtitle: _jobName ?? _jobId!,
-      onTap: () => context.push('/floors/$_jobId?jobId=$_jobId'),
     );
   }
 }

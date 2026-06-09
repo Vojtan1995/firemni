@@ -1,6 +1,13 @@
 import PDFDocument from 'pdfkit';
+import { initCzechPdf } from './pdf-fonts.js';
 
 type PdfDoc = InstanceType<typeof PDFDocument>;
+
+export function createCzechPdfDocument(options?: ConstructorParameters<typeof PDFDocument>[0]) {
+  const doc = new PDFDocument(options ?? { margin: 40, size: 'A4' });
+  initCzechPdf(doc);
+  return doc;
+}
 
 const PDF_PAGE_BOTTOM_Y = 750;
 

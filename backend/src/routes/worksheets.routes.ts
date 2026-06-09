@@ -27,6 +27,15 @@ router.get('/', async (req, res, next) => {
       jobId: query.jobId,
       status,
       workerId: query.workerId,
+      floorId: query.floorId,
+      from: query.from,
+      to: query.to,
+      invoiced:
+        query.invoiced === 'true'
+          ? true
+          : query.invoiced === 'false'
+            ? false
+            : undefined,
     });
     res.json(worksheets);
   } catch (e) {

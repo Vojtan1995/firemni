@@ -1,15 +1,64 @@
-import { Router } from 'express';
+import { Router, type NextFunction, type Request, type Response } from 'express';
+import multer from 'multer';
+import path from 'path';
 import { z } from 'zod';
 import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
+import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
-import { notFound, badRequest, conflict } from '../lib/errors.js';
+import { AppError, badRequest, conflict, notFound } from '../lib/errors.js';
 import { logActivity } from '../services/audit.service.js';
 import { MANAGEMENT_ROLES } from '../services/seal.service.js';
 import { paramId } from '../lib/params.js';
 import { assertJobReadable } from '../services/authorization.service.js';
+import {
+  deleteFloorDrawing,
+  deleteSealMarker,
+  getFloorDrawingBundle,
+  getFloorDrawingFile,
+  getFloorPlacementStats,
+  uploadFloorDrawing,
+  upsertSealMarker,
+} from '../services/floor-drawing.service.js';
+import { exportFloorDrawingPdf } from '../services/floor-drawing-export.service.js';
+import { suggestNextSealNumber } from '../services/seal.service.js';
+import { SealStatus } from '@prisma/client';
 
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
+
+const maxDrawingSizeBytes = 25 * 1024 * 1024;
+
+function isAllowedDrawingMime(mimetype: string, originalname: string): boolean {
+  const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
+  if (allowed.includes(mimetype)) return true;
+  if (mimetype === 'application/octet-stream' || mimetype === 'application/x-unknown') {
+    const ext = path.extname(originalname).toLowerCase();
+    return ['.jpg', '.jpeg', '.png', '.webp', '.pdf'].includes(ext);
+  }
+  return false;
+}
+
+const drawingUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: maxDrawingSizeBytes },
+  fileFilter: (_req, file, cb) => {
+    if (isAllowedDrawingMime(file.mimetype, file.originalname)) cb(null, true);
+    else cb(badRequest(`Nepodporovaný formát výkresu (${file.mimetype})`));
+  },
+});
+
+function drawingUploadMiddleware(req: Request, res: Response, next: NextFunction) {
+  drawingUpload.single('drawing')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof AppError) return next(err);
+    if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
+      return next(
+        new AppError(413, 'UPLOAD_TOO_LARGE', `Výkres nesmí být větší než ${maxDrawingSizeBytes} B`),
+      );
+    }
+    return next(badRequest('Výkres se nepodařilo nahrát'));
+  });
+}
 
 router.get('/', async (req, res, next) => {
   try {
@@ -19,8 +68,14 @@ router.get('/', async (req, res, next) => {
     const floors = await prisma.jobFloor.findMany({
       where: { jobId, deletedAt: null },
       orderBy: { sortOrder: 'asc' },
+      include: { drawing: { select: { id: true } } },
     });
-    res.json(floors);
+    res.json(
+      floors.map(({ drawing, ...floor }) => ({
+        ...floor,
+        hasDrawing: drawing != null,
+      })),
+    );
   } catch (e) {
     next(e);
   }
@@ -63,6 +118,143 @@ async function getActiveFloor(jobId: string, floorId: string) {
   if (!floor) throw notFound('Patro nenalezeno');
   return floor;
 }
+
+router.get('/:floorId/next-seal-number', async (req, res, next) => {
+  try {
+    const jobId = paramId((req.params as { jobId: string; floorId: string }).jobId);
+    const floorId = paramId((req.params as { jobId: string; floorId: string }).floorId);
+    await getActiveFloor(jobId, floorId);
+    await assertJobReadable(jobId, req.user!.role, req.user!.id);
+    const nextNumber = await suggestNextSealNumber(floorId);
+    res.json({ nextSealNumber: nextNumber });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:floorId/placement-stats', async (req, res, next) => {
+  try {
+    const floorId = paramId(req.params.floorId);
+    const stats = await getFloorPlacementStats(floorId, req.user!.role, req.user!.id);
+    res.json(stats);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:floorId/drawing', async (req, res, next) => {
+  try {
+    const floorId = paramId(req.params.floorId);
+    const bundle = await getFloorDrawingBundle(floorId, req.user!.role, req.user!.id);
+    res.json(bundle);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:floorId/drawing/file', async (req, res, next) => {
+  try {
+    const floorId = paramId(req.params.floorId);
+    const file = await getFloorDrawingFile(floorId, req.user!.role, req.user!.id);
+    res.type(file.mimeType);
+    res.send(file.body);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post(
+  '/:floorId/drawing',
+  requirePermission('floor.drawing.manage'),
+  drawingUploadMiddleware,
+  async (req, res, next) => {
+    try {
+      const floorId = paramId(req.params.floorId);
+      if (!req.file) throw badRequest('Chybí multipart pole „drawing“');
+      const drawing = await uploadFloorDrawing(
+        floorId,
+        req.file,
+        req.user!.id,
+        req.user!.role,
+      );
+      res.status(201).json(drawing);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.get('/:floorId/drawing/export/pdf', async (req, res, next) => {
+  try {
+    const jobId = paramId((req.params as { jobId: string; floorId: string }).jobId);
+    const floorId = paramId((req.params as { jobId: string; floorId: string }).floorId);
+    const q = req.query as Record<string, string | undefined>;
+    const sealIds = q.sealIds?.split(',').filter(Boolean);
+    const reviewStatus =
+      q.reviewStatus === 'returned' ? ('returned' as const) : undefined;
+    await exportFloorDrawingPdf(
+      jobId,
+      floorId,
+      req.user!.role,
+      req.user!.id,
+      res,
+      {
+        status: reviewStatus ? undefined : (q.status as SealStatus | undefined),
+        reviewStatus,
+        workerId: q.workerId,
+        sealIds,
+        from: q.from,
+        to: q.to,
+      },
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/:floorId/drawing', requirePermission('floor.drawing.manage'), async (req, res, next) => {
+  try {
+    const floorId = paramId(req.params.floorId);
+    const result = await deleteFloorDrawing(floorId, req.user!.id, req.user!.role);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.put('/:floorId/markers/:sealId', async (req, res, next) => {
+  try {
+    const floorId = paramId(req.params.floorId);
+    const sealId = paramId(req.params.sealId);
+    const body = z
+      .object({
+        x: z.number().min(0).max(1),
+        y: z.number().min(0).max(1),
+      })
+      .parse(req.body);
+    const marker = await upsertSealMarker(
+      floorId,
+      sealId,
+      body.x,
+      body.y,
+      req.user!.id,
+      req.user!.role,
+    );
+    res.json(marker);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/:floorId/markers/:sealId', async (req, res, next) => {
+  try {
+    const sealId = paramId(req.params.sealId);
+    const result = await deleteSealMarker(sealId, req.user!.id, req.user!.role);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+});
 
 router.patch('/:floorId', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
   try {

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
+import { markSealChecked } from './helpers/integration-helpers.js';
 
 describe('Auth and role authorization (BE-02)', () => {
   const app = createApp();
@@ -144,12 +145,8 @@ describe('Auth and role authorization (BE-02)', () => {
   });
 
   it('management can PATCH /api/seals/:id/status → 200', async () => {
-    const res = await request(app)
-      .patch(`/api/seals/${sealId}/status`)
-      .set('Authorization', `Bearer ${managementToken}`)
-      .send({ status: 'checked' });
-    expect(res.status).toBe(200);
-    expect(res.body.status).toBe('checked');
+    const res = await markSealChecked(app, managementToken, workerToken, sealId);
+    expect(res.status).toBe('checked');
   });
 
   describe('deactivated user (isActive)', () => {

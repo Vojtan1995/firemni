@@ -75,6 +75,20 @@ describe('POST /api/sync/push (BE-04)', () => {
       .set('Authorization', `Bearer ${token}`);
   }
 
+  async function attachTestPhoto(sealId) {
+    const worker = await prisma.user.findFirst({ where: { username: 'worker1' } });
+    if (!worker) throw new Error('worker1 not found');
+    await prisma.sealPhoto.create({
+      data: {
+        sealId,
+        filePath: 'test/sync-photo.webp',
+        mimeType: 'image/webp',
+        fileSize: 128,
+        uploadedById: worker.id,
+      },
+    });
+  }
+
   beforeAll(async () => {
     workerToken = await login('worker1');
     managementToken = await login('vedeni');
@@ -282,6 +296,8 @@ describe('POST /api/sync/push (BE-04)', () => {
     ]);
     const sealId = createRes.body.results[0].entityId;
 
+    await attachTestPhoto(sealId);
+
     await request(app)
       .patch(`/api/seals/${sealId}/status`)
       .set('Authorization', `Bearer ${managementToken}`)
@@ -322,6 +338,8 @@ describe('POST /api/sync/push (BE-04)', () => {
     ]);
     const sealId = createRes.body.results[0].entityId;
 
+    await attachTestPhoto(sealId);
+
     await request(app)
       .patch(`/api/seals/${sealId}/status`)
       .set('Authorization', `Bearer ${managementToken}`)
@@ -347,10 +365,47 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(updated.location).toBe('Worker sync edit checked');
   });
 
-  it('sync update clears note when payload sends null', async () => {
+  it('worker sync ignores public note on create but saves internalNote', async () => {
     const sealNumber = `${SEAL_PREFIX}9`;
-    const createPayload = { ...sealCreatePayload(jobId, floorId, sealNumber), note: 'Poznámka test' };
+    const createPayload = {
+      ...sealCreatePayload(jobId, floorId, sealNumber),
+      note: 'Poznámka test',
+      internalNote: 'Interní test',
+    };
     const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: createPayload,
+      }),
+    ]);
+    expect(createRes.body.results[0].status).toBe('ok');
+    const sealId = createRes.body.results[0].entityId;
+    const seal = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(seal.note).toBeNull();
+    expect(seal.internalNote).toBe('Interní test');
+
+    const updateRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: seal.version,
+        payload: {
+          id: sealId,
+          internalNote: null,
+        },
+      }),
+    ]);
+    expect(updateRes.body.results[0].status).toBe('ok');
+    const updated = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(updated.internalNote).toBeNull();
+  });
+
+  it('management sync clears public note when payload sends null', async () => {
+    const sealNumber = `${SEAL_PREFIX}91`;
+    const createPayload = {
+      ...sealCreatePayload(jobId, floorId, sealNumber),
+      note: 'Poznámka test',
+    };
+    const createRes = await push(managementToken, [
       sealMutation({
         operation: 'create',
         payload: createPayload,
@@ -361,7 +416,7 @@ describe('POST /api/sync/push (BE-04)', () => {
     const seal = await prisma.seal.findUnique({ where: { id: sealId } });
     expect(seal.note).toBe('Poznámka test');
 
-    const updateRes = await push(workerToken, [
+    const updateRes = await push(managementToken, [
       sealMutation({
         operation: 'update',
         baseVersion: seal.version,
@@ -386,6 +441,8 @@ describe('POST /api/sync/push (BE-04)', () => {
     ]);
     expect(createRes.body.results[0].status).toBe('ok');
     const sealId = createRes.body.results[0].entityId;
+
+    await attachTestPhoto(sealId);
 
     const statusRes = await push(managementToken, [
       sealMutation({

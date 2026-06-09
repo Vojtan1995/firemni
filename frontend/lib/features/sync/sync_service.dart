@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:dio/dio.dart';
@@ -10,7 +11,9 @@ import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
+import '../jobs/floor_drawing_storage.dart';
 import '../seals/seal_detail_screen.dart';
+import '../seals/seal_note_helpers.dart';
 import '../seals/seal_photo_upload.dart';
 import 'sync_conflict.dart';
 import 'sync_outbox_user.dart';
@@ -265,6 +268,10 @@ class SyncService {
               name: m['name'] as String,
               address: Value(m['address'] as String?),
               isArchived: Value(m['isArchived'] as bool? ?? false),
+              status: Value(
+                m['status'] as String? ??
+                    ((m['isArchived'] as bool? ?? false) ? 'archived' : 'active'),
+              ),
               deletedAt: const Value(null),
               updatedAt: DateTime.parse(m['updatedAt'] as String),
             ));
@@ -319,11 +326,67 @@ class SyncService {
               deletedAt: const Value(null),
               updatedAt: DateTime.parse(m['updatedAt'] as String),
             ));
+        if (existing?.jsonPayload != null && existing!.jsonPayload!.isNotEmpty) {
+          final patched = patchSealJsonPayloadNotes(
+            jsonPayload: existing.jsonPayload,
+            note: m['note'] as String?,
+            internalNote: m['internalNote'] as String?,
+          );
+          if (patched != null && patched != existing.jsonPayload) {
+            await (_db.update(_db.localSeals)..where((row) => row.id.equals(sealId)))
+                .write(LocalSealsCompanion(jsonPayload: Value(patched)));
+          }
+        }
         await cacheSealPhotosFromApiList(
           _db,
           sealId,
           m['photos'] as List?,
         );
+      }
+
+      for (final d in (data['floorDrawings'] as List? ?? [])) {
+        final m = d as Map<String, dynamic>;
+        final floorId = m['floorId'] as String;
+        final floor = await (_db.select(_db.localFloors)
+              ..where((f) => f.id.equals(floorId)))
+            .getSingleOrNull();
+        final jobId = floor?.jobId ?? '';
+        String? localPath;
+        if (jobId.isNotEmpty) {
+          localPath = await _downloadFloorDrawingFile(jobId, floorId, m);
+        }
+        await _db.into(_db.localFloorDrawings).insertOnConflictUpdate(
+              LocalFloorDrawingsCompanion.insert(
+                floorId: floorId,
+                jobId: jobId,
+                filePath: m['filePath'] as String,
+                localPath: Value(localPath),
+                mimeType: m['mimeType'] as String? ?? 'image/webp',
+                width: m['width'] as int? ?? 1,
+                height: m['height'] as int? ?? 1,
+                updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now(),
+              ),
+            );
+      }
+
+      for (final mk in (data['sealMarkers'] as List? ?? [])) {
+        final m = mk as Map<String, dynamic>;
+        final sealId = m['sealId'] as String;
+        final seal = await (_db.select(_db.localSeals)
+              ..where((s) => s.id.equals(sealId)))
+            .getSingleOrNull();
+        await _db.into(_db.localSealMarkers).insertOnConflictUpdate(
+              LocalSealMarkersCompanion.insert(
+                sealId: sealId,
+                floorId: m['floorId'] as String,
+                sealNumber: seal?.sealNumber ?? '',
+                x: (m['x'] as num).toDouble(),
+                y: (m['y'] as num).toDouble(),
+                updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now(),
+              ),
+            );
       }
 
       final deleted = data['deleted'] as Map<String, dynamic>? ?? const {};
@@ -375,6 +438,7 @@ class SyncService {
             .write(
           LocalJobsCompanion(
             isArchived: const Value(true),
+            status: Value(m['status'] as String? ?? 'archived'),
             updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
                 DateTime.now()),
           ),
@@ -447,6 +511,32 @@ class SyncService {
       } finally {
         await prepared?.dispose();
       }
+    }
+  }
+
+  Future<String?> _downloadFloorDrawingFile(
+    String jobId,
+    String floorId,
+    Map<String, dynamic> meta,
+  ) async {
+    try {
+      final res = await _dio.get(
+        '/api/jobs/$jobId/floors/$floorId/drawing/file',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      final data = res.data;
+      Uint8List? bytes;
+      if (data is Uint8List) {
+        bytes = data;
+      } else if (data is List<int>) {
+        bytes = Uint8List.fromList(data);
+      }
+      if (bytes == null || bytes.isEmpty) return null;
+      final mime = meta['mimeType'] as String? ?? 'image/webp';
+      final ext = mime.contains('png') ? 'png' : 'webp';
+      return persistFloorDrawingBytes(floorId, bytes, extension: ext);
+    } catch (_) {
+      return null;
     }
   }
 }

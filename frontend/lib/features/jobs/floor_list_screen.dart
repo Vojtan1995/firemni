@@ -9,8 +9,10 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../reports/export_service.dart';
+import 'floor_plan/floor_drawing_service.dart';
 import 'job_context_bar.dart';
-import 'jobs_cache_service.dart';
+import 'work_context_service.dart';
 
 /// Zda seznam pochází z API nebo z lokální cache (FE-02).
 enum FloorListDataSource { online, offline }
@@ -28,11 +30,21 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
   bool _loading = true;
   FloorListDataSource? _dataSource;
   String? _offlineHint;
+  String? _uploadingFloorId;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _persistJobContext() async {
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
+    await WorkContextService(ref.read(databaseProvider)).saveJob(
+      userId: userId,
+      jobId: widget.jobId,
+    );
   }
 
   Future<void> _load() async {
@@ -48,13 +60,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
       final res = await dio.get('/api/jobs/${widget.jobId}/floors');
       final apiList = (res.data as List).cast<Map<String, dynamic>>();
       await _cacheFloorsFromApi(db, apiList);
-      final userId = ref.read(currentUserIdProvider);
-      if (userId != null) {
-        await JobsCacheService(db).saveLastOpened(
-          userId: userId,
-          jobId: widget.jobId,
-        );
-      }
+      await _persistJobContext();
       if (!mounted) return;
       setState(() {
         _floors = apiList;
@@ -92,10 +98,18 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
             (f) => OrderingTerm.asc(f.name)
           ]))
         .get();
+    final drawingRows = await db.select(db.localFloorDrawings).get();
+    final drawingFloorIds = drawingRows.map((d) => d.floorId).toSet();
 
     if (!mounted) return;
+    await _persistJobContext();
     setState(() {
-      _floors = rows.map(_mapLocalFloorRow).toList();
+      _floors = rows
+          .map((row) => {
+                ..._mapLocalFloorRow(row),
+                'hasDrawing': drawingFloorIds.contains(row.id),
+              })
+          .toList();
       _dataSource = FloorListDataSource.offline;
       _offlineHint = rows.isEmpty
           ? 'Server nedostupný a v cache nejsou žádná patra pro tuto stavbu.'
@@ -110,10 +124,133 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
         'name': row.name,
         'sortOrder': row.sortOrder,
         'updatedAt': row.updatedAt.toIso8601String(),
+        'hasDrawing': false,
       };
+
+  Future<void> _openSeals(Map<String, dynamic> floor) async {
+    final userId = ref.read(currentUserIdProvider);
+    final db = ref.read(databaseProvider);
+    if (userId != null) {
+      await WorkContextService(db).saveFloor(
+        userId: userId,
+        jobId: widget.jobId,
+        floorId: floor['id'] as String,
+        floorName: floor['name'] as String?,
+      );
+    }
+    if (!mounted) return;
+    context.push('/seals/${floor['id']}?jobId=${widget.jobId}');
+  }
+
+  Future<void> _uploadDrawing(Map<String, dynamic> floor) async {
+    final floorId = floor['id'] as String;
+    final replacing = floor['hasDrawing'] == true;
+    setState(() => _uploadingFloorId = floorId);
+    try {
+      final uploaded = await pickAndUploadFloorDrawing(
+        dio: ref.read(dioProvider),
+        jobId: widget.jobId,
+        floorId: floorId,
+      );
+      if (!uploaded) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(replacing ? 'Výkres nahrazen' : 'Výkres nahrán'),
+        ),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Upload selhal')),
+      );
+    } finally {
+      if (mounted) setState(() => _uploadingFloorId = null);
+    }
+  }
+
+  Future<void> _deleteDrawing(Map<String, dynamic> floor) async {
+    final floorId = floor['id'] as String;
+    try {
+      final deleted = await confirmAndDeleteFloorDrawing(
+        context: context,
+        dio: ref.read(dioProvider),
+        jobId: widget.jobId,
+        floorId: floorId,
+      );
+      if (!deleted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Výkres smazán')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Smazání selhalo')),
+      );
+    }
+  }
+
+  Future<void> _exportDrawing(Map<String, dynamic> floor) async {
+    try {
+      await exportFloorDrawingPdf(
+        dio: ref.read(dioProvider),
+        jobId: widget.jobId,
+        floorId: floor['id'] as String,
+        fileNameBase: 'vykres-${floor['id']}',
+      );
+    } on ExportSaveCancelled {
+      // user dismissed save dialog
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Export selhal')),
+      );
+    }
+  }
+
+  void _onFloorMenuAction(String action, Map<String, dynamic> floor) {
+    switch (action) {
+      case 'seals':
+        _openSeals(floor);
+      case 'plan':
+        context.push('/floor-plan/${floor['id']}?jobId=${widget.jobId}');
+      case 'upload':
+        _uploadDrawing(floor);
+      case 'delete':
+        _deleteDrawing(floor);
+      case 'export':
+        _exportDrawing(floor);
+    }
+  }
+
+  List<PopupMenuEntry<String>> _floorMenuItems(
+    AuthService auth,
+    Map<String, dynamic> floor,
+  ) {
+    final hasDrawing = floor['hasDrawing'] == true;
+    final canManage = auth.canManageFloorDrawings;
+    final canExport = auth.canAccessReports;
+    return [
+      const PopupMenuItem(value: 'seals', child: Text('Otevřít ucpávky')),
+      const PopupMenuItem(value: 'plan', child: Text('Otevřít výkres')),
+      if (canManage)
+        PopupMenuItem(
+          value: 'upload',
+          child: Text(hasDrawing ? 'Nahradit výkres' : 'Nahrát výkres'),
+        ),
+      if (canManage && hasDrawing)
+        const PopupMenuItem(value: 'delete', child: Text('Smazat výkres')),
+      if (canExport && hasDrawing)
+        const PopupMenuItem(value: 'export', child: Text('Export PDF')),
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
+    final auth = ref.watch(authServiceProvider);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Výběr patra'),
@@ -173,6 +310,8 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
                       itemCount: _floors.length,
                       itemBuilder: (_, i) {
                         final f = _floors[i];
+                        final floorId = f['id'] as String;
+                        final uploading = _uploadingFloorId == floorId;
                         return AppCard(
                           leading: AppIconBox(
                             icon: Icons.layers,
@@ -180,8 +319,20 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
                             color: AppColors.textSecondary,
                           ),
                           title: f['name'] as String,
-                          onTap: () => context
-                              .push('/seals/${f['id']}?jobId=${widget.jobId}'),
+                          subtitle: f['hasDrawing'] == true
+                              ? 'Výkres nahrán'
+                              : null,
+                          trailing: uploading
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                )
+                              : PopupMenuButton<String>(
+                                  onSelected: (v) => _onFloorMenuAction(v, f),
+                                  itemBuilder: (_) => _floorMenuItems(auth, f),
+                                ),
+                          onTap: () => _openSeals(f),
                         );
                       },
                     ),

@@ -19,11 +19,36 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   Map<String, dynamic>? _stats;
   bool _loading = true;
   String? _error;
+  List<Map<String, dynamic>> _jobs = [];
+  String? _filterJobId;
+  String? _filterStatus;
 
   @override
   void initState() {
     super.initState();
+    _loadJobs();
     _load();
+  }
+
+  Future<void> _loadJobs() async {
+    final role = ref.read(authUserProvider)?['role'] as String?;
+    if (role != 'vedeni' && role != 'admin' && role != 'ucetni') return;
+    try {
+      final res = await ref.read(dioProvider).get('/api/reports/filter-options');
+      final jobs = (res.data['jobs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      if (mounted) setState(() => _jobs = jobs);
+    } catch (_) {}
+  }
+
+  Map<String, String> get _queryParams {
+    final params = <String, String>{};
+    if (_filterJobId != null && _filterJobId!.isNotEmpty) {
+      params['jobId'] = _filterJobId!;
+    }
+    if (_filterStatus != null && _filterStatus!.isNotEmpty) {
+      params['status'] = _filterStatus!;
+    }
+    return params;
   }
 
   Future<void> _load() async {
@@ -32,7 +57,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       _error = null;
     });
     try {
-      final res = await ref.read(dioProvider).get('/api/stats/overview');
+      final res = await ref.read(dioProvider).get(
+        '/api/stats/overview',
+        queryParameters: _queryParams.isEmpty ? null : _queryParams,
+      );
       if (!mounted) return;
       setState(() {
         _stats = Map<String, dynamic>.from(res.data as Map);
@@ -93,6 +121,49 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     );
   }
 
+  Widget _buildFilterBar() {
+    return AppCard(
+      showChevron: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String?>(
+            value: _filterJobId,
+            decoration: const InputDecoration(labelText: 'Zakázka'),
+            items: [
+              const DropdownMenuItem(value: null, child: Text('Všechny zakázky')),
+              ..._jobs.map(
+                (j) => DropdownMenuItem(
+                  value: j['id'] as String,
+                  child: Text('${j['projectNumber']} ${j['name']}'),
+                ),
+              ),
+            ],
+            onChanged: (v) {
+              setState(() => _filterJobId = v);
+              _load();
+            },
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          DropdownButtonFormField<String?>(
+            value: _filterStatus,
+            decoration: const InputDecoration(labelText: 'Stav ucpávky'),
+            items: const [
+              DropdownMenuItem(value: null, child: Text('Všechny stavy')),
+              DropdownMenuItem(value: 'draft', child: Text('Rozpracované')),
+              DropdownMenuItem(value: 'checked', child: Text('Zkontrolované')),
+              DropdownMenuItem(value: 'invoiced', child: Text('Fakturované')),
+            ],
+            onChanged: (v) {
+              setState(() => _filterStatus = v);
+              _load();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildWorkerStats(Map<String, dynamic> s) {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -104,6 +175,17 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           _kpi('Tento měsíc', s['sealsThisMonth'], icon: Icons.calendar_month),
           _kpi('Rozpracované', s['draft'], accent: AppColors.info),
           _kpi('Zkontrolované', s['checked'], accent: AppColors.success),
+          _kpi(
+            'Vrácené k opravě',
+            s['returnedForFix'],
+            accent: AppColors.error,
+          ),
+          _kpi(
+            'Bez fotky',
+            s['missingPhotos'],
+            accent: AppColors.warning,
+            icon: Icons.photo_camera_outlined,
+          ),
           _kpi('Fotek', s['photosAdded'], icon: Icons.photo_camera),
           _kpi('Soupisů', s['worksheetCount'], icon: Icons.description),
           _kpi('Odhad hodnoty (Kč)', s['estimatedValueCzk'], accent: AppColors.accent),
@@ -163,6 +245,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
         const SectionHeader(title: 'Statistiky fakturace'),
+        if (_jobs.isNotEmpty) ...[
+          _buildFilterBar(),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         _kpiGrid([
           _kpi(
             'Soupisů celkem',
@@ -222,53 +308,48 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   }
 
   Widget _buildManagementStats(Map<String, dynamic> s) {
-    final workers = s['byWorker'] is List ? s['byWorker'] as List : <dynamic>[];
-    final maxWorkerCount = workers.isEmpty
-        ? 1.0
-        : workers
-            .map((w) => parseNum((w as Map)['count']))
-            .fold<double>(0, (a, b) => a > b ? a : b);
-
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
-        const SectionHeader(title: 'Dashboard'),
+        const SectionHeader(title: 'Dashboard vedení'),
+        if (_jobs.isNotEmpty) ...[
+          _buildFilterBar(),
+          const SizedBox(height: AppSpacing.lg),
+        ],
         _kpiGrid([
+          _kpi('Ucpávek celkem', s['totalSeals'], icon: Icons.inventory_2),
+          _kpi('Rozpracované', s['draft'], accent: AppColors.info),
+          _kpi('Zkontrolované', s['checked'], accent: AppColors.success),
+          _kpi('Fakturované', s['invoiced'], accent: AppColors.textMuted),
           _kpi(
-            'Ucpávek celkem',
-            s['totalSeals'],
-            icon: Icons.inventory_2,
-            onTap: () => _goSoupisy(),
+            'Vrácené',
+            s['returnedSeals'],
+            accent: AppColors.error,
+            onTap: () => context.push('/search'),
           ),
           _kpi(
-            'Rozpracované',
-            s['draft'],
+            'Bez fotky',
+            s['missingPhotos'],
+            accent: AppColors.warning,
+            icon: Icons.photo_camera_outlined,
+            onTap: () => context.push('/search'),
+          ),
+          _kpi(
+            'Čeká sync',
+            s['syncPending'],
             accent: AppColors.info,
-            onTap: () => _goSoupisy(reportStatus: 'draft'),
-          ),
-          _kpi(
-            'Zkontrolované',
-            s['checked'],
-            accent: AppColors.success,
-            onTap: () => _goSoupisy(reportStatus: 'checked'),
-          ),
-          _kpi(
-            'Fakturované',
-            s['invoiced'],
-            accent: AppColors.textMuted,
-            onTap: () => _goSoupisy(reportStatus: 'invoiced'),
+            icon: Icons.sync_problem,
+            onTap: () => context.push('/sync'),
           ),
           _kpi(
             'Nezkontrolované',
             s['uncheckedSeals'],
             accent: AppColors.warning,
-            onTap: () => _goSoupisy(reportStatus: 'draft'),
           ),
           _kpi(
             'Nevyfakturované',
             s['uninvoicedWork'],
             accent: AppColors.warning,
-            onTap: () => _goSoupisy(reportStatus: 'checked'),
           ),
           _kpi(
             'Připraveno k fakturaci',
@@ -277,49 +358,54 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             onTap: () => _goSoupisy(status: 'ready_for_invoice'),
           ),
         ]),
-        if (workers.isNotEmpty) ...[
+        if (s['byJobDetailed'] is List && (s['byJobDetailed'] as List).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Výkon pracovníků', style: SectionHeaderStyle.h3),
-          ...workers.map((w) {
-            final m = w as Map<String, dynamic>;
-            final count = parseNum(m['count']);
-            final workerId = (m['userId'] ?? m['workerId']) as String?;
+          const SectionHeader(title: 'Přehled podle zakázek', style: SectionHeaderStyle.h3),
+          ...(s['byJobDetailed'] as List).map((j) {
+            final m = j as Map<String, dynamic>;
+            final jobId = m['jobId'] as String?;
             return AppCard(
-              showChevron: workerId != null,
-              onTap: workerId != null
-                  ? () => _goSoupisy(workerId: workerId)
-                  : null,
+              showChevron: jobId != null,
+              onTap: jobId != null ? () => context.go('/floors/$jobId') : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          m['displayName'] as String? ?? '',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                  Text(
+                    '${m['projectNumber']} ${m['name']}',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
                         ),
-                      ),
-                      Text(
-                        '${m['count']}',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                    ],
                   ),
-                  const SizedBox(height: AppSpacing.sm),
-                  ClipRRect(
-                    borderRadius: AppRadius.smAll,
-                    child: LinearProgressIndicator(
-                      value: maxWorkerCount > 0 ? count / maxWorkerCount : 0,
-                      minHeight: 6,
-                      backgroundColor: AppColors.bgSecondary,
-                      color: AppColors.success,
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Celkem ${m['total']} · Rozpr. ${m['draft']} · Zkont. ${m['checked']} · Fakt. ${m['invoiced']}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted,
+                        ),
+                  ),
+                  if (parseNum(m['missingPhotos']) > 0 || parseNum(m['returned']) > 0)
+                    Text(
+                      'Bez fotky: ${m['missingPhotos']} · Vrácené: ${m['returned']}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: AppColors.warning,
+                          ),
                     ),
-                  ),
                 ],
               ),
+            );
+          }),
+        ],
+        if (s['syncPendingByUser'] is List &&
+            (s['syncPendingByUser'] as List).isNotEmpty) ...[
+          const SizedBox(height: AppSpacing.xl),
+          const SectionHeader(title: 'Čekající synchronizace', style: SectionHeaderStyle.h3),
+          ...(s['syncPendingByUser'] as List).map((u) {
+            final m = u as Map<String, dynamic>;
+            return AppCard(
+              showChevron: true,
+              onTap: () => context.push('/sync'),
+              title: m['displayName'] as String? ?? '',
+              trailing: Text('${m['count']}'),
             );
           }),
         ],

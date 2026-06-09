@@ -12,9 +12,12 @@ import { paramId } from '../lib/params.js';
 import {
   assertSealEditable,
   bulkChangeSealStatus,
+  buildBulkSealsCsv,
+  bulkMoveSeals,
   changeSealStatus,
   checkDuplicateSealNumber,
   restoreSeal,
+  reviewSeal,
   softDeleteSeal,
   statusAfterWorkerEdit,
 } from '../services/seal.service.js';
@@ -26,6 +29,13 @@ import {
   assertJobWritable,
   assertSealReadable,
 } from '../services/authorization.service.js';
+import {
+  applySealNotePatchByRole,
+  filterSealNotesForViewer,
+  resolveSealNotesForCreate,
+} from '../lib/seal-notes.js';
+import { parseSealFilters } from '../lib/seal-list-filters.js';
+import { listFloorSealsFiltered } from '../services/search.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -84,41 +94,25 @@ router.get('/floors/:floorId/seals', async (req, res, next) => {
     const floorId = paramId(req.params.floorId);
     await assertFloorReadable(floorId, role, userId);
     const showWorker = showWorkerInList(role);
-    const seals = await prisma.seal.findMany({
-      where: { floorId, deletedAt: null },
-      select: {
-        id: true,
-        sealNumber: true,
-        system: true,
-        fireRating: true,
-        status: true,
-        version: true,
-        updatedAt: true,
-        ...(showWorker
-            ? { createdBy: { select: { id: true, displayName: true } } }
-            : {}),
-        entries: {
-          where: { deletedAt: null },
-          take: 1,
-          orderBy: { sortOrder: 'asc' },
-          select: { dimension: true },
-        },
-        _count: { select: { photos: true } },
-      },
-      orderBy: { sealNumber: 'asc' },
+    const filters = parseSealFilters(req.query.filters as string | string[] | undefined);
+    const seals = await listFloorSealsFiltered({
+      floorId,
+      role,
+      showWorker,
+      filters,
     });
 
     res.json(
       seals.map((s) => ({
         id: s.id,
         sealNumber: s.sealNumber,
-        system: s.system,
-        fireRating: s.fireRating,
-        dimension: s.entries[0]?.dimension ?? '',
         status: s.status,
         version: s.version,
         updatedAt: s.updatedAt,
         photoCount: s._count.photos,
+        hasPublicNote: role !== UserRole.worker && !!s.note?.trim(),
+        hasInternalNote: !!s.internalNote?.trim(),
+        reviewStatus: s.reviewStatus,
         worker: showWorker && 'createdBy' in s ? s.createdBy : undefined,
       })),
     );
@@ -136,14 +130,64 @@ router.post('/bulk-status', requirePermission('seal.status'), async (req, res, n
         comment: z.string().optional(),
       })
       .parse(req.body);
-    const results = await bulkChangeSealStatus(
+    const { succeeded, failed } = await bulkChangeSealStatus(
       body.ids,
       body.status,
       req.user!.id,
       req.user!.role,
       body.comment,
     );
-    res.json({ updated: results.length, seals: results });
+    res.json({
+      updated: succeeded.length,
+      failed: failed.length,
+      seals: succeeded,
+      errors: failed,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/bulk-move', requirePermission('seal.edit'), async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        ids: z.array(z.string().uuid()).min(1),
+        floorId: z.string().uuid(),
+      })
+      .parse(req.body);
+    const { succeeded, failed, targetFloorName } = await bulkMoveSeals(
+      body.ids,
+      body.floorId,
+      req.user!.id,
+      req.user!.role,
+    );
+    res.json({
+      moved: succeeded.length,
+      failed: failed.length,
+      targetFloorName,
+      seals: succeeded,
+      errors: failed,
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/bulk-export/csv', requirePermission('reports.export'), async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        ids: z.array(z.string().uuid()).min(1),
+      })
+      .parse(req.body);
+    const csv = await buildBulkSealsCsv(body.ids, req.user!.id, req.user!.role);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="vybrane-ucpavky.csv"',
+    );
+    res.send(csv);
   } catch (e) {
     next(e);
   }
@@ -178,10 +222,13 @@ router.get('/:id', async (req, res, next) => {
           orderBy: { createdAt: 'asc' },
           include: { uploadedBy: { select: { id: true, displayName: true } } },
         },
+        marker: {
+          select: { id: true, floorId: true, x: true, y: true, updatedAt: true },
+        },
       },
     });
     if (!seal) throw notFound('Ucpávka nenalezena');
-    res.json(seal);
+    res.json(filterSealNotesForViewer(req.user!.role, seal));
   } catch (e) {
     next(e);
   }
@@ -194,6 +241,11 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
     await assertFloorBelongsToJob(body.floorId, body.jobId);
     await checkDuplicateSealNumber(body.jobId, body.floorId, body.sealNumber);
 
+    const notes = resolveSealNotesForCreate(req.user!.role, {
+      note: body.note,
+      internalNote: body.internalNote,
+    });
+
     const priced = await prisma.$transaction(async (tx) => {
       const seal = await tx.seal.create({
         data: {
@@ -204,8 +256,8 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
           construction: body.construction,
           location: body.location,
           fireRating: body.fireRating,
-          note: body.note,
-          internalNote: body.internalNote,
+          note: notes.note,
+          internalNote: notes.internalNote,
           openingLengthMm: body.openingLengthMm ?? null,
           openingWidthMm: body.openingWidthMm ?? null,
           status: SealStatus.draft,
@@ -243,6 +295,7 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       .extend({
         entries: z.array(sealEntrySchema).optional(),
         baseVersion: z.number().int(),
+        overrideReason: z.string().optional(),
       })
       .superRefine((data, ctx) => {
         if (data.openingLengthMm != null || data.openingWidthMm != null) {
@@ -260,7 +313,15 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       })
       .parse(req.body);
 
-    const existing = await assertSealEditable(paramId(req.params.id), req.user!.role, req.user!.id);
+    const existing = await assertSealEditable(
+      paramId(req.params.id),
+      req.user!.role,
+      req.user!.id,
+      {
+        overrideLocked: true,
+        overrideReason: body.overrideReason,
+      },
+    );
 
     if (body.baseVersion !== undefined && body.baseVersion !== existing.version) {
       const { conflict: c } = await import('../lib/errors.js');
@@ -285,14 +346,41 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       updateData.status = nextStatus;
       await logChange(req.user!.id, 'seal', existing.id, 'status', existing.status, nextStatus);
     }
+
+    const resolvedNotes = applySealNotePatchByRole(
+      req.user!.role,
+      { note: existing.note, internalNote: existing.internalNote },
+      { note: body.note, internalNote: body.internalNote },
+    );
+    if (body.note !== undefined && resolvedNotes.note !== existing.note) {
+      await logChange(
+        req.user!.id,
+        'seal',
+        existing.id,
+        'note',
+        String(existing.note ?? ''),
+        String(resolvedNotes.note ?? ''),
+      );
+      updateData.note = resolvedNotes.note;
+    }
+    if (body.internalNote !== undefined && resolvedNotes.internalNote !== existing.internalNote) {
+      await logChange(
+        req.user!.id,
+        'seal',
+        existing.id,
+        'internalNote',
+        String(existing.internalNote ?? ''),
+        String(resolvedNotes.internalNote ?? ''),
+      );
+      updateData.internalNote = resolvedNotes.internalNote;
+    }
+
     const fields = [
       'sealNumber',
       'system',
       'construction',
       'location',
       'fireRating',
-      'note',
-      'internalNote',
       'openingLengthMm',
       'openingWidthMm',
     ] as const;
@@ -381,6 +469,27 @@ router.patch('/:id/status', requirePermission('seal.status'), async (req, res, n
     const seal = await changeSealStatus(
       paramId(req.params.id),
       body.status,
+      req.user!.id,
+      req.user!.role,
+      body.comment,
+    );
+    res.json(seal);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/:id/review', requirePermission('seal.status'), async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        action: z.enum(['approved', 'returned']),
+        comment: z.string().optional(),
+      })
+      .parse(req.body);
+    const seal = await reviewSeal(
+      paramId(req.params.id),
+      body.action,
       req.user!.id,
       req.user!.role,
       body.comment,

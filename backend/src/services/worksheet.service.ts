@@ -1,10 +1,11 @@
-import PDFDocument from 'pdfkit';
 import { WorkSheetStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { hasPermission } from '../lib/permissions.js';
 import { logActivity, logChange } from './audit.service.js';
-import { writePdfTextLine } from '../lib/pdf-pagination.js';
+import { notifyUsersByRoles, createNotification } from './notification.service.js';
+import { csvWithBom } from '../lib/csv-export.js';
+import { createCzechPdfDocument, writePdfTextLine } from '../lib/pdf-pagination.js';
 
 const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
   [WorkSheetStatus.draft]: [WorkSheetStatus.submitted],
@@ -125,12 +126,33 @@ export function getAllowedStatusTargets(
 export async function listWorksheets(
   role: UserRole,
   userId: string,
-  filters: { jobId?: string; status?: WorkSheetStatus; workerId?: string },
+  filters: {
+    jobId?: string;
+    status?: WorkSheetStatus;
+    workerId?: string;
+    floorId?: string;
+    from?: string;
+    to?: string;
+    invoiced?: boolean;
+  },
 ) {
   const where: Record<string, unknown> = {};
 
   if (filters.jobId) where.jobId = filters.jobId;
   if (filters.status) where.status = filters.status;
+  if (filters.invoiced === true) where.status = WorkSheetStatus.invoiced;
+  if (filters.invoiced === false) {
+    where.status = { not: WorkSheetStatus.invoiced };
+  }
+  if (filters.from || filters.to) {
+    where.updatedAt = {
+      ...(filters.from ? { gte: new Date(filters.from) } : {}),
+      ...(filters.to ? { lte: new Date(`${filters.to}T23:59:59.999Z`) } : {}),
+    };
+  }
+  if (filters.floorId) {
+    where.items = { some: { floorId: filters.floorId } };
+  }
 
   if (role === UserRole.worker) {
     where.workers = { some: { userId } };
@@ -306,6 +328,12 @@ export async function changeWorksheetStatus(
   assertTransition(ws.status, nextStatus);
   assertCanTransition(role, ws.status, nextStatus);
 
+  if (nextStatus === WorkSheetStatus.draft && ws.status !== WorkSheetStatus.draft) {
+    if (role !== UserRole.worker && !comment?.trim()) {
+      throw badRequest('Při vrácení soupisu je povinný důvod');
+    }
+  }
+
   const now = new Date();
   const timestamps: Record<string, Date | null> = {};
   if (nextStatus === WorkSheetStatus.submitted) timestamps.submittedAt = now;
@@ -348,6 +376,40 @@ export async function changeWorksheetStatus(
   await logChange(userId, 'worksheet', worksheetId, 'status', ws.status, nextStatus, {
     comment: comment ?? null,
   });
+
+  if (nextStatus === WorkSheetStatus.submitted) {
+    await notifyUsersByRoles([UserRole.vedeni, UserRole.ucetni, UserRole.admin], {
+      type: 'worksheet_submitted',
+      title: 'Nový soupis k odsouhlasení',
+      body: `Soupis byl odevzdán (${updated.job.projectNumber})`,
+      entityType: 'worksheet',
+      entityId: worksheetId,
+    });
+  }
+  if (nextStatus === WorkSheetStatus.draft && ws.status !== WorkSheetStatus.draft) {
+    for (const w of updated.workers) {
+      await createNotification({
+        userId: w.userId,
+        type: 'worksheet_returned',
+        title: 'Soupis vrácen k opravě',
+        body: comment?.trim() || 'Soupis byl vrácen k opravě',
+        entityType: 'worksheet',
+        entityId: worksheetId,
+      });
+    }
+  }
+  if (nextStatus === WorkSheetStatus.reviewed) {
+    for (const w of updated.workers) {
+      await createNotification({
+        userId: w.userId,
+        type: 'worksheet_approved',
+        title: 'Soupis schválen',
+        body: `Soupis ${updated.job.projectNumber} byl schválen`,
+        entityType: 'worksheet',
+        entityId: worksheetId,
+      });
+    }
+  }
 
   return updated;
 }
@@ -464,8 +526,7 @@ export async function exportWorksheetCsv(id: string, role: UserRole, userId: str
     cols.map((c) => `"${String(row[c] ?? '').replace(/"/g, '""')}"`).join(';'),
   );
   const footer = `"Součet bez DPH";"";"";"";"";"";"";"";"${total.toFixed(2)}"`;
-  const bom = '\uFEFF';
-  const csv = bom + [header, ...lines, footer].join('\n');
+  const csv = csvWithBom([header, ...lines, footer].join('\n'));
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.csv`;
   return { csv, filename };
 }
@@ -482,7 +543,7 @@ export async function exportWorksheetPdf(
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-  const doc = new PDFDocument({ margin: 40, size: 'A4' });
+  const doc = createCzechPdfDocument({ margin: 40, size: 'A4' });
   doc.pipe(res);
 
   const periodFrom = worksheet.periodFrom?.toISOString().split('T')[0] ?? '—';

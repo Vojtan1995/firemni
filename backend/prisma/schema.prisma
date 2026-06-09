@@ -28,6 +28,12 @@ enum WorkSheetStatus {
   invoiced
 }
 
+enum JobStatus {
+  active
+  completed
+  archived
+}
+
 model User {
   id           String    @id @default(uuid())
   username     String    @unique
@@ -53,6 +59,9 @@ model User {
   worksheetsCreated WorkSheet[] @relation("WorkSheetCreator")
   worksheetAssignments WorkSheetWorker[]
   worksheetItems WorkSheetItem[] @relation("WorkSheetItemWorker")
+  notifications Notification[]
+  floorDrawingsUploaded FloorDrawing[]
+  sealMarkersCreated SealMarker[] @relation("SealMarkerCreator")
 
   @@map("users")
 }
@@ -75,6 +84,7 @@ model Job {
   name          String
   address       String?
   note          String?
+  status        JobStatus @default(active)
   isArchived    Boolean   @default(false) @map("is_archived")
   createdById   String    @map("created_by_id")
   createdAt     DateTime  @default(now()) @map("created_at")
@@ -89,6 +99,7 @@ model Job {
   participants JobParticipant[]
   worksheets WorkSheet[]
 
+  @@index([status])
   @@map("jobs")
 }
 
@@ -106,6 +117,8 @@ model JobFloor {
   job   Job    @relation(fields: [jobId], references: [id])
   seals Seal[]
   worksheetItems WorkSheetItem[]
+  drawing FloorDrawing?
+  sealMarkers SealMarker[]
 
   @@index([jobId])
   @@map("job_floors")
@@ -125,6 +138,8 @@ model Seal {
   openingLengthMm Int?   @map("opening_length_mm")
   openingWidthMm  Int?   @map("opening_width_mm")
   status        SealStatus @default(draft)
+  reviewStatus  String?    @map("review_status")
+  reviewComment String?    @map("review_comment")
   version       Int        @default(1)
   createdById   String     @map("created_by_id")
   updatedById   String?    @map("updated_by_id")
@@ -141,6 +156,7 @@ model Seal {
   entries   SealEntry[]
   photos    SealPhoto[]
   worksheetItems WorkSheetItem[]
+  marker    SealMarker?
 
   @@index([floorId])
   @@index([jobId, floorId, sealNumber])
@@ -214,6 +230,43 @@ model SealPhoto {
 
   @@index([sealId])
   @@map("seal_photos")
+}
+
+model FloorDrawing {
+  id           String   @id @default(uuid())
+  floorId      String   @unique @map("floor_id")
+  filePath     String   @map("file_path")
+  mimeType     String   @map("mime_type")
+  width        Int
+  height       Int
+  fileSize     Int      @map("file_size")
+  uploadedById String   @map("uploaded_by_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  floor      JobFloor @relation(fields: [floorId], references: [id], onDelete: Cascade)
+  uploadedBy User     @relation(fields: [uploadedById], references: [id])
+
+  @@map("floor_drawings")
+}
+
+model SealMarker {
+  id          String   @id @default(uuid())
+  sealId      String   @unique @map("seal_id")
+  floorId     String   @map("floor_id")
+  x           Float
+  y           Float
+  createdById String   @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  seal      Seal     @relation(fields: [sealId], references: [id], onDelete: Cascade)
+  floor     JobFloor @relation(fields: [floorId], references: [id])
+  createdBy User     @relation("SealMarkerCreator", fields: [createdById], references: [id])
+
+  @@index([floorId])
+  @@index([updatedAt])
+  @@map("seal_markers")
 }
 
 model SyncMutation {
@@ -421,4 +474,36 @@ model PriceListItem {
 
   @@index([priceListId, category])
   @@map("price_list_items")
+}
+
+model Notification {
+  id         String    @id @default(uuid())
+  userId     String    @map("user_id")
+  type       String
+  title      String
+  body       String
+  entityType String?   @map("entity_type")
+  entityId   String?   @map("entity_id")
+  readAt     DateTime? @map("read_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model BackupLog {
+  id           String   @id @default(uuid())
+  fileName     String   @map("file_name")
+  filePath     String   @map("file_path")
+  fileSizeBytes BigInt? @map("file_size_bytes")
+  status       String
+  errorMessage String?  @map("error_message")
+  triggeredBy  String?  @map("triggered_by")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("backup_logs")
 }

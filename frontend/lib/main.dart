@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router.dart';
 import 'core/design_tokens.dart';
+import 'core/desktop_esc_handler.dart';
 import 'core/theme.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/sync/sync_retry_scheduler.dart';
@@ -63,6 +64,8 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
       title: 'Ucpávky',
       theme: AppTheme.dark,
       routerConfig: router,
+      builder: (context, child) =>
+          DesktopEscScope(child: child ?? const SizedBox.shrink()),
     );
   }
 }

@@ -1,11 +1,29 @@
 import { SealStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
-import { badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
+import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { logActivity, logChange } from './audit.service.js';
 import { assertSealEntriesPriced } from './pricing.service.js';
+import { assertSealReadyForChecked } from './seal-validation.service.js';
 
 import { VEDENI_ROLES } from '../lib/permissions.js';
-import { assertSealReadable } from './authorization.service.js';
+import { hasPermission } from '../lib/permissions.js';
+import { jobAccessDeniedMessage, jobAllowsWrites } from '../lib/job-status.js';
+import {
+  assertFloorReadable,
+  assertJobWritable,
+  assertSealReadable,
+} from './authorization.service.js';
+import { csvWithBom } from '../lib/csv-export.js';
+import { createNotification } from './notification.service.js';
+import { anonymizeUserForViewer } from '../lib/user-privacy.js';
+
+export type BulkItemError = { id: string; message: string };
+
+function bulkErrorMessage(e: unknown): string {
+  if (e instanceof AppError) return e.message;
+  if (e instanceof Error) return e.message;
+  return 'Chyba';
+}
 
 export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
@@ -24,14 +42,48 @@ export function isSealLocked(status: SealStatus) {
   return status === SealStatus.invoiced;
 }
 
-export async function assertSealEditable(sealId: string, userRole: UserRole, userId: string) {
+export async function assertSealEditable(
+  sealId: string,
+  userRole: UserRole,
+  userId: string,
+  opts?: { overrideLocked?: boolean; overrideReason?: string },
+) {
   const seal = await assertSealReadable(sealId, userRole, userId);
-  if (seal.job.isArchived) throw forbidden('Stavba je archivována');
-  if (isSealLocked(seal.status)) throw forbidden('Ucpávka je zamčena (fakturováno)');
+  if (!jobAllowsWrites(seal.job.status)) {
+    throw forbidden(jobAccessDeniedMessage(seal.job.status));
+  }
+  if (isSealLocked(seal.status)) {
+    if (
+      opts?.overrideLocked &&
+      hasPermission(userRole, 'seal.override_locked') &&
+      opts.overrideReason?.trim()
+    ) {
+      await logActivity(userId, 'override_locked_edit', 'seal', sealId, {
+        reason: opts.overrideReason.trim(),
+      });
+      return seal;
+    }
+    throw forbidden('Ucpávka je zamčena (fakturováno)');
+  }
   if (userRole === UserRole.worker && !canWorkerEdit(seal.status)) {
     throw forbidden('Worker může editovat pouze rozpracované ucpávky');
   }
   return seal;
+}
+
+export async function suggestNextSealNumber(floorId: string) {
+  const seals = await prisma.seal.findMany({
+    where: { floorId, deletedAt: null },
+    select: { sealNumber: true },
+  });
+  let max = 0;
+  for (const seal of seals) {
+    const parsed = Number.parseInt(seal.sealNumber, 10);
+    if (Number.isFinite(parsed) && parsed > max) {
+      max = parsed;
+    }
+  }
+  return String(max + 1);
 }
 
 export async function checkDuplicateSealNumber(
@@ -92,6 +144,10 @@ export async function changeSealStatus(
     if (!priced) throw badRequest('Ucpávka obsahuje neoceněné prostupy – nelze fakturovat');
   }
 
+  if (newStatus === SealStatus.checked) {
+    await assertSealReadyForChecked(sealId);
+  }
+
   const updated = await prisma.seal.update({
     where: { id: sealId },
     data: {
@@ -119,12 +175,121 @@ export async function bulkChangeSealStatus(
   userRole: UserRole,
   comment?: string,
 ) {
-  const results = [];
+  const succeeded = [];
+  const failed: BulkItemError[] = [];
   for (const sealId of sealIds) {
-    const updated = await changeSealStatus(sealId, newStatus, userId, userRole, comment);
-    results.push(updated);
+    try {
+      const updated = await changeSealStatus(sealId, newStatus, userId, userRole, comment);
+      succeeded.push(updated);
+    } catch (e) {
+      failed.push({ id: sealId, message: bulkErrorMessage(e) });
+    }
   }
-  return results;
+  return { succeeded, failed };
+}
+
+export async function bulkMoveSeals(
+  sealIds: string[],
+  targetFloorId: string,
+  userId: string,
+  userRole: UserRole,
+) {
+  const targetFloor = await assertFloorReadable(targetFloorId, userRole, userId);
+  const succeeded = [];
+  const failed: BulkItemError[] = [];
+
+  for (const sealId of sealIds) {
+    try {
+      const seal = await assertSealReadable(sealId, userRole, userId);
+      if (seal.jobId !== targetFloor.jobId) {
+        throw badRequest('Cílové patro musí být ve stejné zakázce');
+      }
+      await assertJobWritable(seal.jobId, userRole, userId);
+      await assertSealEditable(sealId, userRole, userId);
+      if (seal.floorId === targetFloorId) {
+        throw badRequest('Ucpávka je již na tomto patře');
+      }
+      await checkDuplicateSealNumber(
+        seal.jobId,
+        targetFloorId,
+        seal.sealNumber,
+        sealId,
+      );
+
+      const updated = await prisma.seal.update({
+        where: { id: sealId },
+        data: {
+          floorId: targetFloorId,
+          version: { increment: 1 },
+          updatedById: userId,
+        },
+      });
+
+      await prisma.sealMarker.updateMany({
+        where: { sealId },
+        data: { floorId: targetFloorId },
+      });
+
+      await logChange(userId, 'seal', sealId, 'floorId', seal.floorId, targetFloorId);
+      await logActivity(userId, 'bulk_move', 'seal', sealId, {
+        fromFloorId: seal.floorId,
+        toFloorId: targetFloorId,
+      });
+      succeeded.push(updated);
+    } catch (e) {
+      failed.push({ id: sealId, message: bulkErrorMessage(e) });
+    }
+  }
+
+  return { succeeded, failed, targetFloorName: targetFloor.name };
+}
+
+export async function buildBulkSealsCsv(
+  sealIds: string[],
+  userId: string,
+  viewerRole: UserRole,
+) {
+  const rows: string[] = [];
+  const header =
+    'Stavba;Název stavby;Patro;Číslo ucpávky;Stav;Systém;Pracovník;Poznámka';
+
+  for (const sealId of sealIds) {
+    try {
+      const seal = await assertSealReadable(sealId, viewerRole, userId);
+      const full = await prisma.seal.findFirst({
+        where: { id: seal.id, deletedAt: null },
+        include: {
+          job: { select: { projectNumber: true, name: true } },
+          floor: { select: { name: true } },
+          createdBy: { select: { id: true, displayName: true, role: true } },
+        },
+      });
+      if (!full) continue;
+      const worker = anonymizeUserForViewer(
+        {
+          id: full.createdBy.id,
+          displayName: full.createdBy.displayName,
+          role: full.createdBy.role,
+        },
+        viewerRole,
+      ).displayName;
+      const cells = [
+        full.job.projectNumber,
+        full.job.name,
+        full.floor.name,
+        full.sealNumber,
+        full.status,
+        full.system,
+        worker,
+        full.note ?? '',
+      ].map((v) => `"${String(v).replace(/"/g, '""')}"`);
+      rows.push(cells.join(';'));
+    } catch {
+      // skip inaccessible
+    }
+  }
+
+  return csvWithBom([header, ...rows].join('\n'));
 }
 
 export async function softDeleteSeal(sealId: string, userId: string, reason?: string) {
@@ -164,5 +329,75 @@ export async function restoreSeal(sealId: string, userId: string) {
   });
 
   await logActivity(userId, 'restore', 'seal', sealId);
+  return updated;
+}
+
+export async function reviewSeal(
+  sealId: string,
+  action: 'approved' | 'returned',
+  userId: string,
+  userRole: UserRole,
+  comment?: string,
+) {
+  if (userRole !== UserRole.vedeni && userRole !== UserRole.admin) {
+    throw forbidden('Revizi může provést pouze vedení');
+  }
+  if (action === 'returned' && !comment?.trim()) {
+    throw badRequest('Při vrácení k opravě je povinný komentář');
+  }
+
+  const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
+  if (!seal) throw notFound('Ucpávka nenalezena');
+
+  const reviewStatus = action === 'approved' ? 'approved' : 'returned';
+  const data: Record<string, unknown> = {
+    reviewStatus,
+    reviewComment: action === 'returned' ? comment!.trim() : null,
+    version: { increment: 1 },
+    updatedById: userId,
+  };
+  if (action === 'returned') {
+    data.status = SealStatus.draft;
+  } else if (action === 'approved' && seal.status === SealStatus.draft) {
+    await assertSealReadyForChecked(sealId);
+    data.status = SealStatus.checked;
+  }
+
+  const updated = await prisma.seal.update({ where: { id: sealId }, data });
+
+  await logChange(userId, 'seal', sealId, 'reviewStatus', seal.reviewStatus ?? '', reviewStatus, {
+    comment: comment ?? null,
+  });
+  if (action === 'approved' && seal.status === SealStatus.draft) {
+    await logChange(userId, 'seal', sealId, 'status', seal.status, SealStatus.checked);
+    await logActivity(userId, 'status_change', 'seal', sealId, {
+      from: seal.status,
+      to: SealStatus.checked,
+      via: 'review_approved',
+    });
+  }
+  if (action === 'returned' && seal.status !== SealStatus.draft) {
+    await logChange(userId, 'seal', sealId, 'status', seal.status, SealStatus.draft, {
+      comment: comment!.trim(),
+    });
+    await logActivity(userId, 'status_change', 'seal', sealId, {
+      from: seal.status,
+      to: SealStatus.draft,
+      via: 'review_returned',
+    });
+  }
+
+  await createNotification({
+    userId: seal.createdById,
+    type: action === 'approved' ? 'seal_review_approved' : 'seal_review_returned',
+    title: action === 'approved' ? 'Ucpávka schválena' : 'Ucpávka vrácena k opravě',
+    body:
+      action === 'approved'
+        ? `Ucpávka #${seal.sealNumber} byla schválena`
+        : comment!.trim(),
+    entityType: 'seal',
+    entityId: sealId,
+  });
+
   return updated;
 }

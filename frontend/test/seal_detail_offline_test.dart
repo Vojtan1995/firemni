@@ -66,6 +66,37 @@ void main() {
     expect(mats.length, 2);
   });
 
+  test('sealDetailFromLocal uses note columns over jsonPayload', () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-notes',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '7',
+            system: 'S1',
+            construction: 'Stěna',
+            location: 'Chodba',
+            fireRating: 'EI 60',
+            note: const Value('public from column'),
+            internalNote: const Value('internal from column'),
+            jsonPayload: const Value(
+              '{"entries":[],"photos":[],"note":"stale","internalNote":"stale"}',
+            ),
+            updatedAt: DateTime.now(),
+          ),
+        );
+
+    final row =
+        await (db.select(db.localSeals)..where((s) => s.id.equals('seal-notes'))).getSingle();
+    final seal = sealDetailFromLocal(row, [])!;
+
+    expect(seal['note'], 'public from column');
+    expect(seal['internalNote'], 'internal from column');
+  });
+
   test('cacheSealDetailFromApi preserves pending outbox rows', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);

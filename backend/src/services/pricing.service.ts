@@ -4,7 +4,9 @@ import { fileURLToPath } from 'url';
 import { Prisma, PriceList, PriceListItem } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../lib/prisma.js';
+import { badRequest, notFound } from '../lib/errors.js';
 import { toNumber, multiplyMoney } from '../lib/decimal.js';
+import { logActivity } from './audit.service.js';
 import { computeEntryValues } from './seal-calculations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -279,6 +281,114 @@ export async function priceSealEntries(
 
     await client.sealEntry.update({ where: { id: entry.id }, data });
   }
+}
+
+export type PriceListItemInput = {
+  id?: string;
+  category: string;
+  sizeLabel: string;
+  unit: string;
+  priceWithMaterial: number;
+  priceWithoutMaterial?: number | null;
+  active?: boolean;
+  sortOrder?: number;
+};
+
+async function allocateVersionLabel(now: Date): Promise<string> {
+  const base = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const existing = await prisma.priceList.findUnique({ where: { version: base } });
+  if (!existing) return base;
+  const suffix = `${String(now.getDate()).padStart(2, '0')}-${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+  const withTime = `${base}-${suffix}`;
+  const clash = await prisma.priceList.findUnique({ where: { version: withTime } });
+  if (!clash) return withTime;
+  return `${withTime}-${String(now.getSeconds()).padStart(2, '0')}`;
+}
+
+export async function listPriceListVersions() {
+  const lists = await prisma.priceList.findMany({
+    orderBy: [{ active: 'desc' }, { validFrom: 'desc' }],
+    include: { _count: { select: { items: true } } },
+  });
+  return lists.map((list) => ({
+    id: list.id,
+    version: list.version,
+    validFrom: list.validFrom,
+    validTo: list.validTo,
+    active: list.active,
+    itemCount: list._count.items,
+  }));
+}
+
+export async function getPriceListByVersion(version: string) {
+  const list = await prisma.priceList.findUnique({
+    where: { version },
+    include: {
+      items: { orderBy: { sortOrder: 'asc' } },
+    },
+  });
+  if (!list) throw notFound('Verze ceníku nenalezena');
+  return list;
+}
+
+export async function publishPriceListChanges(userId: string, items: PriceListItemInput[]) {
+  if (!items.length) throw badRequest('Ceník musí obsahovat alespoň jednu položku');
+
+  const active = await prisma.priceList.findFirst({
+    where: { active: true },
+    include: { items: { orderBy: { sortOrder: 'asc' } } },
+  });
+  if (!active) throw notFound('Aktivní ceník není k dispozici');
+
+  const now = new Date();
+  const newVersion = await allocateVersionLabel(now);
+
+  const created = await prisma.$transaction(async (tx) => {
+    await tx.priceList.update({
+      where: { id: active.id },
+      data: { active: false, validTo: now },
+    });
+
+    let sortOrder = 0;
+    const itemCreates: Prisma.PriceListItemUncheckedCreateWithoutPriceListInput[] = items.map(
+      (item) => {
+        const order = item.sortOrder ?? sortOrder++;
+        return {
+          id: uuidv4(),
+          category: item.category.trim(),
+          sizeLabel: item.sizeLabel.trim(),
+          unit: item.unit.trim() || 'kus',
+          priceWithMaterial: item.priceWithMaterial,
+          priceWithoutMaterial: item.priceWithoutMaterial ?? item.priceWithMaterial,
+          active: item.active !== false,
+          sortOrder: order,
+        };
+      },
+    );
+
+    return tx.priceList.create({
+      data: {
+        version: newVersion,
+        validFrom: now,
+        active: true,
+        items: { create: itemCreates },
+      },
+      include: {
+        items: {
+          where: { active: true },
+          orderBy: { sortOrder: 'asc' },
+        },
+      },
+    });
+  });
+
+  await logActivity(userId, 'price_list_publish', 'price_list', created.id, {
+    previousVersion: active.version,
+    newVersion: created.version,
+    itemCount: created.items.length,
+  });
+
+  return created;
 }
 
 export async function seedDefaultPriceList(version = '2026-06') {

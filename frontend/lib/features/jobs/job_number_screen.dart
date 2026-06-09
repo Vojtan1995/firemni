@@ -66,6 +66,7 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
         await JobsCacheService(db).saveLastOpened(
           userId: userId,
           jobId: job['id'] as String,
+          jobName: job['name'] as String?,
         );
       }
       if (mounted) context.push('/floors/${job['id']}');
@@ -79,7 +80,11 @@ class _JobNumberScreenState extends ConsumerState<JobNumberScreen> {
           userId: userId,
         );
         if (job != null && mounted) {
-          await cache.saveLastOpened(userId: userId, jobId: job['id'] as String);
+          await cache.saveLastOpened(
+            userId: userId,
+            jobId: job['id'] as String,
+            jobName: job['name'] as String?,
+          );
           setState(() {
             _offline = true;
             _error = null;

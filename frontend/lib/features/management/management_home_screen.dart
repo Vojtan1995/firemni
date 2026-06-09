@@ -14,6 +14,11 @@ class ManagementHomeScreen extends StatelessWidget {
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
           _MenuTile(
+            icon: Icons.search,
+            title: 'Vyhledávání',
+            onTap: () => context.push('/search'),
+          ),
+          _MenuTile(
             icon: Icons.apartment,
             title: 'Stavby a patra',
             onTap: () => context.push('/jobs-admin'),

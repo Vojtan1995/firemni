@@ -12,13 +12,18 @@ import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
+import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../jobs/work_context_service.dart';
 import '../sync/sync_retry.dart';
 import '../sync/sync_service.dart';
 import 'seal_photo_storage.dart';
 import 'seal_photo_upload.dart';
 import 'seal_calculations.dart';
+import 'seal_note_helpers.dart';
+import 'seal_status_actions.dart';
+import 'seal_validation.dart';
 
 /// Zda detail pochází z API nebo z lokální cache (offline detail).
 enum SealDetailDataSource { online, offline }
@@ -94,6 +99,21 @@ Future<void> cacheSealDetailFromApi(
       );
 
   await cacheSealPhotosFromApiList(db, id, seal['photos'] as List?);
+
+  if (seal['marker'] != null) {
+    final marker = seal['marker'] as Map<String, dynamic>;
+    await db.into(db.localSealMarkers).insertOnConflictUpdate(
+          LocalSealMarkersCompanion.insert(
+            sealId: id,
+            floorId: marker['floorId'] as String? ?? seal['floorId'] as String,
+            sealNumber: seal['sealNumber'] as String,
+            x: (marker['x'] as num).toDouble(),
+            y: (marker['y'] as num).toDouble(),
+            updatedAt: DateTime.tryParse(marker['updatedAt'] as String? ?? '') ??
+                DateTime.now(),
+          ),
+        );
+  }
 }
 
 /// Sestaví mapu detailu pro UI z lokálního řádku a fotek (bez síťových volání).
@@ -118,6 +138,7 @@ Map<String, dynamic>? sealDetailFromLocal(
   seal['location'] = row.location;
   seal['fireRating'] = row.fireRating;
   seal['note'] = row.note;
+  seal['internalNote'] = row.internalNote;
   seal['status'] = row.status;
   seal['version'] = row.version;
 
@@ -215,6 +236,19 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     _load();
   }
 
+  Future<void> _persistSealContext(Map<String, dynamic> seal) async {
+    final userId = ref.read(currentUserIdProvider);
+    final jobId = seal['jobId'] as String?;
+    final floorId = seal['floorId'] as String?;
+    if (userId == null || jobId == null || floorId == null) return;
+    await WorkContextService(ref.read(databaseProvider)).saveSeal(
+      userId: userId,
+      jobId: jobId,
+      floorId: floorId,
+      sealId: widget.sealId,
+    );
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
@@ -241,6 +275,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         _dataSource = SealDetailDataSource.online;
         _loading = false;
       });
+      await _persistSealContext(seal);
       await _loadHistory();
     } on DioException catch (_) {
       await _loadFromDrift(db);
@@ -281,10 +316,70 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           : 'V cache je jen základ údajů; prostupy a fotky z API zde nejsou. Po připojení obnovte detail.';
       _loading = false;
     });
+    if (seal != null) {
+      await _persistSealContext(seal);
+    }
+  }
+
+  Future<void> _reviewSeal(String action) async {
+    String? comment;
+    if (action == 'returned') {
+      final ctrl = TextEditingController();
+      comment = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Vrátit k opravě'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: 'Komentář (povinný)'),
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Potvrdit'),
+            ),
+          ],
+        ),
+      );
+      if (comment == null || comment.isEmpty) return;
+    }
+    try {
+      await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/review', data: {
+        'action': action,
+        if (comment != null) 'comment': comment,
+      });
+      await _load();
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Revize selhala')),
+      );
+    }
   }
 
   Future<void> _changeStatus(String status) async {
     if (_dataSource == SealDetailDataSource.offline) return;
+    if (status == 'checked' && _seal != null) {
+      final issues = validateSealForChecked(_seal!);
+      if (issues.isNotEmpty) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Ucpávka není kompletní'),
+            content: SingleChildScrollView(
+              child: Text(formatSealValidationIssues(issues)),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+        return;
+      }
+    }
     String? comment;
     if (status == 'draft') {
       comment = await showDialog<String>(
@@ -310,11 +405,51 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       );
       if (comment == null || comment.isEmpty) return;
     }
-    await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {
-      'status': status,
-      if (comment != null) 'comment': comment,
-    });
-    await _load();
+    try {
+      await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {
+        'status': status,
+        if (comment != null) 'comment': comment,
+      });
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Stav ucpávky byl aktualizován')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Změna stavu selhala')),
+      );
+    }
+  }
+
+  Future<void> _approveSeal() async {
+    if (_dataSource == SealDetailDataSource.offline) return;
+    if (_seal != null) {
+      final issues = validateSealForChecked(_seal!);
+      if (issues.isNotEmpty) {
+        if (!mounted) return;
+        await showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Ucpávka není kompletní'),
+            content: SingleChildScrollView(
+              child: Text(formatSealValidationIssues(issues)),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+    final status = _seal?['status'] as String? ?? 'draft';
+    if (status == 'draft') {
+      await _changeStatus('checked');
+      return;
+    }
+    await _reviewSeal('approved');
   }
 
   Future<void> _loadHistory() async {
@@ -336,6 +471,36 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     final local = dt.toLocal();
     return '${local.day.toString().padLeft(2, '0')}.${local.month.toString().padLeft(2, '0')}.${local.year} '
         '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _formatHistoryEntry(Map<String, dynamic> h) {
+    const fieldLabels = {
+      'status': 'Stav',
+      'note': 'Poznámka',
+      'internalNote': 'Interní poznámka',
+      'entries': 'Prostupy',
+      'photos': 'Fotografie',
+      'system': 'Systém',
+    };
+    final field = h['fieldName'] as String?;
+    final oldV = h['oldValue'];
+    final newV = h['newValue'];
+    final action = h['action'] as String?;
+    if (field != null) {
+      final label = fieldLabels[field] ?? field;
+      if (oldV == null || oldV == '') return '$label: $newV';
+      return '$label: $oldV → $newV';
+    }
+    switch (action) {
+      case 'photo_upload':
+        return 'Přidána fotografie';
+      case 'create':
+        return 'Vytvoření ucpávky';
+      case 'status_change':
+        return 'Změna stavu';
+      default:
+        return action ?? 'Akce';
+    }
   }
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
@@ -661,10 +826,15 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     final auth = ref.read(authServiceProvider);
     final offline = _dataSource == SealDetailDataSource.offline;
 
+    final floorId = seal['floorId'] as String?;
+    final jobId = seal['jobId'] as String?;
+    final marker = seal['marker'] as Map<String, dynamic>?;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('Ucpávka #${seal['sealNumber']}'),
         actions: [
+          const AppTopActions(),
           if (offline)
             const Padding(
               padding: EdgeInsets.only(right: AppSpacing.sm),
@@ -676,6 +846,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
+          if (floorId != null && jobId != null && jobId.isNotEmpty)
+            AppSecondaryButton(
+              label: 'Otevřít ve výkresu',
+              icon: Icons.map_outlined,
+              onPressed: () {
+                final params = marker != null
+                    ? 'jobId=$jobId&focusSealId=${widget.sealId}'
+                    : 'jobId=$jobId&placeSealId=${widget.sealId}';
+                context.push('/floor-plan/$floorId?$params');
+              },
+            ),
           if (offline)
             Container(
               margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -712,10 +893,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             Text(
               'Rozměr prostupu: ${seal['openingLengthMm']} × ${seal['openingWidthMm']} mm',
             ),
-          if (seal['note'] != null) Text('Poznámka: ${seal['note']}'),
-          if (seal['internalNote'] != null &&
-              (auth.isVedeni || auth.isAdmin || auth.isUcetni))
-            Text('Interní poznámka: ${seal['internalNote']}'),
+          if (SealNoteHelpers.showPublicNoteInDetail(auth.role) &&
+              seal['note'] != null &&
+              (seal['note'] as String).trim().isNotEmpty)
+            _SealNoteBlock(label: 'Poznámka', text: seal['note'] as String),
+          if (SealNoteHelpers.showInternalNoteInDetail(auth.role) &&
+              seal['internalNote'] != null &&
+              (seal['internalNote'] as String).trim().isNotEmpty)
+            _SealNoteBlock(
+              label: auth.isWorker ? 'Interní poznámka' : 'Interní poznámka z terénu',
+              text: seal['internalNote'] as String,
+            ),
           if (auth.isVedeni || auth.isAdmin || auth.isUcetni) ...[
             const Divider(height: 24),
             const Text('Evidence', style: TextStyle(fontWeight: FontWeight.bold)),
@@ -727,6 +915,24 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               'Poslední editor: ${(seal['updatedBy'] as Map?)?['displayName'] ?? '—'}',
             ),
             Text('Poslední editace: ${_formatDate(seal['updatedAt'] as String?)}'),
+          ],
+          if (status == 'invoiced') ...[
+            Container(
+              margin: const EdgeInsets.only(bottom: AppSpacing.md),
+              padding: const EdgeInsets.all(AppSpacing.md),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: AppRadius.mdAll,
+                border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.lock, size: 18, color: AppColors.warning),
+                  SizedBox(width: AppSpacing.sm),
+                  Expanded(child: Text('Uzamčeno — fakturováno')),
+                ],
+              ),
+            ),
           ],
           if (status == 'draft' || status == 'checked') ...[
             const SizedBox(height: 12),
@@ -886,23 +1092,13 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           if (auth.canViewSealHistory && _history.isNotEmpty) ...[
             const Divider(height: 24),
             const Text('Historie změn', style: TextStyle(fontWeight: FontWeight.bold)),
-            ..._history.take(20).map((h) {
+            ..._history.map((h) {
               final editor = h['editor'] as Map<String, dynamic>?;
               final ts = h['timestamp'] as String?;
-              final field = h['fieldName'] as String?;
-              final oldV = h['oldValue'];
-              final newV = h['newValue'];
-              final action = h['action'] as String?;
-              String desc;
-              if (field != null) {
-                desc = '$field: $oldV → $newV';
-              } else if (action == 'photo_upload') {
-                desc = 'Přidána fotografie';
-              } else {
-                desc = action ?? 'Akce';
-              }
+              final desc = _formatHistoryEntry(h);
               return ListTile(
                 dense: true,
+                leading: const Icon(Icons.history, size: 18),
                 title: Text(desc, style: const TextStyle(fontSize: 13)),
                 subtitle: Text(
                   '${_formatDate(ts)} · ${editor?['displayName'] ?? ''}',
@@ -911,28 +1107,44 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               );
             }),
           ],
-          if (auth.canChangeSealStatus && !offline) ...[
-            const SizedBox(height: 16),
-            if (auth.canReviewSeal && status == 'draft')
-              AppPrimaryButton(
-                label: 'Zkontrolovat',
-                onPressed: () => _changeStatus('checked'),
-              ),
-            if (status == 'checked') ...[
-              if (auth.canInvoiceSeal)
-                AppPrimaryButton(
-                  label: 'Fakturovat',
-                  onPressed: () => _changeStatus('invoiced'),
-                ),
-              if (auth.canReviewSeal) ...[
-                const SizedBox(height: AppSpacing.sm),
-                AppSecondaryButton(
-                  label: 'Vrátit na rozpracováno',
-                  onPressed: () => _changeStatus('draft'),
-                ),
-              ],
-            ],
-          ],
+          if (seal['reviewComment'] != null &&
+              (seal['reviewComment'] as String).trim().isNotEmpty)
+            _SealNoteBlock(
+              label: 'Poznámka k revizi',
+              text: seal['reviewComment'] as String,
+            ),
+          SealStatusActions(
+            auth: auth,
+            status: status,
+            reviewStatus: seal['reviewStatus'] as String?,
+            offline: offline,
+            onApprove: _approveSeal,
+            onReturnForRepair: () => _reviewSeal('returned'),
+            onInvoice: () => _changeStatus('invoiced'),
+            onRevertToDraft: () => _changeStatus('draft'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SealNoteBlock extends StatelessWidget {
+  const _SealNoteBlock({required this.label, required this.text});
+
+  final String label;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          SelectableText(text, style: Theme.of(context).textTheme.bodyMedium),
         ],
       ),
     );

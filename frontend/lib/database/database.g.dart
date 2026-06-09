@@ -3125,6 +3125,774 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   }
 }
 
+class $LocalFloorDrawingsTable extends LocalFloorDrawings
+    with TableInfo<$LocalFloorDrawingsTable, LocalFloorDrawing> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalFloorDrawingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _floorIdMeta =
+      const VerificationMeta('floorId');
+  @override
+  late final GeneratedColumn<String> floorId = GeneratedColumn<String>(
+      'floor_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _jobIdMeta = const VerificationMeta('jobId');
+  @override
+  late final GeneratedColumn<String> jobId = GeneratedColumn<String>(
+      'job_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _filePathMeta =
+      const VerificationMeta('filePath');
+  @override
+  late final GeneratedColumn<String> filePath = GeneratedColumn<String>(
+      'file_path', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _localPathMeta =
+      const VerificationMeta('localPath');
+  @override
+  late final GeneratedColumn<String> localPath = GeneratedColumn<String>(
+      'local_path', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _mimeTypeMeta =
+      const VerificationMeta('mimeType');
+  @override
+  late final GeneratedColumn<String> mimeType = GeneratedColumn<String>(
+      'mime_type', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _widthMeta = const VerificationMeta('width');
+  @override
+  late final GeneratedColumn<int> width = GeneratedColumn<int>(
+      'width', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _heightMeta = const VerificationMeta('height');
+  @override
+  late final GeneratedColumn<int> height = GeneratedColumn<int>(
+      'height', aliasedName, false,
+      type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [floorId, jobId, filePath, localPath, mimeType, width, height, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_floor_drawings';
+  @override
+  VerificationContext validateIntegrity(Insertable<LocalFloorDrawing> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('floor_id')) {
+      context.handle(_floorIdMeta,
+          floorId.isAcceptableOrUnknown(data['floor_id']!, _floorIdMeta));
+    } else if (isInserting) {
+      context.missing(_floorIdMeta);
+    }
+    if (data.containsKey('job_id')) {
+      context.handle(
+          _jobIdMeta, jobId.isAcceptableOrUnknown(data['job_id']!, _jobIdMeta));
+    } else if (isInserting) {
+      context.missing(_jobIdMeta);
+    }
+    if (data.containsKey('file_path')) {
+      context.handle(_filePathMeta,
+          filePath.isAcceptableOrUnknown(data['file_path']!, _filePathMeta));
+    } else if (isInserting) {
+      context.missing(_filePathMeta);
+    }
+    if (data.containsKey('local_path')) {
+      context.handle(_localPathMeta,
+          localPath.isAcceptableOrUnknown(data['local_path']!, _localPathMeta));
+    }
+    if (data.containsKey('mime_type')) {
+      context.handle(_mimeTypeMeta,
+          mimeType.isAcceptableOrUnknown(data['mime_type']!, _mimeTypeMeta));
+    } else if (isInserting) {
+      context.missing(_mimeTypeMeta);
+    }
+    if (data.containsKey('width')) {
+      context.handle(
+          _widthMeta, width.isAcceptableOrUnknown(data['width']!, _widthMeta));
+    } else if (isInserting) {
+      context.missing(_widthMeta);
+    }
+    if (data.containsKey('height')) {
+      context.handle(_heightMeta,
+          height.isAcceptableOrUnknown(data['height']!, _heightMeta));
+    } else if (isInserting) {
+      context.missing(_heightMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {floorId};
+  @override
+  LocalFloorDrawing map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalFloorDrawing(
+      floorId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}floor_id'])!,
+      jobId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}job_id'])!,
+      filePath: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}file_path'])!,
+      localPath: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}local_path']),
+      mimeType: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}mime_type'])!,
+      width: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}width'])!,
+      height: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}height'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $LocalFloorDrawingsTable createAlias(String alias) {
+    return $LocalFloorDrawingsTable(attachedDatabase, alias);
+  }
+}
+
+class LocalFloorDrawing extends DataClass
+    implements Insertable<LocalFloorDrawing> {
+  final String floorId;
+  final String jobId;
+  final String filePath;
+  final String? localPath;
+  final String mimeType;
+  final int width;
+  final int height;
+  final DateTime updatedAt;
+  const LocalFloorDrawing(
+      {required this.floorId,
+      required this.jobId,
+      required this.filePath,
+      this.localPath,
+      required this.mimeType,
+      required this.width,
+      required this.height,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['floor_id'] = Variable<String>(floorId);
+    map['job_id'] = Variable<String>(jobId);
+    map['file_path'] = Variable<String>(filePath);
+    if (!nullToAbsent || localPath != null) {
+      map['local_path'] = Variable<String>(localPath);
+    }
+    map['mime_type'] = Variable<String>(mimeType);
+    map['width'] = Variable<int>(width);
+    map['height'] = Variable<int>(height);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  LocalFloorDrawingsCompanion toCompanion(bool nullToAbsent) {
+    return LocalFloorDrawingsCompanion(
+      floorId: Value(floorId),
+      jobId: Value(jobId),
+      filePath: Value(filePath),
+      localPath: localPath == null && nullToAbsent
+          ? const Value.absent()
+          : Value(localPath),
+      mimeType: Value(mimeType),
+      width: Value(width),
+      height: Value(height),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LocalFloorDrawing.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalFloorDrawing(
+      floorId: serializer.fromJson<String>(json['floorId']),
+      jobId: serializer.fromJson<String>(json['jobId']),
+      filePath: serializer.fromJson<String>(json['filePath']),
+      localPath: serializer.fromJson<String?>(json['localPath']),
+      mimeType: serializer.fromJson<String>(json['mimeType']),
+      width: serializer.fromJson<int>(json['width']),
+      height: serializer.fromJson<int>(json['height']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'floorId': serializer.toJson<String>(floorId),
+      'jobId': serializer.toJson<String>(jobId),
+      'filePath': serializer.toJson<String>(filePath),
+      'localPath': serializer.toJson<String?>(localPath),
+      'mimeType': serializer.toJson<String>(mimeType),
+      'width': serializer.toJson<int>(width),
+      'height': serializer.toJson<int>(height),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  LocalFloorDrawing copyWith(
+          {String? floorId,
+          String? jobId,
+          String? filePath,
+          Value<String?> localPath = const Value.absent(),
+          String? mimeType,
+          int? width,
+          int? height,
+          DateTime? updatedAt}) =>
+      LocalFloorDrawing(
+        floorId: floorId ?? this.floorId,
+        jobId: jobId ?? this.jobId,
+        filePath: filePath ?? this.filePath,
+        localPath: localPath.present ? localPath.value : this.localPath,
+        mimeType: mimeType ?? this.mimeType,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  LocalFloorDrawing copyWithCompanion(LocalFloorDrawingsCompanion data) {
+    return LocalFloorDrawing(
+      floorId: data.floorId.present ? data.floorId.value : this.floorId,
+      jobId: data.jobId.present ? data.jobId.value : this.jobId,
+      filePath: data.filePath.present ? data.filePath.value : this.filePath,
+      localPath: data.localPath.present ? data.localPath.value : this.localPath,
+      mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
+      width: data.width.present ? data.width.value : this.width,
+      height: data.height.present ? data.height.value : this.height,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFloorDrawing(')
+          ..write('floorId: $floorId, ')
+          ..write('jobId: $jobId, ')
+          ..write('filePath: $filePath, ')
+          ..write('localPath: $localPath, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      floorId, jobId, filePath, localPath, mimeType, width, height, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalFloorDrawing &&
+          other.floorId == this.floorId &&
+          other.jobId == this.jobId &&
+          other.filePath == this.filePath &&
+          other.localPath == this.localPath &&
+          other.mimeType == this.mimeType &&
+          other.width == this.width &&
+          other.height == this.height &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
+  final Value<String> floorId;
+  final Value<String> jobId;
+  final Value<String> filePath;
+  final Value<String?> localPath;
+  final Value<String> mimeType;
+  final Value<int> width;
+  final Value<int> height;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const LocalFloorDrawingsCompanion({
+    this.floorId = const Value.absent(),
+    this.jobId = const Value.absent(),
+    this.filePath = const Value.absent(),
+    this.localPath = const Value.absent(),
+    this.mimeType = const Value.absent(),
+    this.width = const Value.absent(),
+    this.height = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalFloorDrawingsCompanion.insert({
+    required String floorId,
+    required String jobId,
+    required String filePath,
+    this.localPath = const Value.absent(),
+    required String mimeType,
+    required int width,
+    required int height,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  })  : floorId = Value(floorId),
+        jobId = Value(jobId),
+        filePath = Value(filePath),
+        mimeType = Value(mimeType),
+        width = Value(width),
+        height = Value(height),
+        updatedAt = Value(updatedAt);
+  static Insertable<LocalFloorDrawing> custom({
+    Expression<String>? floorId,
+    Expression<String>? jobId,
+    Expression<String>? filePath,
+    Expression<String>? localPath,
+    Expression<String>? mimeType,
+    Expression<int>? width,
+    Expression<int>? height,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (floorId != null) 'floor_id': floorId,
+      if (jobId != null) 'job_id': jobId,
+      if (filePath != null) 'file_path': filePath,
+      if (localPath != null) 'local_path': localPath,
+      if (mimeType != null) 'mime_type': mimeType,
+      if (width != null) 'width': width,
+      if (height != null) 'height': height,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalFloorDrawingsCompanion copyWith(
+      {Value<String>? floorId,
+      Value<String>? jobId,
+      Value<String>? filePath,
+      Value<String?>? localPath,
+      Value<String>? mimeType,
+      Value<int>? width,
+      Value<int>? height,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
+    return LocalFloorDrawingsCompanion(
+      floorId: floorId ?? this.floorId,
+      jobId: jobId ?? this.jobId,
+      filePath: filePath ?? this.filePath,
+      localPath: localPath ?? this.localPath,
+      mimeType: mimeType ?? this.mimeType,
+      width: width ?? this.width,
+      height: height ?? this.height,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (floorId.present) {
+      map['floor_id'] = Variable<String>(floorId.value);
+    }
+    if (jobId.present) {
+      map['job_id'] = Variable<String>(jobId.value);
+    }
+    if (filePath.present) {
+      map['file_path'] = Variable<String>(filePath.value);
+    }
+    if (localPath.present) {
+      map['local_path'] = Variable<String>(localPath.value);
+    }
+    if (mimeType.present) {
+      map['mime_type'] = Variable<String>(mimeType.value);
+    }
+    if (width.present) {
+      map['width'] = Variable<int>(width.value);
+    }
+    if (height.present) {
+      map['height'] = Variable<int>(height.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalFloorDrawingsCompanion(')
+          ..write('floorId: $floorId, ')
+          ..write('jobId: $jobId, ')
+          ..write('filePath: $filePath, ')
+          ..write('localPath: $localPath, ')
+          ..write('mimeType: $mimeType, ')
+          ..write('width: $width, ')
+          ..write('height: $height, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $LocalSealMarkersTable extends LocalSealMarkers
+    with TableInfo<$LocalSealMarkersTable, LocalSealMarker> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalSealMarkersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _sealIdMeta = const VerificationMeta('sealId');
+  @override
+  late final GeneratedColumn<String> sealId = GeneratedColumn<String>(
+      'seal_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _floorIdMeta =
+      const VerificationMeta('floorId');
+  @override
+  late final GeneratedColumn<String> floorId = GeneratedColumn<String>(
+      'floor_id', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _sealNumberMeta =
+      const VerificationMeta('sealNumber');
+  @override
+  late final GeneratedColumn<String> sealNumber = GeneratedColumn<String>(
+      'seal_number', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _xMeta = const VerificationMeta('x');
+  @override
+  late final GeneratedColumn<double> x = GeneratedColumn<double>(
+      'x', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _yMeta = const VerificationMeta('y');
+  @override
+  late final GeneratedColumn<double> y = GeneratedColumn<double>(
+      'y', aliasedName, false,
+      type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _updatedAtMeta =
+      const VerificationMeta('updatedAt');
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+      'updated_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns =>
+      [sealId, floorId, sealNumber, x, y, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_seal_markers';
+  @override
+  VerificationContext validateIntegrity(Insertable<LocalSealMarker> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('seal_id')) {
+      context.handle(_sealIdMeta,
+          sealId.isAcceptableOrUnknown(data['seal_id']!, _sealIdMeta));
+    } else if (isInserting) {
+      context.missing(_sealIdMeta);
+    }
+    if (data.containsKey('floor_id')) {
+      context.handle(_floorIdMeta,
+          floorId.isAcceptableOrUnknown(data['floor_id']!, _floorIdMeta));
+    } else if (isInserting) {
+      context.missing(_floorIdMeta);
+    }
+    if (data.containsKey('seal_number')) {
+      context.handle(
+          _sealNumberMeta,
+          sealNumber.isAcceptableOrUnknown(
+              data['seal_number']!, _sealNumberMeta));
+    } else if (isInserting) {
+      context.missing(_sealNumberMeta);
+    }
+    if (data.containsKey('x')) {
+      context.handle(_xMeta, x.isAcceptableOrUnknown(data['x']!, _xMeta));
+    } else if (isInserting) {
+      context.missing(_xMeta);
+    }
+    if (data.containsKey('y')) {
+      context.handle(_yMeta, y.isAcceptableOrUnknown(data['y']!, _yMeta));
+    } else if (isInserting) {
+      context.missing(_yMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(_updatedAtMeta,
+          updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {sealId};
+  @override
+  LocalSealMarker map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LocalSealMarker(
+      sealId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}seal_id'])!,
+      floorId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}floor_id'])!,
+      sealNumber: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}seal_number'])!,
+      x: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}x'])!,
+      y: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}y'])!,
+      updatedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
+    );
+  }
+
+  @override
+  $LocalSealMarkersTable createAlias(String alias) {
+    return $LocalSealMarkersTable(attachedDatabase, alias);
+  }
+}
+
+class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
+  final String sealId;
+  final String floorId;
+  final String sealNumber;
+  final double x;
+  final double y;
+  final DateTime updatedAt;
+  const LocalSealMarker(
+      {required this.sealId,
+      required this.floorId,
+      required this.sealNumber,
+      required this.x,
+      required this.y,
+      required this.updatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['seal_id'] = Variable<String>(sealId);
+    map['floor_id'] = Variable<String>(floorId);
+    map['seal_number'] = Variable<String>(sealNumber);
+    map['x'] = Variable<double>(x);
+    map['y'] = Variable<double>(y);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  LocalSealMarkersCompanion toCompanion(bool nullToAbsent) {
+    return LocalSealMarkersCompanion(
+      sealId: Value(sealId),
+      floorId: Value(floorId),
+      sealNumber: Value(sealNumber),
+      x: Value(x),
+      y: Value(y),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory LocalSealMarker.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LocalSealMarker(
+      sealId: serializer.fromJson<String>(json['sealId']),
+      floorId: serializer.fromJson<String>(json['floorId']),
+      sealNumber: serializer.fromJson<String>(json['sealNumber']),
+      x: serializer.fromJson<double>(json['x']),
+      y: serializer.fromJson<double>(json['y']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'sealId': serializer.toJson<String>(sealId),
+      'floorId': serializer.toJson<String>(floorId),
+      'sealNumber': serializer.toJson<String>(sealNumber),
+      'x': serializer.toJson<double>(x),
+      'y': serializer.toJson<double>(y),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  LocalSealMarker copyWith(
+          {String? sealId,
+          String? floorId,
+          String? sealNumber,
+          double? x,
+          double? y,
+          DateTime? updatedAt}) =>
+      LocalSealMarker(
+        sealId: sealId ?? this.sealId,
+        floorId: floorId ?? this.floorId,
+        sealNumber: sealNumber ?? this.sealNumber,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        updatedAt: updatedAt ?? this.updatedAt,
+      );
+  LocalSealMarker copyWithCompanion(LocalSealMarkersCompanion data) {
+    return LocalSealMarker(
+      sealId: data.sealId.present ? data.sealId.value : this.sealId,
+      floorId: data.floorId.present ? data.floorId.value : this.floorId,
+      sealNumber:
+          data.sealNumber.present ? data.sealNumber.value : this.sealNumber,
+      x: data.x.present ? data.x.value : this.x,
+      y: data.y.present ? data.y.value : this.y,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSealMarker(')
+          ..write('sealId: $sealId, ')
+          ..write('floorId: $floorId, ')
+          ..write('sealNumber: $sealNumber, ')
+          ..write('x: $x, ')
+          ..write('y: $y, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(sealId, floorId, sealNumber, x, y, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LocalSealMarker &&
+          other.sealId == this.sealId &&
+          other.floorId == this.floorId &&
+          other.sealNumber == this.sealNumber &&
+          other.x == this.x &&
+          other.y == this.y &&
+          other.updatedAt == this.updatedAt);
+}
+
+class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
+  final Value<String> sealId;
+  final Value<String> floorId;
+  final Value<String> sealNumber;
+  final Value<double> x;
+  final Value<double> y;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const LocalSealMarkersCompanion({
+    this.sealId = const Value.absent(),
+    this.floorId = const Value.absent(),
+    this.sealNumber = const Value.absent(),
+    this.x = const Value.absent(),
+    this.y = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalSealMarkersCompanion.insert({
+    required String sealId,
+    required String floorId,
+    required String sealNumber,
+    required double x,
+    required double y,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  })  : sealId = Value(sealId),
+        floorId = Value(floorId),
+        sealNumber = Value(sealNumber),
+        x = Value(x),
+        y = Value(y),
+        updatedAt = Value(updatedAt);
+  static Insertable<LocalSealMarker> custom({
+    Expression<String>? sealId,
+    Expression<String>? floorId,
+    Expression<String>? sealNumber,
+    Expression<double>? x,
+    Expression<double>? y,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (sealId != null) 'seal_id': sealId,
+      if (floorId != null) 'floor_id': floorId,
+      if (sealNumber != null) 'seal_number': sealNumber,
+      if (x != null) 'x': x,
+      if (y != null) 'y': y,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalSealMarkersCompanion copyWith(
+      {Value<String>? sealId,
+      Value<String>? floorId,
+      Value<String>? sealNumber,
+      Value<double>? x,
+      Value<double>? y,
+      Value<DateTime>? updatedAt,
+      Value<int>? rowid}) {
+    return LocalSealMarkersCompanion(
+      sealId: sealId ?? this.sealId,
+      floorId: floorId ?? this.floorId,
+      sealNumber: sealNumber ?? this.sealNumber,
+      x: x ?? this.x,
+      y: y ?? this.y,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (sealId.present) {
+      map['seal_id'] = Variable<String>(sealId.value);
+    }
+    if (floorId.present) {
+      map['floor_id'] = Variable<String>(floorId.value);
+    }
+    if (sealNumber.present) {
+      map['seal_number'] = Variable<String>(sealNumber.value);
+    }
+    if (x.present) {
+      map['x'] = Variable<double>(x.value);
+    }
+    if (y.present) {
+      map['y'] = Variable<double>(y.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSealMarkersCompanion(')
+          ..write('sealId: $sealId, ')
+          ..write('floorId: $floorId, ')
+          ..write('sealNumber: $sealNumber, ')
+          ..write('x: $x, ')
+          ..write('y: $y, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncCursorTable extends SyncCursor
     with TableInfo<$SyncCursorTable, SyncCursorData> {
   @override
@@ -3516,6 +4284,10 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalSealsTable localSeals = $LocalSealsTable(this);
   late final $LocalOutboxTable localOutbox = $LocalOutboxTable(this);
   late final $LocalPhotosTable localPhotos = $LocalPhotosTable(this);
+  late final $LocalFloorDrawingsTable localFloorDrawings =
+      $LocalFloorDrawingsTable(this);
+  late final $LocalSealMarkersTable localSealMarkers =
+      $LocalSealMarkersTable(this);
   late final $SyncCursorTable syncCursor = $SyncCursorTable(this);
   late final $LocalUserPrefsTable localUserPrefs = $LocalUserPrefsTable(this);
   @override
@@ -3529,6 +4301,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         localSeals,
         localOutbox,
         localPhotos,
+        localFloorDrawings,
+        localSealMarkers,
         syncCursor,
         localUserPrefs
       ];
@@ -5010,6 +5784,415 @@ typedef $$LocalPhotosTableProcessedTableManager = ProcessedTableManager<
     (LocalPhoto, BaseReferences<_$AppDatabase, $LocalPhotosTable, LocalPhoto>),
     LocalPhoto,
     PrefetchHooks Function()>;
+typedef $$LocalFloorDrawingsTableCreateCompanionBuilder
+    = LocalFloorDrawingsCompanion Function({
+  required String floorId,
+  required String jobId,
+  required String filePath,
+  Value<String?> localPath,
+  required String mimeType,
+  required int width,
+  required int height,
+  required DateTime updatedAt,
+  Value<int> rowid,
+});
+typedef $$LocalFloorDrawingsTableUpdateCompanionBuilder
+    = LocalFloorDrawingsCompanion Function({
+  Value<String> floorId,
+  Value<String> jobId,
+  Value<String> filePath,
+  Value<String?> localPath,
+  Value<String> mimeType,
+  Value<int> width,
+  Value<int> height,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+class $$LocalFloorDrawingsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalFloorDrawingsTable> {
+  $$LocalFloorDrawingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get floorId => $composableBuilder(
+      column: $table.floorId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get jobId => $composableBuilder(
+      column: $table.jobId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get filePath => $composableBuilder(
+      column: $table.filePath, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get localPath => $composableBuilder(
+      column: $table.localPath, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get mimeType => $composableBuilder(
+      column: $table.mimeType, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get width => $composableBuilder(
+      column: $table.width, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get height => $composableBuilder(
+      column: $table.height, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalFloorDrawingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalFloorDrawingsTable> {
+  $$LocalFloorDrawingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get floorId => $composableBuilder(
+      column: $table.floorId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get jobId => $composableBuilder(
+      column: $table.jobId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get filePath => $composableBuilder(
+      column: $table.filePath, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get localPath => $composableBuilder(
+      column: $table.localPath, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get mimeType => $composableBuilder(
+      column: $table.mimeType, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get width => $composableBuilder(
+      column: $table.width, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get height => $composableBuilder(
+      column: $table.height, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalFloorDrawingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalFloorDrawingsTable> {
+  $$LocalFloorDrawingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get floorId =>
+      $composableBuilder(column: $table.floorId, builder: (column) => column);
+
+  GeneratedColumn<String> get jobId =>
+      $composableBuilder(column: $table.jobId, builder: (column) => column);
+
+  GeneratedColumn<String> get filePath =>
+      $composableBuilder(column: $table.filePath, builder: (column) => column);
+
+  GeneratedColumn<String> get localPath =>
+      $composableBuilder(column: $table.localPath, builder: (column) => column);
+
+  GeneratedColumn<String> get mimeType =>
+      $composableBuilder(column: $table.mimeType, builder: (column) => column);
+
+  GeneratedColumn<int> get width =>
+      $composableBuilder(column: $table.width, builder: (column) => column);
+
+  GeneratedColumn<int> get height =>
+      $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$LocalFloorDrawingsTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LocalFloorDrawingsTable,
+    LocalFloorDrawing,
+    $$LocalFloorDrawingsTableFilterComposer,
+    $$LocalFloorDrawingsTableOrderingComposer,
+    $$LocalFloorDrawingsTableAnnotationComposer,
+    $$LocalFloorDrawingsTableCreateCompanionBuilder,
+    $$LocalFloorDrawingsTableUpdateCompanionBuilder,
+    (
+      LocalFloorDrawing,
+      BaseReferences<_$AppDatabase, $LocalFloorDrawingsTable, LocalFloorDrawing>
+    ),
+    LocalFloorDrawing,
+    PrefetchHooks Function()> {
+  $$LocalFloorDrawingsTableTableManager(
+      _$AppDatabase db, $LocalFloorDrawingsTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalFloorDrawingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalFloorDrawingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalFloorDrawingsTableAnnotationComposer(
+                  $db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> floorId = const Value.absent(),
+            Value<String> jobId = const Value.absent(),
+            Value<String> filePath = const Value.absent(),
+            Value<String?> localPath = const Value.absent(),
+            Value<String> mimeType = const Value.absent(),
+            Value<int> width = const Value.absent(),
+            Value<int> height = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalFloorDrawingsCompanion(
+            floorId: floorId,
+            jobId: jobId,
+            filePath: filePath,
+            localPath: localPath,
+            mimeType: mimeType,
+            width: width,
+            height: height,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String floorId,
+            required String jobId,
+            required String filePath,
+            Value<String?> localPath = const Value.absent(),
+            required String mimeType,
+            required int width,
+            required int height,
+            required DateTime updatedAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalFloorDrawingsCompanion.insert(
+            floorId: floorId,
+            jobId: jobId,
+            filePath: filePath,
+            localPath: localPath,
+            mimeType: mimeType,
+            width: width,
+            height: height,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalFloorDrawingsTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LocalFloorDrawingsTable,
+    LocalFloorDrawing,
+    $$LocalFloorDrawingsTableFilterComposer,
+    $$LocalFloorDrawingsTableOrderingComposer,
+    $$LocalFloorDrawingsTableAnnotationComposer,
+    $$LocalFloorDrawingsTableCreateCompanionBuilder,
+    $$LocalFloorDrawingsTableUpdateCompanionBuilder,
+    (
+      LocalFloorDrawing,
+      BaseReferences<_$AppDatabase, $LocalFloorDrawingsTable, LocalFloorDrawing>
+    ),
+    LocalFloorDrawing,
+    PrefetchHooks Function()>;
+typedef $$LocalSealMarkersTableCreateCompanionBuilder
+    = LocalSealMarkersCompanion Function({
+  required String sealId,
+  required String floorId,
+  required String sealNumber,
+  required double x,
+  required double y,
+  required DateTime updatedAt,
+  Value<int> rowid,
+});
+typedef $$LocalSealMarkersTableUpdateCompanionBuilder
+    = LocalSealMarkersCompanion Function({
+  Value<String> sealId,
+  Value<String> floorId,
+  Value<String> sealNumber,
+  Value<double> x,
+  Value<double> y,
+  Value<DateTime> updatedAt,
+  Value<int> rowid,
+});
+
+class $$LocalSealMarkersTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalSealMarkersTable> {
+  $$LocalSealMarkersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get sealId => $composableBuilder(
+      column: $table.sealId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get floorId => $composableBuilder(
+      column: $table.floorId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get sealNumber => $composableBuilder(
+      column: $table.sealNumber, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get x => $composableBuilder(
+      column: $table.x, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get y => $composableBuilder(
+      column: $table.y, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnFilters(column));
+}
+
+class $$LocalSealMarkersTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalSealMarkersTable> {
+  $$LocalSealMarkersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get sealId => $composableBuilder(
+      column: $table.sealId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get floorId => $composableBuilder(
+      column: $table.floorId, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get sealNumber => $composableBuilder(
+      column: $table.sealNumber, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get x => $composableBuilder(
+      column: $table.x, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get y => $composableBuilder(
+      column: $table.y, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+      column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
+}
+
+class $$LocalSealMarkersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalSealMarkersTable> {
+  $$LocalSealMarkersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get sealId =>
+      $composableBuilder(column: $table.sealId, builder: (column) => column);
+
+  GeneratedColumn<String> get floorId =>
+      $composableBuilder(column: $table.floorId, builder: (column) => column);
+
+  GeneratedColumn<String> get sealNumber => $composableBuilder(
+      column: $table.sealNumber, builder: (column) => column);
+
+  GeneratedColumn<double> get x =>
+      $composableBuilder(column: $table.x, builder: (column) => column);
+
+  GeneratedColumn<double> get y =>
+      $composableBuilder(column: $table.y, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$LocalSealMarkersTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $LocalSealMarkersTable,
+    LocalSealMarker,
+    $$LocalSealMarkersTableFilterComposer,
+    $$LocalSealMarkersTableOrderingComposer,
+    $$LocalSealMarkersTableAnnotationComposer,
+    $$LocalSealMarkersTableCreateCompanionBuilder,
+    $$LocalSealMarkersTableUpdateCompanionBuilder,
+    (
+      LocalSealMarker,
+      BaseReferences<_$AppDatabase, $LocalSealMarkersTable, LocalSealMarker>
+    ),
+    LocalSealMarker,
+    PrefetchHooks Function()> {
+  $$LocalSealMarkersTableTableManager(
+      _$AppDatabase db, $LocalSealMarkersTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalSealMarkersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalSealMarkersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalSealMarkersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> sealId = const Value.absent(),
+            Value<String> floorId = const Value.absent(),
+            Value<String> sealNumber = const Value.absent(),
+            Value<double> x = const Value.absent(),
+            Value<double> y = const Value.absent(),
+            Value<DateTime> updatedAt = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalSealMarkersCompanion(
+            sealId: sealId,
+            floorId: floorId,
+            sealNumber: sealNumber,
+            x: x,
+            y: y,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          createCompanionCallback: ({
+            required String sealId,
+            required String floorId,
+            required String sealNumber,
+            required double x,
+            required double y,
+            required DateTime updatedAt,
+            Value<int> rowid = const Value.absent(),
+          }) =>
+              LocalSealMarkersCompanion.insert(
+            sealId: sealId,
+            floorId: floorId,
+            sealNumber: sealNumber,
+            x: x,
+            y: y,
+            updatedAt: updatedAt,
+            rowid: rowid,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ));
+}
+
+typedef $$LocalSealMarkersTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $LocalSealMarkersTable,
+    LocalSealMarker,
+    $$LocalSealMarkersTableFilterComposer,
+    $$LocalSealMarkersTableOrderingComposer,
+    $$LocalSealMarkersTableAnnotationComposer,
+    $$LocalSealMarkersTableCreateCompanionBuilder,
+    $$LocalSealMarkersTableUpdateCompanionBuilder,
+    (
+      LocalSealMarker,
+      BaseReferences<_$AppDatabase, $LocalSealMarkersTable, LocalSealMarker>
+    ),
+    LocalSealMarker,
+    PrefetchHooks Function()>;
 typedef $$SyncCursorTableCreateCompanionBuilder = SyncCursorCompanion Function({
   required String key,
   required DateTime lastPull,
@@ -5281,6 +6464,10 @@ class $AppDatabaseManager {
       $$LocalOutboxTableTableManager(_db, _db.localOutbox);
   $$LocalPhotosTableTableManager get localPhotos =>
       $$LocalPhotosTableTableManager(_db, _db.localPhotos);
+  $$LocalFloorDrawingsTableTableManager get localFloorDrawings =>
+      $$LocalFloorDrawingsTableTableManager(_db, _db.localFloorDrawings);
+  $$LocalSealMarkersTableTableManager get localSealMarkers =>
+      $$LocalSealMarkersTableTableManager(_db, _db.localSealMarkers);
   $$SyncCursorTableTableManager get syncCursor =>
       $$SyncCursorTableTableManager(_db, _db.syncCursor);
   $$LocalUserPrefsTableTableManager get localUserPrefs =>

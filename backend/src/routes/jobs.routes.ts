@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { UserRole } from '@prisma/client';
+import { JobStatus, UserRole } from '@prisma/client';
 import { authMiddleware, requireRole } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { notFound, badRequest, conflict } from '../lib/errors.js';
@@ -10,6 +10,8 @@ import { paramId } from '../lib/params.js';
 import { requirePermission } from '../lib/permissions.js';
 import * as jobParticipantService from '../services/job-participant.service.js';
 import { assertJobReadable } from '../services/authorization.service.js';
+import { jobStatusPatch, parseJobStatusQuery } from '../lib/job-status.js';
+import { exportJobCsv, exportJobPdf } from '../services/job-export.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -18,7 +20,11 @@ const projectNumberSchema = z.string().regex(/^\d{8}$/, 'Číslo stavby musí m�
 
 router.get('/my', async (req, res, next) => {
   try {
-    const jobs = await jobParticipantService.listMyJobs(req.user!.id);
+    const role = req.user!.role;
+    const jobs =
+      role === UserRole.worker
+        ? await jobParticipantService.listMyJobs(req.user!.id)
+        : await jobParticipantService.listAllActiveJobs();
     res.json(jobs);
   } catch (e) {
     next(e);
@@ -61,9 +67,13 @@ router.delete('/:jobId/participants/:userId', requirePermission('job.manage'), a
 
 router.get('/', requireRole(UserRole.vedeni, UserRole.admin), async (req, res, next) => {
   try {
-    const archived = req.query.archived === 'true';
+    const status =
+      parseJobStatusQuery(
+        req.query.status as string | undefined,
+        req.query.archived as string | undefined,
+      ) ?? JobStatus.active;
     const jobs = await prisma.job.findMany({
-      where: { deletedAt: null, isArchived: archived },
+      where: { deletedAt: null, status },
       include: { floors: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } },
       orderBy: { createdAt: 'desc' },
     });
@@ -133,9 +143,24 @@ router.patch('/:id/archive', requireRole(...MANAGEMENT_ROLES), async (req, res, 
     await getActiveJob(id);
     const job = await prisma.job.update({
       where: { id },
-      data: { isArchived: true },
+      data: jobStatusPatch(JobStatus.archived),
     });
     await logActivity(req.user!.id, 'archive', 'job', job.id);
+    res.json(job);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/:id/complete', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
+  try {
+    const id = paramId(req.params.id);
+    await getActiveJob(id);
+    const job = await prisma.job.update({
+      where: { id },
+      data: jobStatusPatch(JobStatus.completed),
+    });
+    await logActivity(req.user!.id, 'complete', 'job', job.id);
     res.json(job);
   } catch (e) {
     next(e);
@@ -148,10 +173,46 @@ router.patch('/:id/unarchive', requireRole(...MANAGEMENT_ROLES), async (req, res
     await getActiveJob(id);
     const job = await prisma.job.update({
       where: { id },
-      data: { isArchived: false },
+      data: jobStatusPatch(JobStatus.active),
     });
     await logActivity(req.user!.id, 'unarchive', 'job', job.id);
     res.json(job);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.patch('/:id/activate', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
+  try {
+    const id = paramId(req.params.id);
+    await getActiveJob(id);
+    const job = await prisma.job.update({
+      where: { id },
+      data: jobStatusPatch(JobStatus.active),
+    });
+    await logActivity(req.user!.id, 'activate', 'job', job.id);
+    res.json(job);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:id/export/csv', requirePermission('reports.export'), async (req, res, next) => {
+  try {
+    const jobId = paramId(req.params.id);
+    const { csv, filename } = await exportJobCsv(jobId, req.user!.role, req.user!.id);
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.get('/:id/export/pdf', requirePermission('reports.export'), async (req, res, next) => {
+  try {
+    const jobId = paramId(req.params.id);
+    await exportJobPdf(jobId, req.user!.role, req.user!.id, res);
   } catch (e) {
     next(e);
   }

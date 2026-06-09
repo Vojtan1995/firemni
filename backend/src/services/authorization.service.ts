@@ -1,6 +1,11 @@
-import { UserRole } from '@prisma/client';
+import { UserRole, JobStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
+import {
+  jobAccessDeniedMessage,
+  jobAllowsWrites,
+  workerCanAccessJob,
+} from '../lib/job-status.js';
 
 function requiresJobParticipantCheck(role: UserRole): boolean {
   return role === UserRole.worker;
@@ -34,7 +39,7 @@ export async function assertJobParticipant(jobId: string, userId: string) {
 export async function assertJobReadable(jobId: string, role: UserRole, userId: string) {
   const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
   if (!job) throw notFound('Stavba nenalezena');
-  if (job.isArchived && role === UserRole.worker) {
+  if (role === UserRole.worker && !workerCanAccessJob(job.status)) {
     throw notFound('Stavba není aktivní');
   }
   if (!bypassesJobParticipantCheck(role)) {
@@ -45,8 +50,8 @@ export async function assertJobReadable(jobId: string, role: UserRole, userId: s
 
 export async function assertJobWritable(jobId: string, role: UserRole, userId: string) {
   const job = await assertJobReadable(jobId, role, userId);
-  if (job.isArchived) {
-    throw forbidden('Stavba je archivována');
+  if (!jobAllowsWrites(job.status)) {
+    throw forbidden(jobAccessDeniedMessage(job.status));
   }
   return job;
 }

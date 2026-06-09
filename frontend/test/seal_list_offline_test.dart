@@ -4,9 +4,12 @@ import 'package:ucpavky/database/database.dart';
 
 /// FE-01: ověření čtení seznamu ucpávek z Drift a zachování outboxu.
 void main() {
-  test('loads seals for floor from Drift ordered by seal number', () async {
+  test('loads seals for floor from Drift ordered by updatedAt desc', () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
+
+    final older = DateTime(2025, 1, 1);
+    final newer = DateTime(2025, 6, 1);
 
     await db.into(db.localSeals).insert(
           LocalSealsCompanion.insert(
@@ -18,7 +21,7 @@ void main() {
             construction: 'C',
             location: 'L',
             fireRating: 'EI',
-            updatedAt: DateTime.now(),
+            updatedAt: older,
           ),
         );
     await db.into(db.localSeals).insert(
@@ -31,13 +34,13 @@ void main() {
             construction: 'C',
             location: 'L',
             fireRating: 'EI',
-            updatedAt: DateTime.now(),
+            updatedAt: newer,
           ),
         );
 
     final rows = await (db.select(db.localSeals)
           ..where((s) => s.floorId.equals('floor-1') & s.deletedAt.isNull())
-          ..orderBy([(s) => OrderingTerm.asc(s.sealNumber)]))
+          ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
         .get();
 
     expect(rows.length, 2);

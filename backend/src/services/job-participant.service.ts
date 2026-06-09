@@ -1,3 +1,4 @@
+import { JobStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
 export { getParticipantJobIds, isJobParticipant } from './authorization.service.js';
@@ -23,9 +24,19 @@ export async function touchJobParticipant(
   });
 }
 
+export async function listAllActiveJobs() {
+  return prisma.job.findMany({
+    where: { deletedAt: null, status: JobStatus.active },
+    include: {
+      floors: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
 export async function listMyJobs(userId: string) {
   const rows = await prisma.jobParticipant.findMany({
-    where: { userId, job: { deletedAt: null, isArchived: false } },
+    where: { userId, job: { deletedAt: null, status: JobStatus.active } },
     include: {
       job: {
         include: {

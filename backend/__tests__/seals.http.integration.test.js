@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
+import { markSealChecked } from './helpers/integration-helpers.js';
 
 const SEAL_PREFIX = '880';
 
@@ -125,12 +126,8 @@ describe('Seals HTTP integration (BE-03)', () => {
     });
 
     it('management can change draft → checked', async () => {
-      const res = await request(app)
-        .patch(`/api/seals/${sealId}/status`)
-        .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'checked' });
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('checked');
+      const res = await markSealChecked(app, managementToken, workerToken, sealId);
+      expect(res.status).toBe('checked');
     });
 
     it('management can change checked → draft', async () => {
@@ -143,11 +140,7 @@ describe('Seals HTTP integration (BE-03)', () => {
     });
 
     it('management can change checked → invoiced', async () => {
-      await request(app)
-        .patch(`/api/seals/${sealId}/status`)
-        .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'checked' })
-        .expect(200);
+      await markSealChecked(app, managementToken, workerToken, sealId);
 
       const res = await request(app)
         .patch(`/api/seals/${sealId}/status`)
@@ -169,11 +162,7 @@ describe('Seals HTTP integration (BE-03)', () => {
         .send({ status: 'checked' });
       expect(review.status).toBe(403);
 
-      await request(app)
-        .patch(`/api/seals/${ucetniSealId}/status`)
-        .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'checked' })
-        .expect(200);
+      await markSealChecked(app, managementToken, workerToken, ucetniSealId);
 
       const invoice = await request(app)
         .patch(`/api/seals/${ucetniSealId}/status`)
@@ -190,11 +179,7 @@ describe('Seals HTTP integration (BE-03)', () => {
       expect(created.status).toBe(201);
       const sealId = created.body.id;
 
-      await request(app)
-        .patch(`/api/seals/${sealId}/status`)
-        .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'checked' })
-        .expect(200);
+      await markSealChecked(app, managementToken, workerToken, sealId);
 
       const detail = await request(app)
         .get(`/api/seals/${sealId}`)
@@ -218,11 +203,7 @@ describe('Seals HTTP integration (BE-03)', () => {
       expect(created.status).toBe(201);
       const sealId = created.body.id;
 
-      await request(app)
-        .patch(`/api/seals/${sealId}/status`)
-        .set('Authorization', `Bearer ${managementToken}`)
-        .send({ status: 'checked' })
-        .expect(200);
+      await markSealChecked(app, managementToken, workerToken, sealId);
 
       await request(app)
         .patch(`/api/seals/${sealId}/status`)

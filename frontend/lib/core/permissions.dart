@@ -6,15 +6,17 @@ class AppPermissions {
     'seal.status': ['vedeni', 'ucetni', 'admin'],
     'seal.delete': ['vedeni', 'admin'],
     'seal.restore': ['admin'],
-    'seal.history': ['vedeni', 'admin'],
+    'seal.history': ['vedeni', 'ucetni', 'admin'],
     'photo.upload': ['worker', 'vedeni', 'admin'],
     'photo.delete': [],
     'job.manage': ['vedeni', 'admin'],
     'floor.manage': ['vedeni', 'admin'],
+    'floor.drawing.manage': ['vedeni', 'ucetni', 'admin'],
     'user.manage': ['vedeni', 'admin'],
     'reports.view': ['worker', 'vedeni', 'ucetni', 'admin'],
     'reports.export': ['worker', 'vedeni', 'ucetni', 'admin'],
     'priceList.view': ['worker', 'vedeni', 'ucetni', 'admin'],
+    'priceList.manage': ['vedeni', 'admin'],
     'logs.view': ['vedeni', 'admin'],
     'admin.trash': ['admin'],
     'worksheet.create': ['worker', 'ucetni', 'vedeni', 'admin'],
@@ -35,7 +37,12 @@ class AppPermissions {
 
   static bool canViewPriceList(String? role) => has(role, 'priceList.view');
 
+  static bool canManagePriceList(String? role) => has(role, 'priceList.manage');
+
   static bool canManageJobs(String? role) => has(role, 'job.manage');
+
+  static bool canManageFloorDrawings(String? role) =>
+      has(role, 'floor.drawing.manage');
 
   static bool canManageUsers(String? role) => has(role, 'user.manage');
 

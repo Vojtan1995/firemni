@@ -7,6 +7,7 @@ describe('My jobs and messages (phase 2)', () => {
   const app = createApp();
   let workerToken;
   let vedeniToken;
+  let ucetniToken;
   let jobId;
   let floorId;
 
@@ -21,6 +22,11 @@ describe('My jobs and messages (phase 2)', () => {
       .send({ username: 'vedeni', pin: '1234' });
     vedeniToken = vedeni.body.token;
 
+    const ucetni = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'ucetni', pin: '1234' });
+    ucetniToken = ucetni.body.token;
+
     const jobRes = await request(app)
       .get('/api/jobs/by-number/12345678')
       .set('Authorization', `Bearer ${workerToken}`);
@@ -31,6 +37,21 @@ describe('My jobs and messages (phase 2)', () => {
   afterAll(async () => {
     await prisma.privateMessage.deleteMany({});
     await prisma.$disconnect();
+  });
+
+  it('ucetni sees all active jobs in my jobs list', async () => {
+    const my = await request(app)
+      .get('/api/jobs/my')
+      .set('Authorization', `Bearer ${ucetniToken}`);
+    expect(my.status).toBe(200);
+    expect(my.body.length).toBeGreaterThan(0);
+    expect(my.body.some((j) => j.id === jobId)).toBe(true);
+
+    const allJobs = await request(app)
+      .get('/api/jobs')
+      .set('Authorization', `Bearer ${vedeniToken}`);
+    const activeIds = allJobs.body.map((j) => j.id);
+    expect(my.body.map((j) => j.id).sort()).toEqual(activeIds.sort());
   });
 
   it('worker sees job after creating a seal', async () => {

@@ -109,6 +109,94 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     }
   }
 
+  Future<void> _setStatus(String status, {bool requireComment = false}) async {
+    String? comment;
+    if (requireComment) {
+      final ctrl = TextEditingController();
+      comment = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Důvod vrácení'),
+          content: TextField(
+            controller: ctrl,
+            decoration: const InputDecoration(labelText: 'Komentář (povinný)'),
+            maxLines: 3,
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Potvrdit'),
+            ),
+          ],
+        ),
+      );
+      if (comment == null || comment.isEmpty) return;
+    }
+    try {
+      await ref.read(dioProvider).patch('/api/worksheets/${widget.worksheetId}/status', data: {
+        'status': status,
+        if (comment != null) 'comment': comment,
+      });
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Stav změněn na ${_statusLabels[status] ?? status}')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba změny stavu')),
+      );
+    }
+  }
+
+  List<Widget> _workflowButtons(AuthService auth, String status) {
+    if (auth.isWorker) {
+      if (status == 'draft') {
+        return [
+          AppPrimaryButton(
+            label: 'Odevzdat',
+            icon: Icons.send,
+            fullWidth: false,
+            onPressed: () => _setStatus('submitted'),
+          ),
+        ];
+      }
+      if (status == 'submitted') {
+        return [
+          const Text('Soupis je odevzdaný a uzamčený pro úpravy.'),
+        ];
+      }
+      return [];
+    }
+    if (auth.canReviewWorksheet && status == 'submitted') {
+      return [
+        AppPrimaryButton(
+          label: 'Schválit',
+          fullWidth: false,
+          onPressed: () => _setStatus('reviewed'),
+        ),
+        AppSecondaryButton(
+          label: 'Vrátit k opravě',
+          fullWidth: false,
+          onPressed: () => _setStatus('draft', requireComment: true),
+        ),
+      ];
+    }
+    if (_canChangeStatus(auth)) {
+      return [
+        AppSecondaryButton(
+          label: 'Změnit stav',
+          icon: Icons.sync_alt,
+          fullWidth: false,
+          onPressed: _changeStatus,
+        ),
+      ];
+    }
+    return [];
+  }
+
   Future<void> _changeStatus() async {
     final ws = _worksheet;
     if (ws == null) return;
@@ -297,13 +385,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
                         extension: 'csv',
                       ),
             ),
-            if (_canChangeStatus(auth))
-              AppSecondaryButton(
-                label: 'Změnit stav',
-                icon: Icons.sync_alt,
-                fullWidth: false,
-                onPressed: _changeStatus,
-              ),
+            ..._workflowButtons(auth, status),
           ],
         ),
         const SizedBox(height: AppSpacing.xl),

@@ -14,14 +14,18 @@ void main() {
   test('ucetni permissions', () {
     expect(AppPermissions.canAccessReports('ucetni'), isTrue);
     expect(AppPermissions.canManageJobs('ucetni'), isFalse);
+    expect(AppPermissions.canManageFloorDrawings('ucetni'), isTrue);
+    expect(AppPermissions.canManagePriceList('ucetni'), isFalse);
     expect(AppPermissions.canChangeSealStatus('ucetni'), isTrue);
     expect(AppPermissions.has('ucetni', 'seal.edit'), isFalse);
     expect(AppPermissions.has('ucetni', 'worksheet.invoice'), isTrue);
+    expect(AppPermissions.canViewSealHistory('ucetni'), isTrue);
     expect(AppPermissions.roleLabel('ucetni'), 'Administrativa');
   });
 
   test('vedeni permissions', () {
     expect(AppPermissions.canManageJobs('vedeni'), isTrue);
+    expect(AppPermissions.canManagePriceList('vedeni'), isTrue);
     expect(AppPermissions.canAccessTrash('vedeni'), isFalse);
     expect(AppPermissions.canViewSealHistory('vedeni'), isTrue);
   });

@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
+import '../jobs/resume_work_context_card.dart';
 import '../sync/sync_service.dart';
 import 'auth_provider.dart';
+import 'profile_worksheets_section.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
@@ -76,6 +78,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
           children: [
+            const ResumeWorkContextCard(),
             AppCard(
               showChevron: false,
               leading: AppIconBox(
@@ -86,7 +89,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               title: user['displayName'] as String? ?? '',
               subtitle: '${user['username']} · $role',
             ),
-            const SizedBox(height: AppSpacing.lg),
+            const SizedBox(height: AppSpacing.xl),
+            ProfileWorksheetsSection(role: role),
+            const SizedBox(height: AppSpacing.xl),
             const SectionHeader(title: 'Změna PINu', style: SectionHeaderStyle.h3),
             Text(
               'Zadejte starý PIN, nový PIN a jeho potvrzení.',

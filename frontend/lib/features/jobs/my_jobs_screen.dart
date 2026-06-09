@@ -77,17 +77,23 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
       await JobsCacheService(ref.read(databaseProvider)).saveLastOpened(
         userId: userId,
         jobId: j['id'] as String,
+        jobName: j['name'] as String?,
       );
     }
     if (!mounted) return;
     context.push('/floors/${j['id']}?jobId=${j['id']}');
   }
 
+  bool get _showsAllJobs {
+    final role = ref.watch(authUserProvider)?['role'] as String?;
+    return role == 'vedeni' || role == 'ucetni' || role == 'admin';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Moje zakázky'),
+        title: Text(_showsAllJobs ? 'Všechny zakázky' : 'Moje zakázky'),
         actions: [
           if (_offline)
             const Padding(
@@ -135,6 +141,9 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
                           }
                           final idx = _offline ? i - 1 : i;
                           final j = _jobs[idx];
+                          final subtitle = _showsAllJobs
+                              ? '${j['projectNumber']}'
+                              : '${j['projectNumber']} · ${j['roleOnJob'] ?? 'worker'}';
                           return AppCard(
                             leading: AppIconBox(
                               icon: Icons.apartment,
@@ -142,8 +151,7 @@ class _MyJobsScreenState extends ConsumerState<MyJobsScreen> {
                               color: AppColors.textSecondary,
                             ),
                             title: j['name'] as String? ?? '',
-                            subtitle:
-                                '${j['projectNumber']} · ${j['roleOnJob'] ?? 'worker'}',
+                            subtitle: subtitle,
                             onTap: () => _openJob(j),
                           );
                         },

@@ -107,5 +107,6 @@ export async function getSealHistory(sealId: string, viewerRole: UserRole) {
   ];
 
   entries.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+
   return entries;
 }

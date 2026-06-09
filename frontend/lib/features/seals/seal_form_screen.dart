@@ -14,11 +14,15 @@ import 'chip_selector.dart';
 import 'multi_chip_selector.dart';
 import 'seal_constants.dart';
 import 'seal_duplicate_local.dart';
+import 'suggest_next_seal_number.dart';
 import 'seal_detail_screen.dart';
 import 'seal_form_loader.dart';
 import 'seal_calculations.dart';
 import '../sync/sync_retry.dart';
 import 'seal_photo_storage.dart';
+import 'seal_note_helpers.dart';
+import '../auth/auth_provider.dart';
+import '../../core/unsaved_changes.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
 
@@ -53,6 +57,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _photoPaths = <String>[];
   bool _saving = false;
   bool _loadingInitial = false;
+  bool _trackDirty = false;
+  bool _isDirty = false;
   bool _showPhotoWarning = false;
   int _baseVersion = 1;
   String? _duplicateNumberError;
@@ -61,10 +67,45 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   void initState() {
     super.initState();
     _numberCtrl.addListener(_onSealNumberChanged);
+    _numberCtrl.addListener(_markDirty);
+    _openingLengthCtrl.addListener(_markDirty);
+    _openingWidthCtrl.addListener(_markDirty);
+    _noteCtrl.addListener(_markDirty);
+    _internalNoteCtrl.addListener(_markDirty);
     if (widget.isEdit) {
       _loadingInitial = true;
       _loadForEdit();
+    } else {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        final db = ref.read(databaseProvider);
+        var next = await suggestNextSealNumber(db, floorId: widget.floorId);
+        try {
+          final res = await ref.read(dioProvider).get(
+            '/api/jobs/${widget.jobId}/floors/${widget.floorId}/next-seal-number',
+          );
+          next = (res.data as Map)['nextSealNumber'] as String? ?? next;
+        } catch (_) {}
+        if (!mounted) return;
+        if (_numberCtrl.text.trim().isEmpty) {
+          _numberCtrl.text = next;
+        }
+        setState(() => _trackDirty = true);
+      });
     }
+  }
+
+  void _markDirty() {
+    if (!_trackDirty || _isDirty) return;
+    setState(() => _isDirty = true);
+  }
+
+  void _enableDirtyTracking() {
+    if (!mounted) return;
+    setState(() {
+      _trackDirty = true;
+      _isDirty = false;
+    });
   }
 
   Future<void> _loadForEdit() async {
@@ -79,9 +120,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       final row = await (db.select(db.localSeals)
             ..where((s) => s.id.equals(widget.sealId!)))
           .getSingleOrNull();
-      if (row?.jsonPayload != null && row!.jsonPayload!.isNotEmpty) {
-        seal = Map<String, dynamic>.from(
-            jsonDecode(row.jsonPayload!) as Map<dynamic, dynamic>);
+      if (row != null) {
+        final photos = await (db.select(db.localPhotos)
+              ..where((p) => p.sealId.equals(widget.sealId!)))
+            .get();
+        seal = sealDetailFromLocal(row, photos);
       }
     }
 
@@ -120,6 +163,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       ..addAll(entryDraftsFromSealMap(seal));
 
     setState(() => _loadingInitial = false);
+    _enableDirtyTracking();
   }
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
@@ -147,6 +191,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         _photoPaths.add(persistedPath);
         _showPhotoWarning = false;
       });
+      _markDirty();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -158,6 +203,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 
   void _removePhotoAt(int index) {
     setState(() => _photoPaths.removeAt(index));
+    _markDirty();
   }
 
   Widget _photosSection() {
@@ -363,6 +409,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     List<Map<String, dynamic>> entriesPayload,
   ) async {
     final sealId = const Uuid().v4();
+    final role = ref.read(authServiceProvider).role;
     final payload = {
       'id': sealId,
       'jobId': widget.jobId,
@@ -372,12 +419,20 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'construction': _construction,
       'location': _location,
       'fireRating': _fireRating,
-      'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-      'internalNote':
-          _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
       ..._openingPayloadFields(),
       'entries': entriesPayload,
     };
+    SealNoteHelpers.applyNotesToPayload(
+      payload,
+      role: role,
+      noteText: _noteCtrl.text,
+      internalNoteText: _internalNoteCtrl.text,
+    );
+    final cols = SealNoteHelpers.localColumnsForRole(
+      role: role,
+      noteText: _noteCtrl.text,
+      internalNoteText: _internalNoteCtrl.text,
+    );
 
     await db.transaction(() async {
       await db.into(db.localSeals).insert(LocalSealsCompanion.insert(
@@ -389,9 +444,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             construction: _construction!,
             location: _location!,
             fireRating: _fireRating!,
-            note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-            internalNote: Value(
-                _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
+            note: Value(cols.note),
+            internalNote: Value(cols.internalNote),
             status: const Value('draft'),
             isSynced: const Value(false),
             jsonPayload: Value(jsonEncode(payload)),
@@ -426,6 +480,15 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         title: const Text('Uloženo'),
         content: Text(message),
         actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(c);
+              context.push(
+                '/floor-plan/${widget.floorId}?jobId=${widget.jobId}&placeSealId=$sealId',
+              );
+            },
+            child: const Text('Umístit do výkresu'),
+          ),
           TextButton(
             onPressed: () {
               Navigator.pop(c);
@@ -466,6 +529,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     List<Map<String, dynamic>> entriesPayload,
   ) async {
     final sealId = widget.sealId!;
+    final role = ref.read(authServiceProvider).role;
+    final existing = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(sealId)))
+        .getSingleOrNull();
     final payload = {
       'id': sealId,
       'jobId': widget.jobId,
@@ -475,12 +542,23 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'construction': _construction,
       'location': _location,
       'fireRating': _fireRating,
-      'note': _noteCtrl.text.isEmpty ? null : _noteCtrl.text,
-      'internalNote':
-          _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text,
       ..._openingPayloadFields(),
       'entries': entriesPayload,
     };
+    SealNoteHelpers.applyNotesToPayload(
+      payload,
+      role: role,
+      noteText: _noteCtrl.text,
+      internalNoteText: _internalNoteCtrl.text,
+      isUpdate: true,
+    );
+    final cols = SealNoteHelpers.localColumnsForRole(
+      role: role,
+      noteText: _noteCtrl.text,
+      internalNoteText: _internalNoteCtrl.text,
+      existingNote: existing?.note,
+      existingInternalNote: existing?.internalNote,
+    );
 
     await db.transaction(() async {
       await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
@@ -490,9 +568,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           construction: Value(_construction!),
           location: Value(_location!),
           fireRating: Value(_fireRating!),
-          note: Value(_noteCtrl.text.isEmpty ? null : _noteCtrl.text),
-          internalNote: Value(
-              _internalNoteCtrl.text.isEmpty ? null : _internalNoteCtrl.text),
+          note: Value(cols.note),
+          internalNote: Value(cols.internalNote),
           isSynced: const Value(false),
           syncConflict: const Value(false),
           jsonPayload: Value(jsonEncode(payload)),
@@ -526,6 +603,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   void _removeEntry(int index) {
     if (_entries.length <= 1) return;
     setState(() => _entries.removeAt(index));
+    _markDirty();
   }
 
   @override
@@ -572,7 +650,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       );
     }
 
-    return Scaffold(
+    return UnsavedChangesPopScope(
+      isDirty: _isDirty,
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
       ),
@@ -629,7 +709,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               label: 'Systém *',
               options: sealSystems,
               selected: _system,
-              onSelected: (v) => setState(() => _system = v),
+              onSelected: (v) {
+                setState(() => _system = v);
+                _markDirty();
+              },
             ),
             const SizedBox(height: 16),
             ..._entries.asMap().entries.map((i) => _EntryEditor(
@@ -641,10 +724,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   allEntries: _entries,
                   canRemove: _entries.length > 1,
                   onRemove: () => _removeEntry(i.key),
-                  onChanged: () => setState(() {}),
+                  onChanged: () {
+                    setState(() {});
+                    _markDirty();
+                  },
                 )),
             TextButton.icon(
-              onPressed: () => setState(() => _entries.add(SealEntryDraftData())),
+              onPressed: () {
+                setState(() => _entries.add(SealEntryDraftData()));
+                _markDirty();
+              },
               icon: const Icon(Icons.add),
               label: const Text('Přidat prostup'),
             ),
@@ -653,44 +742,37 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               label: 'Konstrukce *',
               options: constructions,
               selected: _construction,
-              onSelected: (v) => setState(() => _construction = v),
+              onSelected: (v) {
+                setState(() => _construction = v);
+                _markDirty();
+              },
             ),
             const SizedBox(height: 12),
             ChipSelector(
               label: 'Umístění *',
               options: locations,
               selected: _location,
-              onSelected: (v) => setState(() => _location = v),
+              onSelected: (v) {
+                setState(() => _location = v);
+                _markDirty();
+              },
             ),
             const SizedBox(height: 12),
             ChipSelector(
               label: 'Požární odolnost *',
               options: fireRatings,
               selected: _fireRating,
-              onSelected: (v) => setState(() => _fireRating = v),
+              onSelected: (v) {
+                setState(() => _fireRating = v);
+                _markDirty();
+              },
             ),
             if (!widget.isEdit) ...[
               const SizedBox(height: 16),
               _photosSection(),
               const SizedBox(height: 16),
             ],
-            TextField(
-              controller: _noteCtrl,
-              decoration: const InputDecoration(
-                  labelText: 'Poznámka', border: OutlineInputBorder()),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('seal_internal_note'),
-              controller: _internalNoteCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Interní poznámka z terénu',
-                hintText: 'Volitelné — viditelné pro vedení a export',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
+            ..._noteFields(ref.read(authServiceProvider).role),
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: _saving ? null : _save,
@@ -701,7 +783,47 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           ],
         ),
       ),
+    ),
     );
+  }
+
+  List<Widget> _noteFields(String? role) {
+    final fields = <Widget>[];
+    if (SealNoteHelpers.canEditPublicNote(role)) {
+      fields.addAll([
+        TextField(
+          controller: _noteCtrl,
+          decoration: const InputDecoration(
+            labelText: 'Poznámka pro zákazníka',
+            hintText: 'Volitelné — může jít do exportu',
+            border: OutlineInputBorder(),
+          ),
+          minLines: 3,
+          maxLines: 6,
+          keyboardType: TextInputType.multiline,
+        ),
+        const SizedBox(height: 12),
+      ]);
+    }
+    if (SealNoteHelpers.canEditInternalNote(role)) {
+      fields.add(
+        TextField(
+          key: const Key('seal_internal_note'),
+          controller: _internalNoteCtrl,
+          decoration: InputDecoration(
+            labelText: 'Interní poznámka z terénu',
+            hintText: role == 'worker'
+                ? 'Volitelné — viditelné pro vedení'
+                : 'Volitelné — interní pro vedení',
+            border: const OutlineInputBorder(),
+          ),
+          minLines: 3,
+          maxLines: 6,
+          keyboardType: TextInputType.multiline,
+        ),
+      );
+    }
+    return fields;
   }
 }
 

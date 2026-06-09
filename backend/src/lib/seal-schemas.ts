@@ -1,9 +1,12 @@
 import { z } from 'zod';
+import { SEAL_NOTE_MAX_LENGTH } from './seal-notes.js';
 import {
   assertPairedMm,
   refineSealEntriesDimensions,
   refineSealOpeningDimensions,
 } from './zod-helpers.js';
+
+const optionalNote = z.string().max(SEAL_NOTE_MAX_LENGTH).optional();
 
 const optionalMm = z.number().int().positive().optional();
 
@@ -29,8 +32,8 @@ export const sealBodyBaseSchema = z.object({
   construction: z.string().min(1),
   location: z.string().min(1),
   fireRating: z.string().min(1),
-  note: z.string().optional(),
-  internalNote: z.string().optional(),
+  note: optionalNote,
+  internalNote: optionalNote,
   openingLengthMm: optionalMm,
   openingWidthMm: optionalMm,
   entries: z.array(sealEntrySchema).min(1),

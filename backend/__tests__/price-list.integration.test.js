@@ -7,6 +7,7 @@ describe('Price list (read-only for workers)', () => {
   const app = createApp();
   let workerToken;
   let managementToken;
+  let ucetniToken;
 
   async function login(username) {
     const res = await request(app)
@@ -19,6 +20,7 @@ describe('Price list (read-only for workers)', () => {
   beforeAll(async () => {
     workerToken = await login('worker1');
     managementToken = await login('vedeni');
+    ucetniToken = await login('ucetni');
   });
 
   afterAll(async () => {
@@ -63,6 +65,76 @@ describe('Price list (read-only for workers)', () => {
       .post('/api/price-list/seed')
       .set('Authorization', `Bearer ${managementToken}`)
       .expect(200);
+  });
+
+  it('vedení can publish new price list version and archive old one', async () => {
+    const active = await request(app)
+      .get('/api/price-list')
+      .set('Authorization', `Bearer ${managementToken}`);
+    expect(active.status).toBe(200);
+    const oldVersion = active.body.version;
+    const firstItem = active.body.items[0];
+
+    const publish = await request(app)
+      .post('/api/price-list/publish')
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({
+        items: active.body.items.map((item, index) => ({
+          id: item.id,
+          category: item.category,
+          sizeLabel: item.sizeLabel,
+          unit: item.unit,
+          priceWithMaterial:
+            index === 0
+              ? Number(firstItem.priceWithMaterial) + 1
+              : Number(item.priceWithMaterial),
+          active: true,
+          sortOrder: item.sortOrder,
+        })),
+      });
+
+    expect(publish.status).toBe(201);
+    expect(publish.body.version).not.toBe(oldVersion);
+    expect(publish.body.active).toBe(true);
+
+    const archived = await prisma.priceList.findUnique({ where: { version: oldVersion } });
+    expect(archived).toBeTruthy();
+    expect(archived.active).toBe(false);
+    expect(archived.validTo).toBeTruthy();
+
+    const versions = await request(app)
+      .get('/api/price-list/versions')
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(versions.status).toBe(200);
+    expect(versions.body.some((v) => v.version === oldVersion)).toBe(true);
+    expect(versions.body.some((v) => v.version === publish.body.version)).toBe(true);
+  });
+
+  it('ucetni and worker cannot publish price list', async () => {
+    const active = await request(app)
+      .get('/api/price-list')
+      .set('Authorization', `Bearer ${managementToken}`);
+    const payload = {
+      items: active.body.items.map((item) => ({
+        category: item.category,
+        sizeLabel: item.sizeLabel,
+        unit: item.unit,
+        priceWithMaterial: Number(item.priceWithMaterial),
+        active: true,
+      })),
+    };
+
+    const ucetniRes = await request(app)
+      .post('/api/price-list/publish')
+      .set('Authorization', `Bearer ${ucetniToken}`)
+      .send(payload);
+    expect(ucetniRes.status).toBe(403);
+
+    const workerRes = await request(app)
+      .post('/api/price-list/publish')
+      .set('Authorization', `Bearer ${workerToken}`)
+      .send(payload);
+    expect(workerRes.status).toBe(403);
   });
 
   it('database rejects two simultaneously active price lists', async () => {

@@ -36,6 +36,12 @@ export const config = {
   allowWildcardCors: parseBoolean(process.env.ALLOW_WILDCARD_CORS, false),
   publicUploads: parseBoolean(process.env.PUBLIC_UPLOADS, nodeEnv !== 'production'),
   sessionDays: 7,
+  backup: {
+    enabled: parseBoolean(process.env.BACKUP_ENABLED, false),
+    dir: process.env.BACKUP_DIR || './backups',
+    retentionCount: parseInt(process.env.BACKUP_RETENTION_COUNT || '7', 10),
+    intervalHours: parseInt(process.env.BACKUP_INTERVAL_HOURS || '24', 10),
+  },
 };
 
 export function validateConfig() {

@@ -22,7 +22,14 @@ void main() {
         child: const MaterialApp(home: ProfileScreen()),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('profile_pin_submit')),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
 
     expect(find.byKey(const Key('profile_pin_current')), findsOneWidget);
     expect(find.byKey(const Key('profile_pin_new')), findsOneWidget);

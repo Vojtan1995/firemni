@@ -20,6 +20,9 @@ import messagesRoutes from './routes/messages.routes.js';
 import priceListRoutes from './routes/price-list.routes.js';
 import worksheetsRoutes from './routes/worksheets.routes.js';
 import statsRoutes from './routes/stats.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
+import searchRoutes from './routes/search.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 export function createApp() {
   const app = express();
@@ -64,6 +67,9 @@ export function createApp() {
   app.use('/api/price-list', priceListRoutes);
   app.use('/api/worksheets', worksheetsRoutes);
   app.use('/api/stats', statsRoutes);
+  app.use('/api/notifications', notificationsRoutes);
+  app.use('/api/search', searchRoutes);
+  app.use('/api/admin', adminRoutes);
 
   app.use(errorMiddleware);
 

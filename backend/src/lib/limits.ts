@@ -2,3 +2,7 @@ export const SYNC_PULL_BATCH_LIMIT = 500;
 export const SYNC_PUSH_BATCH_LIMIT = 50;
 export const REPORT_SEAL_BATCH_LIMIT = 2000;
 export const REPORT_ROW_LIMIT = 10000;
+export const JOB_EXPORT_SEAL_LIMIT = 2000;
+export const JOB_EXPORT_HISTORY_LIMIT = 80;
+export const JOB_EXPORT_PHOTO_THUMB_LIMIT = 60;
+export const JOB_EXPORT_PHOTOS_PER_SEAL = 2;

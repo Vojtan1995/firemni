@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
+import '../seals/seal_list_helpers.dart';
 import '../seals/seal_duplicate_local.dart';
 import 'sync_outbox_user.dart';
 
@@ -281,8 +282,7 @@ List<Map<String, dynamic>> mergeSealListWithLocalRows({
     if (apiNumbers.contains(row.sealNumber)) continue;
     merged.add(mapLocal(row));
   }
-  merged.sort((a, b) =>
-      (a['sealNumber'] as String).compareTo(b['sealNumber'] as String));
+  merged.sort(compareSealsByUpdatedAt);
   return merged;
 }
 
@@ -311,6 +311,7 @@ Future<void> remapLocalSealIdAfterPush(
             location: row.location,
             fireRating: row.fireRating,
             note: Value(row.note),
+            internalNote: Value(row.internalNote),
             status: Value(row.status),
             version: Value(row.version),
             isSynced: const Value(true),

@@ -188,7 +188,7 @@ describe('Worksheets module integration', () => {
     const toDraft = await request(app)
       .patch(`/api/worksheets/${workerWorksheetId}/status`)
       .set('Authorization', `Bearer ${vedeniToken}`)
-      .send({ status: 'draft' });
+      .send({ status: 'draft', comment: 'Nutná oprava položek' });
     expect(toDraft.status).toBe(200);
 
     const resubmit = await request(app)

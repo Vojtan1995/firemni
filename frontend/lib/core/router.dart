@@ -9,6 +9,7 @@ import '../features/auth/profile_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/jobs/job_number_screen.dart';
 import '../features/jobs/floor_list_screen.dart';
+import '../features/jobs/floor_plan_screen.dart';
 import '../features/seals/seal_list_screen.dart';
 import '../features/seals/seal_form_screen.dart';
 import '../features/seals/seal_detail_screen.dart';
@@ -21,9 +22,12 @@ import '../features/pricing/price_list_screen.dart';
 import '../features/logs/logs_screen.dart';
 import '../features/jobs/my_jobs_screen.dart';
 import '../features/messages/messages_screen.dart';
+import '../features/notifications/notifications_screen.dart';
+import '../features/search/search_screen.dart';
 import '../features/admin/admin_trash_screen.dart';
 import '../features/stats/stats_screen.dart';
 import '../features/worksheets/worksheets_screen.dart';
+import '../features/worksheets/saved_worksheets_screen.dart';
 import '../features/worksheets/soupisy_screen.dart';
 import '../features/worksheets/worksheet_detail_screen.dart';
 
@@ -115,12 +119,21 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (c, s) =>
                   FloorListScreen(jobId: s.pathParameters['jobId']!)),
           GoRoute(
-            path: 'seals/:floorId',
-            builder: (c, s) => SealListScreen(
-              floorId: s.pathParameters['floorId']!,
-              jobId: s.uri.queryParameters['jobId'] ?? '',
+              path: 'floor-plan/:floorId',
+              builder: (c, s) => FloorPlanScreen(
+                jobId: s.uri.queryParameters['jobId'] ?? '',
+                floorId: s.pathParameters['floorId']!,
+                placeSealId: s.uri.queryParameters['placeSealId'],
+                focusSealId: s.uri.queryParameters['focusSealId'],
+              ),
             ),
-          ),
+          GoRoute(
+              path: 'seals/:floorId',
+              builder: (c, s) => SealListScreen(
+                floorId: s.pathParameters['floorId']!,
+                jobId: s.uri.queryParameters['jobId'] ?? '',
+              ),
+            ),
           GoRoute(
             path: 'seal/new',
             builder: (c, s) => SealFormScreen(
@@ -143,6 +156,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
           GoRoute(path: 'my-jobs', builder: (_, __) => const MyJobsScreen()),
           GoRoute(path: 'messages', builder: (_, __) => const MessagesScreen()),
+          GoRoute(path: 'notifications', builder: (_, __) => const NotificationsScreen()),
+          GoRoute(path: 'search', builder: (_, __) => const SearchScreen()),
           GoRoute(
               path: 'management',
               builder: (_, __) => const ManagementHomeScreen()),
@@ -153,6 +168,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, __) => const UsersAdminScreen()),
           GoRoute(path: 'reports', builder: (_, __) => const ReportsScreen()),
           GoRoute(path: 'soupisy', builder: (_, __) => const SoupisyScreen()),
+          GoRoute(
+            path: 'saved-worksheets',
+            builder: (_, __) => const SavedWorksheetsScreen(),
+          ),
           GoRoute(path: 'worksheets', builder: (_, __) => const WorksheetsScreen()),
           GoRoute(
             path: 'worksheets/:id',
