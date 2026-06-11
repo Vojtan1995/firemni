@@ -38,4 +38,41 @@ void main() {
 
     await db.close();
   });
+
+  test('job opened by number is immediately available offline', () async {
+    final db = AppDatabase.forTesting();
+    final cache = JobsCacheService(db);
+    final updatedAt = DateTime.utc(2026, 6, 11).toIso8601String();
+
+    await cache.cacheOpenedJobFromApi(
+      {
+        'id': 'job-opened',
+        'projectNumber': '87654321',
+        'name': 'Nově otevřená stavba',
+        'address': 'Brno',
+        'status': 'active',
+        'isArchived': false,
+        'updatedAt': updatedAt,
+        'floors': [
+          {
+            'id': 'floor-opened',
+            'name': 'Přízemí',
+            'sortOrder': 0,
+            'updatedAt': updatedAt,
+          },
+        ],
+      },
+      userId: 'new-worker',
+      roleOnJob: 'worker',
+    );
+
+    final offline = await cache.findJobByProjectNumber(
+      '87654321',
+      userId: 'new-worker',
+    );
+    expect(offline?['id'], 'job-opened');
+    expect(offline?['floors'], hasLength(1));
+
+    await db.close();
+  });
 }

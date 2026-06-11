@@ -10,8 +10,12 @@ import { paramId } from '../lib/params.js';
 import { requirePermission } from '../lib/permissions.js';
 import * as jobParticipantService from '../services/job-participant.service.js';
 import { assertJobReadable } from '../services/authorization.service.js';
-import { jobStatusPatch, parseJobStatusQuery } from '../lib/job-status.js';
+import {
+  jobStatusPatch,
+  parseJobStatusQuery,
+} from '../lib/job-status.js';
 import { exportJobCsv, exportJobPdf } from '../services/job-export.service.js';
+import { jobNumberRateLimiter } from '../middleware/security.middleware.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -83,7 +87,7 @@ router.get('/', requireRole(UserRole.vedeni, UserRole.admin), async (req, res, n
   }
 });
 
-router.get('/by-number/:projectNumber', async (req, res, next) => {
+router.get('/by-number/:projectNumber', jobNumberRateLimiter, async (req, res, next) => {
   try {
     const num = projectNumberSchema.parse(req.params.projectNumber);
     const job = await prisma.job.findFirst({
@@ -91,7 +95,11 @@ router.get('/by-number/:projectNumber', async (req, res, next) => {
       include: { floors: { where: { deletedAt: null }, orderBy: { sortOrder: 'asc' } } },
     });
     if (!job) throw notFound('Stavba s tímto číslem neexistuje');
-    await assertJobReadable(job.id, req.user!.role, req.user!.id);
+    if (req.user!.role === UserRole.worker) {
+      await jobParticipantService.joinJobByNumber(job.id, req.user!.id);
+    } else {
+      await assertJobReadable(job.id, req.user!.role, req.user!.id);
+    }
     res.json(job);
   } catch (e) {
     next(e);

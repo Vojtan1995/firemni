@@ -79,9 +79,9 @@ describe('Authorization (wave 1)', () => {
     await prisma.job.deleteMany({ where: { id: foreignJobId } });
   });
 
-  it('worker without assignment cannot GET /api/jobs/by-number/:num → 403', async () => {
+  it('worker without assignment cannot GET floors directly → 403', async () => {
     const res = await request(app)
-      .get(`/api/jobs/by-number/${foreignProject}`)
+      .get(`/api/jobs/${foreignJobId}/floors`)
       .set('Authorization', `Bearer ${worker1Token}`);
     expect(res.status).toBe(403);
   });

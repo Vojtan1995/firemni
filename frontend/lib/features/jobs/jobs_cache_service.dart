@@ -7,6 +7,57 @@ class JobsCacheService {
 
   final AppDatabase db;
 
+  Future<void> cacheOpenedJobFromApi(
+    Map<String, dynamic> job, {
+    required String userId,
+    required String roleOnJob,
+  }) async {
+    final now = DateTime.now();
+    final jobId = job['id'] as String;
+    final isArchived = job['isArchived'] as bool? ?? false;
+    final updatedAt =
+        DateTime.tryParse(job['updatedAt']?.toString() ?? '') ?? now;
+
+    await db.into(db.localJobs).insertOnConflictUpdate(
+          LocalJobsCompanion.insert(
+            id: jobId,
+            projectNumber: job['projectNumber'] as String,
+            name: job['name'] as String,
+            address: Value(job['address'] as String?),
+            isArchived: Value(isArchived),
+            status: Value(
+              job['status'] as String? ?? (isArchived ? 'archived' : 'active'),
+            ),
+            lastSyncedAt: Value(now),
+            updatedAt: updatedAt,
+          ),
+        );
+
+    for (final floor in (job['floors'] as List? ?? [])) {
+      final data = floor as Map<String, dynamic>;
+      await db.into(db.localFloors).insertOnConflictUpdate(
+            LocalFloorsCompanion.insert(
+              id: data['id'] as String,
+              jobId: jobId,
+              name: data['name'] as String,
+              sortOrder: Value(data['sortOrder'] as int? ?? 0),
+              updatedAt:
+                  DateTime.tryParse(data['updatedAt']?.toString() ?? '') ??
+                      updatedAt,
+            ),
+          );
+    }
+
+    await db.into(db.localMyJobAssignments).insertOnConflictUpdate(
+          LocalMyJobAssignmentsCompanion.insert(
+            userId: userId,
+            jobId: jobId,
+            roleOnJob: Value(roleOnJob),
+            lastActivityAt: now,
+          ),
+        );
+  }
+
   Future<void> cacheMyJobsFromApi(
     List<Map<String, dynamic>> jobs,
     String userId,
@@ -15,7 +66,8 @@ class JobsCacheService {
     for (final j in jobs) {
       final jobId = j['id'] as String;
       final isArchived = j['isArchived'] as bool? ?? false;
-      final status = j['status'] as String? ?? (isArchived ? 'archived' : 'active');
+      final status =
+          j['status'] as String? ?? (isArchived ? 'archived' : 'active');
       await db.into(db.localJobs).insertOnConflictUpdate(
             LocalJobsCompanion.insert(
               id: jobId,
@@ -61,7 +113,8 @@ class JobsCacheService {
     } else {
       await (db.delete(db.localMyJobAssignments)
             ..where((a) =>
-                a.userId.equals(userId) & a.jobId.isNotIn(currentJobIds.toList())))
+                a.userId.equals(userId) &
+                a.jobId.isNotIn(currentJobIds.toList())))
           .go();
     }
   }
