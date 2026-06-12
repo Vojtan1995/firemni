@@ -4,7 +4,7 @@ import 'marker_colors.dart';
 const double kSealMarkerBaseSize = 18;
 
 double markerScaleForViewer(double viewerScale) =>
-    (1 / viewerScale).clamp(0.2, 2.0);
+    (1 / viewerScale).clamp(0.08, 2.0);
 
 ({
   double size,

@@ -55,6 +55,8 @@ class LocalSeals extends Table {
   IntColumn get version => integer().withDefault(const Constant(1))();
   BoolColumn get syncConflict => boolean().withDefault(const Constant(false))();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+  BoolColumn get markerPlacementPending =>
+      boolean().withDefault(const Constant(false))();
   TextColumn get jsonPayload => text().nullable()();
   DateTimeColumn get deletedAt => dateTime().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
@@ -118,6 +120,12 @@ class LocalFloorDrawings extends Table {
   TextColumn get mimeType => text()();
   IntColumn get width => integer()();
   IntColumn get height => integer()();
+  /// missing | downloading | downloaded | error
+  TextColumn get downloadStatus =>
+      text().withDefault(const Constant('downloading'))();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get nextRetryAt => dateTime().nullable()();
+  TextColumn get lastError => text().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {floorId};
@@ -153,7 +161,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -189,6 +197,18 @@ class AppDatabase extends _$AppDatabase {
           if (from < 8) {
             await migrator.createTable(localFloorDrawings);
             await migrator.createTable(localSealMarkers);
+          }
+          if (from < 9) {
+            await migrator.addColumn(
+                localFloorDrawings, localFloorDrawings.downloadStatus);
+            await migrator.addColumn(
+                localFloorDrawings, localFloorDrawings.retryCount);
+            await migrator.addColumn(
+                localFloorDrawings, localFloorDrawings.nextRetryAt);
+            await migrator.addColumn(
+                localFloorDrawings, localFloorDrawings.lastError);
+            await migrator.addColumn(
+                localSeals, localSeals.markerPlacementPending);
           }
         },
       );

@@ -83,6 +83,12 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     return '${from?.split('T').first ?? '—'} – ${to?.split('T').first ?? '—'}';
   }
 
+  String _floorsLabel(Map<String, dynamic> ws) {
+    final names = (ws['floorNames'] as List?)?.cast<String>() ?? [];
+    if (names.isEmpty) return '—';
+    return names.join(', ');
+  }
+
   String _workersLabel(Map<String, dynamic> ws) {
     final workers = (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
     if (workers.isEmpty) return ws['createdBy']?['displayName'] as String? ?? '—';
@@ -90,6 +96,55 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
         .map((w) => (w['user'] as Map?)?['displayName'] ?? '')
         .where((s) => s.toString().isNotEmpty)
         .join(', ');
+  }
+
+  Widget _worksheetCard(Map<String, dynamic> ws) {
+    final job = ws['job'] as Map<String, dynamic>?;
+    final status = ws['status'] as String? ?? 'draft';
+    final count = ws['_count']?['items'] ?? 0;
+    return AppCard(
+      title: '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'.trim(),
+      subtitle:
+          '${_floorsLabel(ws)} · ${_workersLabel(ws)} · ${_periodLabel(ws)} · $count položek',
+      trailing: StatusBadge(
+        status: status,
+        label: _statusLabels[status] ?? status,
+        compact: true,
+      ),
+      onTap: () => context.push('/worksheets/${ws['id']}'),
+    );
+  }
+
+  Widget _buildWorksheetList(AuthService auth) {
+    if (auth.isWorker) {
+      return ListView.builder(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        itemCount: _worksheets.length,
+        itemBuilder: (_, i) => _worksheetCard(_worksheets[i]),
+      );
+    }
+
+    final grouped = <String, List<Map<String, dynamic>>>{};
+    for (final ws in _worksheets) {
+      final key = _workersLabel(ws);
+      grouped.putIfAbsent(key, () => []).add(ws);
+    }
+    final keys = grouped.keys.toList()..sort();
+
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppSpacing.lg),
+      itemCount: keys.length,
+      itemBuilder: (_, i) {
+        final name = keys[i];
+        final items = grouped[name]!;
+        return ExpansionTile(
+          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
+          subtitle: Text('${items.length} soupisů'),
+          initiallyExpanded: i == 0,
+          children: items.map(_worksheetCard).toList(),
+        );
+      },
+    );
   }
 
   @override
@@ -184,31 +239,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                         message: 'Žádné uložené soupisy',
                         icon: Icons.description_outlined,
                       )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(AppSpacing.lg),
-                        itemCount: _worksheets.length,
-                        itemBuilder: (_, i) {
-                          final ws = _worksheets[i];
-                          final job = ws['job'] as Map<String, dynamic>?;
-                          final status = ws['status'] as String? ?? 'draft';
-                          final count = ws['_count']?['items'] ?? 0;
-                          final total = ws['totalPrice'];
-                          return AppCard(
-                            title:
-                                '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'
-                                    .trim(),
-                            subtitle:
-                                '${_workersLabel(ws)} · ${_periodLabel(ws)} · $count položek'
-                                '${total != null ? ' · ${total} Kč' : ''}',
-                            trailing: StatusBadge(
-                              status: status,
-                              label: _statusLabels[status] ?? status,
-                              compact: true,
-                            ),
-                            onTap: () => context.push('/worksheets/${ws['id']}'),
-                          );
-                        },
-                      ),
+                    : _buildWorksheetList(auth),
           ),
         ],
       ),

@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { pdf as pdfToImg } from 'pdf-to-img';
 import type { Response } from 'express';
 import { SealStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
@@ -111,10 +112,24 @@ export async function exportFloorDrawingPdf(
   }
 
   const file = await getFloorDrawingFile(floorId, role, userId);
-  const thumb = await sharp(file.body)
-    .resize(520, 520, { fit: 'inside', withoutEnlargement: true })
-    .jpeg({ quality: 85 })
-    .toBuffer();
+  let thumb: Buffer;
+  if (file.mimeType === 'application/pdf') {
+    const doc = await pdfToImg(file.body, { scale: 2 });
+    try {
+      const page = await doc.getPage(1);
+      thumb = await sharp(page)
+        .resize(520, 520, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+    } finally {
+      await doc.destroy();
+    }
+  } else {
+    thumb = await sharp(file.body)
+      .resize(520, 520, { fit: 'inside', withoutEnlargement: true })
+      .jpeg({ quality: 85 })
+      .toBuffer();
+  }
   const meta = await sharp(thumb).metadata();
   const imgW = meta.width ?? 400;
   const imgH = meta.height ?? 300;

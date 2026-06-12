@@ -59,19 +59,9 @@ class HomeScreen extends ConsumerWidget {
           const SizedBox(height: AppSpacing.sm),
           const ResumeWorkContextCard(),
           _MenuTile(
-            icon: Icons.search,
-            title: 'Vyhledávání',
-            onTap: () => context.push('/search'),
-          ),
-          _MenuTile(
-            icon: Icons.construction,
-            title: 'Stavba',
-            onTap: () => context.push('/job-number'),
-          ),
-          _MenuTile(
             icon: Icons.work,
-            title: 'Moje zakázky',
-            onTap: () => context.push('/my-jobs'),
+            title: 'Zakázky',
+            onTap: () => context.push('/jobs'),
           ),
           if (auth.canAccessReports || auth.canManageWorksheets)
             _MenuTile(
@@ -79,7 +69,7 @@ class HomeScreen extends ConsumerWidget {
               title: auth.isWorker ? 'Moje soupisy' : 'Soupisy práce',
               onTap: () => context.push('/soupisy'),
             ),
-          if (auth.canViewStats)
+          if (auth.canViewStats && !auth.isWorker)
             _MenuTile(
               icon: Icons.analytics_outlined,
               title: auth.isWorker

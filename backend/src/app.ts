@@ -23,6 +23,7 @@ import statsRoutes from './routes/stats.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import appRoutes from './routes/app.routes.js';
 
 export function createApp() {
   const app = express();
@@ -55,6 +56,7 @@ export function createApp() {
   }
 
   app.use('/api/auth', authRoutes);
+  app.use('/api/app', appRoutes);
   app.use('/api/jobs', jobsRoutes);
   app.use('/api/jobs/:jobId/floors', floorsRoutes);
   app.use('/api/seals', sealsRoutes);

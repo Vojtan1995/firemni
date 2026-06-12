@@ -61,6 +61,15 @@ flutter build apk --release --dart-define=API_BASE_URL=https://your-backend.exam
 
 Bez `API_BASE_URL` release build spadne při startu aplikace.
 
+### Aktualizace Android klienta (bez ručního šíření APK)
+
+Po nahrání nového APK na HTTPS nastavte na backendu env `APP_RELEASE_*` (viz [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §5b). Aplikace při startu zavolá `GET /api/app/release?platform=android` a nabídne stažení.
+
+```powershell
+.\build-release.ps1 -ApiUrl https://your-backend.example.com
+# skript na konci vypíše doporučené APP_RELEASE_* hodnoty z pubspec.yaml
+```
+
 ## Produkční backend (Railway)
 
 Minimální proměnné prostředí:

@@ -235,6 +235,7 @@ export async function listFloorSealsFiltered(options: {
       note: true,
       internalNote: true,
       reviewStatus: true,
+      markerPlacementPending: true,
       construction: true,
       location: true,
       fireRating: true,

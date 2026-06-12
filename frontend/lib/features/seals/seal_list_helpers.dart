@@ -49,5 +49,6 @@ Map<String, dynamic> mapLocalSealListRow(
     'reviewStatus': reviewStatus,
     'isSynced': row.isSynced,
     'syncConflict': row.syncConflict,
+    'markerPlacementPending': row.markerPlacementPending,
   };
 }

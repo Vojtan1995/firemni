@@ -130,7 +130,7 @@ void main() {
           'Expected navigation to home after login. Visible texts: $visibleTexts',
         );
       }
-      expect(find.text('Stavba'), findsOneWidget);
+      expect(find.text('Zakázky'), findsOneWidget);
       expect(find.text('Neplatné přihlašovací údaje'), findsNothing);
     });
     testWidgets('mustChangePin user is routed to PIN change screen',

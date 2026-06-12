@@ -153,6 +153,11 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
               version: Value(m['version'] as int? ?? 1),
               isSynced: Value(syncFlags.isSynced),
               syncConflict: Value(syncFlags.syncConflict),
+              markerPlacementPending: Value(
+                m['markerPlacementPending'] as bool? ??
+                    existing?.markerPlacementPending ??
+                    false,
+              ),
               jsonPayload: Value(jsonPayload),
               updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
                   DateTime.now(),
@@ -202,6 +207,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       if (local == null) continue;
       seal['isSynced'] = local.isSynced;
       seal['syncConflict'] = local.syncConflict;
+      seal['markerPlacementPending'] = local.markerPlacementPending;
     }
   }
 
@@ -296,6 +302,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     setState(() => _uploadingDrawing = true);
     try {
       final uploaded = await pickAndUploadFloorDrawing(
+        context: context,
         dio: ref.read(dioProvider),
         jobId: widget.jobId,
         floorId: widget.floorId,

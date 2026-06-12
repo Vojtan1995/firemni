@@ -33,7 +33,8 @@ class SealListRow extends StatelessWidget {
     final reviewStatus = seal['reviewStatus'] as String?;
     final isReturned = reviewStatus == 'returned';
     final pendingSync = seal['isSynced'] == false;
-    final unplaced = seal['hasMarker'] == false;
+    final placementPending = seal['markerPlacementPending'] == true;
+    final unplaced = !placementPending && seal['hasMarker'] == false;
     final number = seal['sealNumber'] as String? ?? '?';
 
     return AppCard(
@@ -72,6 +73,15 @@ class SealListRow extends StatelessWidget {
             _iconBadge(Icons.replay, AppColors.error),
           if (pendingSync)
             _iconBadge(Icons.cloud_upload_outlined, AppColors.warning),
+          if (placementPending)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: Tooltip(
+                message: 'Čeká na zakreslení',
+                child: Icon(Icons.pending_outlined,
+                    size: 16, color: AppColors.warning),
+              ),
+            ),
           if (unplaced)
             _iconBadge(Icons.place_outlined, AppColors.warning),
           StatusBadge(

@@ -16,13 +16,23 @@ import 'dart:convert';
 import '../reports/export_service.dart' show ExportSaveCancelled;
 import '../sync/sync_service.dart';
 import 'floor_drawing_storage.dart';
+import 'floor_plan/floor_drawing_download_service.dart';
 import 'floor_plan/floor_drawing_service.dart';
+import 'floor_plan/floor_drawing_status.dart';
+import 'floor_plan/floor_drawing_upload.dart';
+import 'floor_plan/floor_plan_viewer.dart';
 import 'floor_plan/floor_plan_filter_sheet.dart';
 import 'floor_plan/floor_plan_filters.dart';
 import 'floor_plan/marker_colors.dart';
 import 'floor_plan/placement_stats_banner.dart';
-import 'floor_plan/seal_marker_widget.dart';
 import 'job_context_bar.dart';
+
+/// Výsledek potvrzení umístění značky ve draft režimu formuláře.
+class SealPlacementResult {
+  const SealPlacementResult({required this.x, required this.y});
+  final double x;
+  final double y;
+}
 
 class FloorPlanScreen extends ConsumerStatefulWidget {
   const FloorPlanScreen({
@@ -31,12 +41,16 @@ class FloorPlanScreen extends ConsumerStatefulWidget {
     required this.floorId,
     this.placeSealId,
     this.focusSealId,
+    this.draftPlacement = false,
+    this.draftSealNumber,
   });
 
   final String jobId;
   final String floorId;
   final String? placeSealId;
   final String? focusSealId;
+  final bool draftPlacement;
+  final String? draftSealNumber;
 
   @override
   ConsumerState<FloorPlanScreen> createState() => _FloorPlanScreenState();
@@ -55,13 +69,19 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   String? _movingSealId;
   double? _pendingX;
   double? _pendingY;
+  double? _draftX;
+  double? _draftY;
+  bool _draftDirty = false;
+  bool _fromCache = false;
   bool _uploading = false;
+  String? _offlinePendingMessage;
   FloorPlanFilterState _filter = const FloorPlanFilterState();
   String? _highlightSealId;
   int _total = 0;
   int _placed = 0;
   int _unplaced = 0;
   double _viewerScale = 1;
+  Size? _canvasSize;
 
   @override
   void initState() {
@@ -86,13 +106,40 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     }
   }
 
+  bool get _isDraftMode => widget.draftPlacement;
+
+  List<Map<String, dynamic>> get _displayMarkers {
+    if (!_isDraftMode || _draftX == null || _draftY == null) {
+      return _visibleMarkers;
+    }
+    return [
+      ..._visibleMarkers,
+      {
+        'sealId': '__draft__',
+        'sealNumber': widget.draftSealNumber ?? '?',
+        'x': _draftX,
+        'y': _draftY,
+        'status': 'draft',
+      },
+    ];
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
+      _fromCache = false;
+      _offlinePendingMessage = null;
     });
     final db = ref.read(databaseProvider);
     await _loadFloorSeals(db);
+    final hadCache = await _loadOffline(db, keepLoading: true);
+    if (hadCache && mounted) {
+      setState(() {
+        _loading = false;
+        _fromCache = true;
+      });
+    }
     try {
       final res = await ref.read(dioProvider).get(
         '/api/jobs/${widget.jobId}/floors/${widget.floorId}/drawing',
@@ -107,7 +154,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         bytes = await _fetchDrawingBytes(drawing['fileUrl'] as String?);
         if (bytes != null) {
           final mime = drawing['mimeType'] as String? ?? 'image/webp';
-          final ext = mime.contains('png') ? 'png' : 'webp';
+          final ext = floorDrawingExtensionForMime(mime);
           final localPath = await persistFloorDrawingBytes(
             widget.floorId,
             bytes,
@@ -122,6 +169,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                   mimeType: mime,
                   width: drawing['width'] as int? ?? 1,
                   height: drawing['height'] as int? ?? 1,
+                  downloadStatus: Value(
+                    FloorDrawingDownloadStatus.downloaded.toDb(),
+                  ),
                   updatedAt: DateTime.tryParse(
                           drawing['updatedAt'] as String? ?? '') ??
                       DateTime.now(),
@@ -138,10 +188,13 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         _markers = _enrichMarkers(markers);
         _imageBytes = bytes;
         _loading = false;
+        _fromCache = false;
       });
       _focusSealIfNeeded();
     } on DioException catch (_) {
-      await _loadOffline(db);
+      if (!hadCache) {
+        await _loadOffline(db);
+      }
       await _loadPlacementStats(offline: true);
     } catch (e) {
       if (!mounted) return;
@@ -249,11 +302,20 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           orElse: () => null,
         );
     if (marker == null) return;
+    final canvas = _canvasSize;
+    if (canvas == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _focusSealIfNeeded();
+      });
+      return;
+    }
     final x = (marker['x'] as num).toDouble();
     final y = (marker['y'] as num).toDouble();
-    _transformController.value = Matrix4.identity()
-      ..translate(-x * 200 + 100, -y * 200 + 100)
-      ..scale(2.0);
+    _transformController.value = focusTransformForMarker(
+      x: x,
+      y: y,
+      canvasSize: canvas,
+    );
     Future.delayed(const Duration(seconds: 2), () {
       if (mounted) setState(() => _highlightSealId = null);
     });
@@ -280,18 +342,12 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     List<Map<String, dynamic>> markers,
   ) async {
     if (drawing != null) {
-      await db.into(db.localFloorDrawings).insertOnConflictUpdate(
-            LocalFloorDrawingsCompanion.insert(
-              floorId: widget.floorId,
-              jobId: widget.jobId,
-              filePath: drawing['filePath'] as String,
-              mimeType: drawing['mimeType'] as String? ?? 'image/webp',
-              width: drawing['width'] as int? ?? 1,
-              height: drawing['height'] as int? ?? 1,
-              updatedAt: DateTime.tryParse(drawing['updatedAt'] as String? ?? '') ??
-                  DateTime.now(),
-            ),
-          );
+      await upsertFloorDrawingMetadata(
+        db,
+        floorId: widget.floorId,
+        jobId: widget.jobId,
+        meta: drawing,
+      );
     }
     for (final m in markers) {
       await db.into(db.localSealMarkers).insertOnConflictUpdate(
@@ -320,7 +376,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     return null;
   }
 
-  Future<void> _loadOffline(AppDatabase db) async {
+  Future<bool> _loadOffline(AppDatabase db, {bool keepLoading = false}) async {
     final drawingRow = await (db.select(db.localFloorDrawings)
           ..where((d) => d.floorId.equals(widget.floorId)))
         .getSingleOrNull();
@@ -334,7 +390,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
       bytes = await File(drawingRow.localPath!).readAsBytes();
     }
     final sealById = {for (final s in _floorSeals) s['id'] as String: s};
-    if (!mounted) return;
+    final hasCache = bytes != null && bytes.isNotEmpty;
+    final hasMetadata = drawingRow != null && drawingRow.filePath.isNotEmpty;
+    if (!mounted) return hasCache;
     setState(() {
       _drawing = drawingRow == null
           ? null
@@ -357,10 +415,17 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           })
           .toList();
       _imageBytes = bytes;
-      _loading = false;
-      _error = drawingRow == null ? 'Výkres není v offline cache' : null;
+      if (!keepLoading) _loading = false;
+      _fromCache = hasCache;
+      _offlinePendingMessage = hasMetadata && !hasCache
+          ? 'Výkres existuje, soubor není stažen. Připojte síť nebo počkejte na stažení.'
+          : null;
+      _error = !hasCache && !hasMetadata
+          ? 'Výkres není v offline cache'
+          : null;
     });
     _focusSealIfNeeded();
+    return hasCache;
   }
 
   Future<void> _uploadDrawing() async {
@@ -368,6 +433,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     setState(() => _uploading = true);
     try {
       final uploaded = await pickAndUploadFloorDrawing(
+        context: context,
         dio: ref.read(dioProvider),
         jobId: widget.jobId,
         floorId: widget.floorId,
@@ -427,6 +493,12 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
             x: x,
             y: y,
             updatedAt: DateTime.now(),
+          ),
+        );
+
+    await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
+          const LocalSealsCompanion(
+            markerPlacementPending: Value(false),
           ),
         );
 
@@ -508,10 +580,64 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     }
   }
 
+  Future<bool> _confirmLeaveDraft() async {
+    if (!_isDraftMode || !_draftDirty) return true;
+    final leave = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Neuložené umístění'),
+        content: const Text(
+          'Změny pozice značky nebudou potvrzeny. Opravdu odejít?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Zůstat'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Odejít'),
+          ),
+        ],
+      ),
+    );
+    return leave == true;
+  }
+
+  void _confirmDraftPlacement() {
+    if (_draftX == null || _draftY == null) return;
+    final result = SealPlacementResult(x: _draftX!, y: _draftY!);
+    _popRoute(result);
+  }
+
+  /// Pop route after draft guard allows it (avoids PopScope + canPop:false crash).
+  void _popRoute([Object? result]) {
+    if (_isDraftMode && _draftDirty) {
+      setState(() => _draftDirty = false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.pop(result);
+      });
+      return;
+    }
+    context.pop(result);
+  }
+
+  bool get _draftBlocksPop => _isDraftMode && _draftDirty;
+
   Future<void> _onTapPlan(Offset local, Size size) async {
     if (size.width <= 0 || size.height <= 0) return;
-    final x = (local.dx / size.width).clamp(0.0, 1.0);
-    final y = (local.dy / size.height).clamp(0.0, 1.0);
+    final normalized = tapToNormalizedMarker(local, size);
+    final x = normalized.dx;
+    final y = normalized.dy;
+
+    if (_isDraftMode) {
+      setState(() {
+        _draftX = x;
+        _draftY = y;
+        _draftDirty = true;
+      });
+      return;
+    }
 
     if (_placingSealId != null) {
       final confirm = await showDialog<bool>(
@@ -749,9 +875,17 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     final width = (_drawing?['width'] as int?) ?? 1;
     final height = (_drawing?['height'] as int?) ?? 1;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !_draftBlocksPop,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop || !_draftBlocksPop) return;
+        if (await _confirmLeaveDraft()) {
+          _popRoute();
+        }
+      },
+      child: Scaffold(
       appBar: AppBar(
-        title: const Text('Výkres patra'),
+        title: Text(_isDraftMode ? 'Umístit značku' : 'Výkres patra'),
         actions: [
           if (_imageBytes != null) ...[
             if (auth.canAccessReports)
@@ -829,14 +963,25 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                       ],
                     ),
                   ),
-                if (_placingSealId != null || _movingSealId != null)
+                if (_fromCache && !_loading)
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    child: Text(
+                      'Offline — zobrazena uložená cache výkresu',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                if (_isDraftMode || _placingSealId != null || _movingSealId != null)
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
                     color: AppColors.info.withValues(alpha: 0.15),
                     child: Text(
-                      _placingSealId != null
-                          ? 'Klepněte na výkres a potvrďte umístění značky'
-                          : 'Klepněte na nové místo a potvrďte přesun značky',
+                      _isDraftMode
+                          ? 'Klepněte na výkres a potvrďte umístění tlačítkem dole'
+                          : _placingSealId != null
+                              ? 'Klepněte na výkres a potvrďte umístění značky'
+                              : 'Klepněte na nové místo a potvrďte přesun značky',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -848,83 +993,62 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                 Expanded(
                   child: _imageBytes == null
                       ? EmptyState(
-                          message: auth.canManageFloorDrawings
-                              ? 'Patro nemá výkres — nahrajte obrázek nebo PDF'
-                              : 'Výkres zatím není nahrán',
-                          icon: Icons.map_outlined,
-                          action: auth.canManageFloorDrawings
-                              ? AppPrimaryButton(
-                                  label: 'Nahrát výkres',
-                                  fullWidth: false,
-                                  onPressed: _uploading ? null : _uploadDrawing,
-                                )
-                              : null,
+                          message: _offlinePendingMessage ??
+                              (auth.canManageFloorDrawings
+                                  ? 'Patro nemá výkres — nahrajte obrázek nebo PDF'
+                                  : 'Výkres zatím není nahrán'),
+                          icon: _offlinePendingMessage != null
+                              ? Icons.cloud_download_outlined
+                              : Icons.map_outlined,
+                          action: _offlinePendingMessage != null
+                              ? null
+                              : auth.canManageFloorDrawings
+                                  ? AppPrimaryButton(
+                                      label: 'Nahrát výkres',
+                                      fullWidth: false,
+                                      onPressed:
+                                          _uploading ? null : _uploadDrawing,
+                                    )
+                                  : null,
                         )
-                      : InteractiveViewer(
+                      : FloorPlanViewer(
+                          bytes: _imageBytes!,
+                          mimeType:
+                              _drawing?['mimeType'] as String? ?? 'image/webp',
+                          intrinsicWidth: width,
+                          intrinsicHeight: height,
                           transformationController: _transformController,
-                          minScale: 0.5,
-                          maxScale: 5,
-                          child: Center(
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final aspect = width / height;
-                                final maxW = constraints.maxWidth;
-                                final maxH = constraints.maxHeight;
-                                double w = maxW;
-                                double h = w / aspect;
-                                if (h > maxH) {
-                                  h = maxH;
-                                  w = h * aspect;
-                                }
-                                final markerScale =
-                                    markerScaleForViewer(_viewerScale);
-                                return GestureDetector(
-                                  onTapUp: (_placingSealId != null || _movingSealId != null)
-                                      ? (d) => _onTapPlan(d.localPosition, Size(w, h))
-                                      : null,
-                                  child: SizedBox(
-                                    width: w,
-                                    height: h,
-                                    child: Stack(
-                                      clipBehavior: Clip.none,
-                                      children: [
-                                        Image.memory(
-                                          _imageBytes!,
-                                          width: w,
-                                          height: h,
-                                          fit: BoxFit.fill,
-                                        ),
-                                        ..._visibleMarkers.map((m) {
-                                          final x = (m['x'] as num).toDouble();
-                                          final y = (m['y'] as num).toDouble();
-                                          final sealId = m['sealId'] as String;
-                                          final size = kSealMarkerBaseSize * markerScale;
-                                          return Positioned(
-                                            left: x * w - size / 2,
-                                            top: y * h - size / 2,
-                                            child: SealMarkerWidget(
-                                              sealNumber:
-                                                  m['sealNumber'] as String? ?? '',
-                                              status: m['status'] as String? ?? 'draft',
-                                              reviewStatus:
-                                                  m['reviewStatus'] as String?,
-                                              scale: markerScale,
-                                              highlighted: _highlightSealId == sealId,
-                                              onTap: () => _onMarkerTap(m),
-                                            ),
-                                          );
-                                        }),
-                                      ],
-                                    ),
-                                  ),
-                                );
-                              },
-                            ),
-                          ),
+                          viewerScale: _viewerScale,
+                          markers: _displayMarkers,
+                          highlightSealId: _highlightSealId,
+                          onCanvasSizeChanged: (size) {
+                            if (_canvasSize != size) {
+                              setState(() => _canvasSize = size);
+                            }
+                          },
+                          onTapPlan: (_isDraftMode ||
+                                  _placingSealId != null ||
+                                  _movingSealId != null)
+                              ? _onTapPlan
+                              : null,
+                          onMarkerTap: _onMarkerTap,
                         ),
                 ),
               ],
             ),
+      bottomNavigationBar: _isDraftMode
+          ? SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(AppSpacing.lg),
+                child: FilledButton(
+                  onPressed:
+                      _draftX != null && _draftY != null ? _confirmDraftPlacement : null,
+                  child: const Text('Potvrdit umístění'),
+                ),
+              ),
+            )
+          : null,
+    ),
     );
   }
 }

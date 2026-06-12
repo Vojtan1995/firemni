@@ -10,7 +10,12 @@ import '../../database/database_provider.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../reports/export_service.dart';
+import 'floor_plan/floor_drawing_availability.dart';
+import 'floor_plan/floor_drawing_download_service.dart';
+import 'floor_plan/floor_drawing_prefetch_service.dart';
 import 'floor_plan/floor_drawing_service.dart';
+import 'floor_plan/floor_drawing_status.dart';
+import 'floor_plan/placement_pending_notify.dart';
 import 'job_context_bar.dart';
 import 'work_context_service.dart';
 
@@ -35,7 +40,39 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
   @override
   void initState() {
     super.initState();
+    onFloorDrawingDownloaded = _onDrawingDownloaded;
     _load();
+  }
+
+  @override
+  void dispose() {
+    if (onFloorDrawingDownloaded == _onDrawingDownloaded) {
+      onFloorDrawingDownloaded = null;
+    }
+    super.dispose();
+  }
+
+  Future<void> _onDrawingDownloaded(String floorId) async {
+    if (!mounted) return;
+    final db = ref.read(databaseProvider);
+    final pending = await countPlacementPendingSeals(db, floorId: floorId);
+    await _refreshDrawingStatuses(db);
+    if (!mounted) return;
+    if (pending > 0) {
+      final floor = _floors.cast<Map<String, dynamic>?>().firstWhere(
+            (f) => f?['id'] == floorId,
+            orElse: () => null,
+          );
+      final name = floor?['name'] as String? ?? 'patro';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Výkres „$name“ stažen — doplněte značku u $pending ucpávek',
+          ),
+          duration: const Duration(seconds: 6),
+        ),
+      );
+    }
   }
 
   Future<void> _persistJobContext() async {
@@ -56,22 +93,78 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     final db = ref.read(databaseProvider);
     final dio = ref.read(dioProvider);
 
+    await _loadFromDrift(db, showLoading: false);
+
     try {
       final res = await dio.get('/api/jobs/${widget.jobId}/floors');
       final apiList = (res.data as List).cast<Map<String, dynamic>>();
       await _cacheFloorsFromApi(db, apiList);
       await _persistJobContext();
+      await _refreshDrawingStatuses(db, apiFloors: apiList);
       if (!mounted) return;
       setState(() {
-        _floors = apiList;
         _dataSource = FloorListDataSource.online;
         _loading = false;
       });
+      prefetchJobFloorDrawings(
+        dio: dio,
+        db: db,
+        jobId: widget.jobId,
+      ).then((_) async {
+        if (!mounted) return;
+        await _refreshDrawingStatuses(db);
+      });
     } on DioException catch (_) {
-      await _loadFromDrift(db);
+      if (!mounted) return;
+      setState(() {
+        _dataSource = FloorListDataSource.offline;
+        _loading = false;
+        if (_floors.isEmpty) {
+          _offlineHint =
+              'Server nedostupný a v cache nejsou žádná patra pro tuto stavbu.';
+        }
+      });
     } catch (_) {
       await _loadFromDrift(db);
     }
+  }
+
+  Future<void> _refreshDrawingStatuses(
+    AppDatabase db, {
+    List<Map<String, dynamic>>? apiFloors,
+  }) async {
+    final rows = apiFloors != null
+        ? null
+        : await (db.select(db.localFloors)
+              ..where(
+                  (f) => f.jobId.equals(widget.jobId) & f.deletedAt.isNull())
+              ..orderBy([
+                (f) => OrderingTerm.asc(f.sortOrder),
+                (f) => OrderingTerm.asc(f.name),
+              ]))
+            .get();
+    final drawingRows = await (db.select(db.localFloorDrawings)
+          ..where((d) => d.jobId.equals(widget.jobId)))
+        .get();
+    final drawingByFloor = {for (final d in drawingRows) d.floorId: d};
+
+    List<Map<String, dynamic>> floors;
+    if (apiFloors != null) {
+      floors = apiFloors;
+    } else if (rows != null) {
+      floors = rows.map(_mapLocalFloorRow).toList();
+    } else {
+      return;
+    }
+
+    final enriched = floors.map((f) {
+      final id = f['id'] as String;
+      final d = drawingByFloor[id];
+      return _enrichFloorDrawingFields(f, d);
+    }).toList();
+
+    if (!mounted) return;
+    setState(() => _floors = enriched);
   }
 
   Future<void> _cacheFloorsFromApi(
@@ -90,31 +183,33 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     }
   }
 
-  Future<void> _loadFromDrift(AppDatabase db) async {
+  Future<void> _loadFromDrift(AppDatabase db, {bool showLoading = true}) async {
     final rows = await (db.select(db.localFloors)
           ..where((f) => f.jobId.equals(widget.jobId) & f.deletedAt.isNull())
           ..orderBy([
             (f) => OrderingTerm.asc(f.sortOrder),
-            (f) => OrderingTerm.asc(f.name)
+            (f) => OrderingTerm.asc(f.name),
           ]))
         .get();
-    final drawingRows = await db.select(db.localFloorDrawings).get();
-    final drawingFloorIds = drawingRows.map((d) => d.floorId).toSet();
+    final drawingRows = await (db.select(db.localFloorDrawings)
+          ..where((d) => d.jobId.equals(widget.jobId)))
+        .get();
+    final drawingByFloor = {for (final d in drawingRows) d.floorId: d};
 
     if (!mounted) return;
     await _persistJobContext();
     setState(() {
-      _floors = rows
-          .map((row) => {
-                ..._mapLocalFloorRow(row),
-                'hasDrawing': drawingFloorIds.contains(row.id),
-              })
-          .toList();
-      _dataSource = FloorListDataSource.offline;
-      _offlineHint = rows.isEmpty
-          ? 'Server nedostupný a v cache nejsou žádná patra pro tuto stavbu.'
-          : null;
-      _loading = false;
+      _floors = rows.map((row) {
+        final d = drawingByFloor[row.id];
+        return _enrichFloorDrawingFields(_mapLocalFloorRow(row), d);
+      }).toList();
+      if (showLoading) {
+        _dataSource = FloorListDataSource.offline;
+        _offlineHint = rows.isEmpty
+            ? 'Server nedostupný a v cache nejsou žádná patra pro tuto stavbu.'
+            : null;
+        _loading = false;
+      }
     });
   }
 
@@ -125,7 +220,35 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
         'sortOrder': row.sortOrder,
         'updatedAt': row.updatedAt.toIso8601String(),
         'hasDrawing': false,
+        'hasDrawingOnServer': false,
+        'drawingStatus': FloorDrawingDownloadStatus.missing,
+        'drawingStatusLabel': 'Bez výkresu',
       };
+
+  static Map<String, dynamic> _enrichFloorDrawingFields(
+    Map<String, dynamic> floor,
+    LocalFloorDrawing? drawingRow,
+  ) {
+    final hasDrawingOnServer = floor['hasDrawing'] == true ||
+        (drawingRow != null && drawingRow.filePath.isNotEmpty);
+    final status = drawingRow == null
+        ? (hasDrawingOnServer
+            ? FloorDrawingDownloadStatus.downloading
+            : FloorDrawingDownloadStatus.missing)
+        : resolveDownloadStatus(drawingRow);
+    final statusLabel = !hasDrawingOnServer
+        ? 'Bez výkresu'
+        : status == FloorDrawingDownloadStatus.downloaded
+            ? 'Výkres: Staženo'
+            : 'Výkres: ${status.label}';
+    return {
+      ...floor,
+      'hasDrawingOnServer': hasDrawingOnServer,
+      'hasDrawing': hasDrawingOnServer,
+      'drawingStatus': status,
+      'drawingStatusLabel': statusLabel,
+    };
+  }
 
   Future<void> _openSeals(Map<String, dynamic> floor) async {
     final userId = ref.read(currentUserIdProvider);
@@ -148,6 +271,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     setState(() => _uploadingFloorId = floorId);
     try {
       final uploaded = await pickAndUploadFloorDrawing(
+        context: context,
         dio: ref.read(dioProvider),
         jobId: widget.jobId,
         floorId: floorId,
@@ -319,9 +443,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
                             color: AppColors.textSecondary,
                           ),
                           title: f['name'] as String,
-                          subtitle: f['hasDrawing'] == true
-                              ? 'Výkres nahrán'
-                              : null,
+                          subtitle: f['drawingStatusLabel'] as String?,
                           trailing: uploading
                               ? const SizedBox(
                                   width: 24,

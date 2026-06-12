@@ -397,25 +397,40 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           )
         else
           ...items.map((item) {
-            final unit = item['unitPrice'];
-            final total = item['totalPrice'];
-            final unitVal = parseNumOrNull(unit);
-            final totalVal = parseNumOrNull(total);
-            final priceText = totalVal != null
-                ? '${totalVal.toStringAsFixed(2)} Kč'
-                : (unitVal != null ? '${unitVal.toStringAsFixed(2)} Kč/ks' : null);
+            final unitVal = parseNumOrNull(item['unitPrice']);
+            final totalVal = parseNumOrNull(item['totalPrice']);
+            final qty = parseNumOrNull(item['quantity']) ?? 0;
+            final computedTotal = totalVal ??
+                (unitVal != null ? unitVal * qty : null);
+            final unitLabel = item['unit'] as String? ?? 'kus';
             return AppCard(
               showChevron: false,
-              title: '#${item['sealNumber']} · ${item['entryType']} · ${item['dimension']}',
-              subtitle: 'Počet: ${item['quantity']}',
-              trailing: priceText != null
-                  ? Text(
-                      priceText,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w600,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '#${item['sealNumber']} · ${item['entryType']} · ${item['dimension']}',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: AppSpacing.sm),
+                  Row(
+                    children: [
+                      Expanded(child: Text('Množství: ${item['quantity']}')),
+                      if (unitVal != null)
+                        Expanded(
+                          child: Text(
+                            'Jedn. cena: ${unitVal.toStringAsFixed(2)} Kč/$unitLabel',
                           ),
-                    )
-                  : null,
+                        ),
+                      if (computedTotal != null)
+                        Text(
+                          'Celkem: ${computedTotal.toStringAsFixed(2)} Kč',
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
             );
           }),
         const SizedBox(height: AppSpacing.xl),

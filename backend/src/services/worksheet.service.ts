@@ -1,4 +1,4 @@
-import { WorkSheetStatus, UserRole } from '@prisma/client';
+import { WorkSheetStatus, UserRole, SealStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { hasPermission } from '../lib/permissions.js';
@@ -167,9 +167,15 @@ export async function listWorksheets(
       createdBy: { select: { displayName: true } },
       workers: { include: { user: { select: { id: true, displayName: true } } } },
       _count: { select: { items: true } },
+      items: { select: { floor: { select: { name: true } } } },
     },
     orderBy: { updatedAt: 'desc' },
-  });
+  }).then((worksheets) =>
+    worksheets.map(({ items, ...ws }) => ({
+      ...ws,
+      floorNames: [...new Set(items.map((i) => i.floor.name))].sort(),
+    })),
+  );
 }
 
 export async function createWorksheet(
@@ -275,12 +281,26 @@ export async function addWorksheetItems(
     throw badRequest('Některé položky nebyly nalezeny');
   }
 
+  const existingItems = await prisma.workSheetItem.findMany({
+    where: { sealEntryId: { in: sealEntryIds } },
+    select: { sealEntryId: true, worksheetId: true },
+  });
+  if (existingItems.some((item) => item.worksheetId !== worksheetId)) {
+    throw badRequest('Některé položky jsou již v jiném soupisu');
+  }
+  if (existingItems.some((item) => item.worksheetId === worksheetId)) {
+    throw badRequest('Některé položky jsou již v tomto soupisu');
+  }
+
   for (const entry of entries) {
     if (entry.seal.jobId !== ws.jobId) {
       throw badRequest('Všechny položky musí patřit ke stejné zakázce');
     }
     if (entry.seal.deletedAt) {
       throw badRequest('Ucpávka byla smazána');
+    }
+    if (entry.seal.status === SealStatus.invoiced) {
+      throw badRequest('Vyfakturovanou ucpávku nelze přidat do soupisu');
     }
     if (role === UserRole.worker && entry.seal.createdById !== userId) {
       throw forbidden('Worker může přidat pouze vlastní položky');
@@ -289,8 +309,13 @@ export async function addWorksheetItems(
 
   const existingCount = await prisma.workSheetItem.count({ where: { worksheetId } });
   const created = await prisma.$transaction(
-    entries.map((entry, i) =>
-      prisma.workSheetItem.create({
+    entries.map((entry, i) => {
+      const unitPrice = entry.unitPrice;
+      const quantity = entry.quantity;
+      const totalPrice =
+        entry.totalPrice ??
+        (unitPrice != null ? Number(unitPrice) * Number(quantity) : null);
+      return prisma.workSheetItem.create({
         data: {
           worksheetId,
           sealId: entry.sealId,
@@ -300,14 +325,14 @@ export async function addWorksheetItems(
           sealNumber: entry.seal.sealNumber,
           entryType: entry.entryType,
           dimension: entry.dimension,
-          quantity: entry.quantity,
+          quantity,
           unit: entry.unit ?? 'kus',
-          unitPrice: entry.unitPrice,
-          totalPrice: entry.totalPrice,
+          unitPrice,
+          totalPrice,
           sortOrder: existingCount + i,
         },
-      }),
-    ),
+      });
+    }),
   );
 
   await logActivity(userId, 'worksheet_add_items', 'worksheet', worksheetId, {
@@ -431,7 +456,11 @@ export async function populateWorksheetFromFilters(
     createdById: role === UserRole.worker ? userId : { in: workerIds },
   };
   if (filters.floorIds?.length) sealWhere.floorId = { in: filters.floorIds };
-  if (filters.status) sealWhere.status = filters.status;
+  if (filters.status) {
+    sealWhere.status = filters.status;
+  } else {
+    sealWhere.status = { in: [SealStatus.draft, SealStatus.checked] };
+  }
   if (filters.from || filters.to) {
     sealWhere.createdAt = {};
     if (filters.from) (sealWhere.createdAt as Record<string, Date>).gte = new Date(filters.from);

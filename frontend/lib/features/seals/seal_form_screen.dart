@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +24,10 @@ import 'seal_photo_storage.dart';
 import 'seal_note_helpers.dart';
 import '../auth/auth_provider.dart';
 import '../../core/unsaved_changes.dart';
+import '../jobs/floor_plan/floor_drawing_availability.dart';
+import '../jobs/floor_plan/floor_drawing_download_service.dart';
+import '../jobs/floor_plan/floor_drawing_status.dart';
+import '../jobs/floor_plan_screen.dart';
 
 final _sealNumberPattern = RegExp(r'^\d+$');
 
@@ -45,8 +50,6 @@ class SealFormScreen extends ConsumerStatefulWidget {
 
 class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _numberCtrl = TextEditingController();
-  final _openingLengthCtrl = TextEditingController();
-  final _openingWidthCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _internalNoteCtrl = TextEditingController();
   String? _system;
@@ -62,14 +65,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   bool _showPhotoWarning = false;
   int _baseVersion = 1;
   String? _duplicateNumberError;
+  String? _floorName;
+  FloorDrawingState? _drawingState;
+  double? _draftMarkerX;
+  double? _draftMarkerY;
+  bool _markerPlacementConfirmed = false;
 
   @override
   void initState() {
     super.initState();
     _numberCtrl.addListener(_onSealNumberChanged);
     _numberCtrl.addListener(_markDirty);
-    _openingLengthCtrl.addListener(_markDirty);
-    _openingWidthCtrl.addListener(_markDirty);
     _noteCtrl.addListener(_markDirty);
     _internalNoteCtrl.addListener(_markDirty);
     if (widget.isEdit) {
@@ -79,6 +85,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) async {
         if (!mounted) return;
         final db = ref.read(databaseProvider);
+        await _loadFloorContext(db);
         var next = await suggestNextSealNumber(db, floorId: widget.floorId);
         try {
           final res = await ref.read(dioProvider).get(
@@ -153,8 +160,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _construction = seal['construction'] as String?;
     _location = seal['location'] as String?;
     _fireRating = seal['fireRating'] as String?;
-    _openingLengthCtrl.text = seal['openingLengthMm']?.toString() ?? '';
-    _openingWidthCtrl.text = seal['openingWidthMm']?.toString() ?? '';
     _noteCtrl.text = seal['note'] as String? ?? '';
     _internalNoteCtrl.text = seal['internalNote'] as String? ?? '';
     _baseVersion = seal['version'] as int? ?? 1;
@@ -162,8 +167,87 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       ..clear()
       ..addAll(entryDraftsFromSealMap(seal));
 
+    await _loadFloorContext(db);
+    final marker = await (db.select(db.localSealMarkers)
+          ..where((m) => m.sealId.equals(widget.sealId!)))
+        .getSingleOrNull();
+    if (marker != null) _markerPlacementConfirmed = true;
+
     setState(() => _loadingInitial = false);
     _enableDirtyTracking();
+  }
+
+  Future<void> _loadFloorContext(AppDatabase db) async {
+    final floor = await (db.select(db.localFloors)
+          ..where((f) => f.id.equals(widget.floorId)))
+        .getSingleOrNull();
+    var drawing = await resolveFloorDrawingState(db, floorId: widget.floorId);
+
+    if (!drawing.hasDrawingOnFloor) {
+      try {
+        final res = await ref.read(dioProvider).get(
+              '/api/jobs/${widget.jobId}/floors/${widget.floorId}/drawing',
+            );
+        final drawingMeta =
+            (res.data as Map)['drawing'] as Map<String, dynamic>?;
+        if (drawingMeta != null) {
+          await upsertFloorDrawingMetadata(
+            db,
+            floorId: widget.floorId,
+            jobId: widget.jobId,
+            meta: drawingMeta,
+          );
+          drawing = await resolveFloorDrawingState(
+            db,
+            floorId: widget.floorId,
+          );
+          final dio = ref.read(dioProvider);
+          unawaited(
+            downloadFloorDrawingFile(
+              dio: dio,
+              db: db,
+              jobId: widget.jobId,
+              floorId: widget.floorId,
+              meta: drawingMeta,
+            ).then((_) async {
+              if (!mounted) return;
+              final updated = await resolveFloorDrawingState(
+                db,
+                floorId: widget.floorId,
+              );
+              if (mounted) setState(() => _drawingState = updated);
+            }),
+          );
+        }
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _floorName = floor?.name;
+      _drawingState = drawing;
+    });
+  }
+
+  Future<void> _openDraftPlacement() async {
+    final sealNumber = _numberCtrl.text.trim();
+    if (sealNumber.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Nejdřív zadejte číslo ucpávky')),
+      );
+      return;
+    }
+    final result = await context.push<SealPlacementResult>(
+      '/floor-plan/${widget.floorId}?jobId=${widget.jobId}&draftPlacement=1&sealNumber=$sealNumber',
+    );
+    if (result != null && mounted) {
+      setState(() {
+        _draftMarkerX = result.x;
+        _draftMarkerY = result.y;
+        _markerPlacementConfirmed = true;
+        _isDirty = true;
+      });
+    }
   }
 
   Future<void> _addPhotoFromSource(ImageSource source) async {
@@ -204,6 +288,44 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   void _removePhotoAt(int index) {
     setState(() => _photoPaths.removeAt(index));
     _markDirty();
+  }
+
+  Widget _drawingSection() {
+    final drawing = _drawingState;
+    if (drawing == null) {
+      return const Text('Načítání stavu výkresu…');
+    }
+    if (!drawing.hasDrawingOnFloor) {
+      return const Text('Patro nemá výkres — značka není potřeba.');
+    }
+    final statusText = drawing.status.label;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          'Značka na výkresu je volitelná — doplníte ji teď nebo později ve výkresu patra.',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        const SizedBox(height: 8),
+        Text('Stav výkresu: $statusText'),
+        if (_markerPlacementConfirmed)
+          const Text('Značka potvrzena')
+        else if (!drawing.isInteractive)
+          Text(
+            'Po uložení: čeká na zakreslení (výkres zatím není stažen).',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        const SizedBox(height: 8),
+        if (drawing.isInteractive)
+          FilledButton.icon(
+            onPressed: _openDraftPlacement,
+            icon: const Icon(Icons.place),
+            label: Text(
+              _markerPlacementConfirmed ? 'Změnit umístění' : 'Umístit na výkres',
+            ),
+          ),
+      ],
+    );
   }
 
   Widget _photosSection() {
@@ -305,16 +427,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           content: Text('Hlavní prostup potřebuje alespoň jeden materiál')));
       return;
     }
-    final openingL = parseMmText(_openingLengthCtrl.text);
-    final openingW = parseMmText(_openingWidthCtrl.text);
     if (_entries.asMap().entries.any((i) {
       final e = i.value;
       if (e.dimension.trim().isNotEmpty) return false;
       final calc = computeSealEntryPreview(
         entryType: e.entryType,
         quantityKus: e.quantity,
-        openingLengthMm: openingL,
-        openingWidthMm: openingW,
         itemLengthMm: parseMmText(e.itemLengthMmText),
         itemWidthMm: parseMmText(e.itemWidthMmText),
         allEntries: _entries,
@@ -334,6 +452,15 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
 
     final db = ref.read(databaseProvider);
+    final drawing =
+        _drawingState ?? await resolveFloorDrawingState(db, floorId: widget.floorId);
+
+    final placementPending = computeMarkerPlacementPending(
+      isEdit: widget.isEdit,
+      drawing: drawing,
+      markerPlacementConfirmed: _markerPlacementConfirmed,
+    );
+
     final duplicate = await findLocalDuplicateSeal(
       db,
       jobId: widget.jobId,
@@ -357,8 +484,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         final calc = computeSealEntryPreview(
           entryType: e.entryType,
           quantityKus: e.quantity,
-          openingLengthMm: openingL,
-          openingWidthMm: openingW,
           itemLengthMm: parseMmText(e.itemLengthMmText),
           itemWidthMm: parseMmText(e.itemWidthMmText),
           allEntries: _entries,
@@ -382,7 +507,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       if (widget.isEdit) {
         await _saveEdit(db, sealNumber, entriesPayload);
       } else {
-        await _saveCreate(db, sealNumber, entriesPayload);
+        await _saveCreate(
+          db,
+          sealNumber,
+          entriesPayload,
+          markerPlacementPending: placementPending,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -394,20 +524,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
   }
 
-  Map<String, dynamic> _openingPayloadFields() {
-    final openingL = parseMmText(_openingLengthCtrl.text);
-    final openingW = parseMmText(_openingWidthCtrl.text);
-    return {
-      if (openingL != null) 'openingLengthMm': openingL,
-      if (openingW != null) 'openingWidthMm': openingW,
-    };
-  }
-
   Future<void> _saveCreate(
     AppDatabase db,
     String sealNumber,
-    List<Map<String, dynamic>> entriesPayload,
-  ) async {
+    List<Map<String, dynamic>> entriesPayload, {
+    bool markerPlacementPending = false,
+  }) async {
     final sealId = const Uuid().v4();
     final role = ref.read(authServiceProvider).role;
     final payload = {
@@ -419,7 +541,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'construction': _construction,
       'location': _location,
       'fireRating': _fireRating,
-      ..._openingPayloadFields(),
+      'markerPlacementPending': markerPlacementPending,
       'entries': entriesPayload,
     };
     SealNoteHelpers.applyNotesToPayload(
@@ -447,10 +569,37 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             note: Value(cols.note),
             internalNote: Value(cols.internalNote),
             status: const Value('draft'),
+            markerPlacementPending: Value(markerPlacementPending),
             isSynced: const Value(false),
             jsonPayload: Value(jsonEncode(payload)),
             updatedAt: DateTime.now(),
           ));
+
+      if (_markerPlacementConfirmed &&
+          _draftMarkerX != null &&
+          _draftMarkerY != null) {
+        await db.into(db.localSealMarkers).insertOnConflictUpdate(
+              LocalSealMarkersCompanion.insert(
+                sealId: sealId,
+                floorId: widget.floorId,
+                sealNumber: sealNumber,
+                x: _draftMarkerX!,
+                y: _draftMarkerY!,
+                updatedAt: DateTime.now(),
+              ),
+            );
+        await ref.read(syncServiceProvider).enqueueMutation(
+              db: db,
+              entityType: 'seal_marker',
+              operation: 'update',
+              payload: {
+                'sealId': sealId,
+                'floorId': widget.floorId,
+                'x': _draftMarkerX,
+                'y': _draftMarkerY,
+              },
+            );
+      }
 
       for (final path in _photoPaths) {
         await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
@@ -472,55 +621,59 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     await ref.read(syncServiceProvider).syncAll();
 
     if (!mounted) return;
-    final message = await _buildSaveDialogMessage(db);
-    if (!mounted) return;
-    await showDialog(
+    if (markerPlacementPending) {
+      final addAnother = await showDialog<bool>(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('Uloženo'),
+          content: const Text(
+            'Ucpávka uložena jako čeká na zakreslení. '
+            'Značku doplníte ve výkresu patra po stažení výkresu nebo na signálu.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Hotovo'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Další ucpávka'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      if (addAnother == true) {
+        context.go('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+      } else {
+        context.go('/seals/${widget.floorId}?jobId=${widget.jobId}');
+      }
+      return;
+    }
+
+    final addAnother = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Uloženo'),
-        content: Text(message),
+        content: const Text('Chcete zadat další ucpávku?'),
         actions: [
           TextButton(
-            onPressed: () {
-              Navigator.pop(c);
-              context.push(
-                '/floor-plan/${widget.floorId}?jobId=${widget.jobId}&placeSealId=$sealId',
-              );
-            },
-            child: const Text('Umístit do výkresu'),
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Ne'),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(c);
-              context.go(
-                  '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
-            },
-            child: const Text('Přidat další'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(c);
-              context.pop();
-            },
-            child: const Text('Zpět na seznam'),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Ano'),
           ),
         ],
       ),
     );
-  }
-
-  Future<String> _buildSaveDialogMessage(AppDatabase db) async {
-    final unsent = await countUnsentPhotos(db);
-    if (unsent == 0) {
-      return 'Ucpávka byla uložena, fotky nahrány na server.';
+    if (!mounted) return;
+    if (addAnother == true) {
+      context.go('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+    } else {
+      context.go('/seals/${widget.floorId}?jobId=${widget.jobId}');
     }
-    final word = unsent == 1
-        ? 'fotka'
-        : unsent < 5
-            ? 'fotky'
-            : 'fotek';
-    return 'Ucpávka byla uložena, ale $unsent $word se nepodařilo nahrát. '
-        'Otevřete Synchronizaci a zkuste znovu.';
   }
 
   Future<void> _saveEdit(
@@ -542,7 +695,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'construction': _construction,
       'location': _location,
       'fireRating': _fireRating,
-      ..._openingPayloadFields(),
       'entries': entriesPayload,
     };
     SealNoteHelpers.applyNotesToPayload(
@@ -610,8 +762,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   void dispose() {
     _numberCtrl.removeListener(_onSealNumberChanged);
     _numberCtrl.dispose();
-    _openingLengthCtrl.dispose();
-    _openingWidthCtrl.dispose();
     _noteCtrl.dispose();
     _internalNoteCtrl.dispose();
     super.dispose();
@@ -661,6 +811,18 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            const SectionHeader(
+              title: 'Identifikace',
+              style: SectionHeaderStyle.h3,
+            ),
+            if (_floorName != null) ...[
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Patro'),
+                subtitle: Text(_floorName!),
+              ),
+              const SizedBox(height: 8),
+            ],
             TextField(
               controller: _numberCtrl,
               decoration: InputDecoration(
@@ -673,38 +835,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               ),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 16),
-            const Text('Rozměr prostupu (volitelné)',
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _openingLengthCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Délka prostupu (mm)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextField(
-                    controller: _openingWidthCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Šířka prostupu (mm)',
-                      border: OutlineInputBorder(),
-                    ),
-                    keyboardType: TextInputType.number,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             ChipSelector(
               label: 'Systém *',
               options: sealSystems,
@@ -714,21 +845,45 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
-            const SizedBox(height: 16),
-            ..._entries.asMap().entries.map((i) => _EntryEditor(
-                  index: i.key,
-                  entry: i.value,
-                  system: _system,
-                  openingLengthText: _openingLengthCtrl.text,
-                  openingWidthText: _openingWidthCtrl.text,
-                  allEntries: _entries,
-                  canRemove: _entries.length > 1,
-                  onRemove: () => _removeEntry(i.key),
-                  onChanged: () {
-                    setState(() {});
-                    _markDirty();
-                  },
-                )),
+            const SizedBox(height: 20),
+            const SectionHeader(
+              title: 'Hlavní prostup',
+              subtitle: 'Technické údaje',
+              style: SectionHeaderStyle.h3,
+            ),
+            if (_entries.isNotEmpty)
+              _EntryEditor(
+                index: 0,
+                entry: _entries.first,
+                system: _system,
+                allEntries: _entries,
+                canRemove: false,
+                onChanged: () {
+                  setState(() {});
+                  _markDirty();
+                },
+              ),
+            if (_entries.length > 1) ...[
+              const SizedBox(height: 12),
+              const SectionHeader(
+                title: 'Další prostupy',
+                style: SectionHeaderStyle.h3,
+              ),
+              ..._entries.asMap().entries.where((i) => i.key > 0).map(
+                    (i) => _EntryEditor(
+                      index: i.key,
+                      entry: i.value,
+                      system: _system,
+                      allEntries: _entries,
+                      canRemove: true,
+                      onRemove: () => _removeEntry(i.key),
+                      onChanged: () {
+                        setState(() {});
+                        _markDirty();
+                      },
+                    ),
+                  ),
+            ],
             TextButton.icon(
               onPressed: () {
                 setState(() => _entries.add(SealEntryDraftData()));
@@ -737,7 +892,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Přidat prostup'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 20),
+            const SectionHeader(
+              title: 'Umístění',
+              style: SectionHeaderStyle.h3,
+            ),
             ChipSelector(
               label: 'Konstrukce *',
               options: constructions,
@@ -767,11 +926,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
+            const SizedBox(height: 20),
+            const SectionHeader(title: 'Výkres', style: SectionHeaderStyle.h3),
+            _drawingSection(),
             if (!widget.isEdit) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
+              const SectionHeader(title: 'Fotky', style: SectionHeaderStyle.h3),
               _photosSection(),
-              const SizedBox(height: 16),
             ],
+            const SizedBox(height: 20),
+            const SectionHeader(title: 'Poznámky', style: SectionHeaderStyle.h3),
             ..._noteFields(ref.read(authServiceProvider).role),
             const SizedBox(height: 24),
             ElevatedButton(
@@ -832,8 +996,6 @@ class _EntryEditor extends StatefulWidget {
     required this.index,
     required this.entry,
     required this.system,
-    required this.openingLengthText,
-    required this.openingWidthText,
     required this.allEntries,
     required this.onChanged,
     this.canRemove = false,
@@ -842,8 +1004,6 @@ class _EntryEditor extends StatefulWidget {
   final int index;
   final SealEntryDraftData entry;
   final String? system;
-  final String openingLengthText;
-  final String openingWidthText;
   final List<SealEntryDraftData> allEntries;
   final VoidCallback onChanged;
   final bool canRemove;
@@ -891,8 +1051,6 @@ class _EntryEditorState extends State<_EntryEditor> {
   SealCalculationResult get _calc => computeSealEntryPreview(
         entryType: entry.entryType,
         quantityKus: entry.quantity,
-        openingLengthMm: parseMmText(widget.openingLengthText),
-        openingWidthMm: parseMmText(widget.openingWidthText),
         itemLengthMm: parseMmText(entry.itemLengthMmText),
         itemWidthMm: parseMmText(entry.itemWidthMmText),
         allEntries: widget.allEntries,
@@ -908,11 +1066,6 @@ class _EntryEditorState extends State<_EntryEditor> {
     }
 
     final lines = <String>[];
-    final oL = parseMmText(widget.openingLengthText);
-    final oW = parseMmText(widget.openingWidthText);
-    if (oL != null && oW != null) {
-      lines.add('Rozměr prostupu: $oL × $oW mm');
-    }
     final iL = parseMmText(entry.itemLengthMmText);
     final iW = parseMmText(entry.itemWidthMmText);
     if (iL != null && iW != null && entry.entryType != 'PROSTUP') {

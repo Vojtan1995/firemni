@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../reports/export_service.dart';
+import 'floor_drawing_upload.dart';
 import 'floor_plan_filters.dart';
 
 /// Export is not available for the active floor-plan filter (e.g. unplaced only).
@@ -11,6 +12,7 @@ class FloorDrawingExportUnsupported implements Exception {
 }
 
 Future<bool> pickAndUploadFloorDrawing({
+  required BuildContext context,
   required Dio dio,
   required String jobId,
   required String floorId,
@@ -23,6 +25,31 @@ Future<bool> pickAndUploadFloorDrawing({
   if (picked == null || picked.files.isEmpty) return false;
   final file = picked.files.first;
   if (file.bytes == null) return false;
+
+  if (isRasterImageDrawingFileName(file.name)) {
+    final size = await decodeRasterImageSize(file.bytes!);
+    if (size != null && shouldWarnLowResolution(size.width.round(), file.name)) {
+      if (!context.mounted) return false;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Nízké rozlišení výkresu'),
+          content: const Text(lowResolutionWarningMessage),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zrušit'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Nahrát přesto'),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return false;
+    }
+  }
 
   final form = FormData.fromMap({
     'drawing': MultipartFile.fromBytes(

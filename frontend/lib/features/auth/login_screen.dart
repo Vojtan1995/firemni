@@ -109,12 +109,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 loading: _loading,
                 onPressed: _login,
               ),
-              const SizedBox(height: AppSpacing.xxl),
-              Text(
-                'Seed: worker1 / 1234',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
             ],
           ),
         ),

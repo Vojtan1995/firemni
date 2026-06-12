@@ -1206,6 +1206,16 @@ class $LocalSealsTable extends LocalSeals
       defaultConstraints:
           GeneratedColumn.constraintIsAlways('CHECK ("is_synced" IN (0, 1))'),
       defaultValue: const Constant(false));
+  static const VerificationMeta _markerPlacementPendingMeta =
+      const VerificationMeta('markerPlacementPending');
+  @override
+  late final GeneratedColumn<bool> markerPlacementPending =
+      GeneratedColumn<bool>('marker_placement_pending', aliasedName, false,
+          type: DriftSqlType.bool,
+          requiredDuringInsert: false,
+          defaultConstraints: GeneratedColumn.constraintIsAlways(
+              'CHECK ("marker_placement_pending" IN (0, 1))'),
+          defaultValue: const Constant(false));
   static const VerificationMeta _jsonPayloadMeta =
       const VerificationMeta('jsonPayload');
   @override
@@ -1240,6 +1250,7 @@ class $LocalSealsTable extends LocalSeals
         version,
         syncConflict,
         isSynced,
+        markerPlacementPending,
         jsonPayload,
         deletedAt,
         updatedAt
@@ -1335,6 +1346,12 @@ class $LocalSealsTable extends LocalSeals
       context.handle(_isSyncedMeta,
           isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta));
     }
+    if (data.containsKey('marker_placement_pending')) {
+      context.handle(
+          _markerPlacementPendingMeta,
+          markerPlacementPending.isAcceptableOrUnknown(
+              data['marker_placement_pending']!, _markerPlacementPendingMeta));
+    }
     if (data.containsKey('json_payload')) {
       context.handle(
           _jsonPayloadMeta,
@@ -1388,6 +1405,9 @@ class $LocalSealsTable extends LocalSeals
           .read(DriftSqlType.bool, data['${effectivePrefix}sync_conflict'])!,
       isSynced: attachedDatabase.typeMapping
           .read(DriftSqlType.bool, data['${effectivePrefix}is_synced'])!,
+      markerPlacementPending: attachedDatabase.typeMapping.read(
+          DriftSqlType.bool,
+          data['${effectivePrefix}marker_placement_pending'])!,
       jsonPayload: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}json_payload']),
       deletedAt: attachedDatabase.typeMapping
@@ -1418,6 +1438,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
   final int version;
   final bool syncConflict;
   final bool isSynced;
+  final bool markerPlacementPending;
   final String? jsonPayload;
   final DateTime? deletedAt;
   final DateTime updatedAt;
@@ -1436,6 +1457,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       required this.version,
       required this.syncConflict,
       required this.isSynced,
+      required this.markerPlacementPending,
       this.jsonPayload,
       this.deletedAt,
       required this.updatedAt});
@@ -1460,6 +1482,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
     map['version'] = Variable<int>(version);
     map['sync_conflict'] = Variable<bool>(syncConflict);
     map['is_synced'] = Variable<bool>(isSynced);
+    map['marker_placement_pending'] = Variable<bool>(markerPlacementPending);
     if (!nullToAbsent || jsonPayload != null) {
       map['json_payload'] = Variable<String>(jsonPayload);
     }
@@ -1488,6 +1511,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       version: Value(version),
       syncConflict: Value(syncConflict),
       isSynced: Value(isSynced),
+      markerPlacementPending: Value(markerPlacementPending),
       jsonPayload: jsonPayload == null && nullToAbsent
           ? const Value.absent()
           : Value(jsonPayload),
@@ -1516,6 +1540,8 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       version: serializer.fromJson<int>(json['version']),
       syncConflict: serializer.fromJson<bool>(json['syncConflict']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
+      markerPlacementPending:
+          serializer.fromJson<bool>(json['markerPlacementPending']),
       jsonPayload: serializer.fromJson<String?>(json['jsonPayload']),
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -1539,6 +1565,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       'version': serializer.toJson<int>(version),
       'syncConflict': serializer.toJson<bool>(syncConflict),
       'isSynced': serializer.toJson<bool>(isSynced),
+      'markerPlacementPending': serializer.toJson<bool>(markerPlacementPending),
       'jsonPayload': serializer.toJson<String?>(jsonPayload),
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -1560,6 +1587,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           int? version,
           bool? syncConflict,
           bool? isSynced,
+          bool? markerPlacementPending,
           Value<String?> jsonPayload = const Value.absent(),
           Value<DateTime?> deletedAt = const Value.absent(),
           DateTime? updatedAt}) =>
@@ -1579,6 +1607,8 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
         version: version ?? this.version,
         syncConflict: syncConflict ?? this.syncConflict,
         isSynced: isSynced ?? this.isSynced,
+        markerPlacementPending:
+            markerPlacementPending ?? this.markerPlacementPending,
         jsonPayload: jsonPayload.present ? jsonPayload.value : this.jsonPayload,
         deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
         updatedAt: updatedAt ?? this.updatedAt,
@@ -1607,6 +1637,9 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           ? data.syncConflict.value
           : this.syncConflict,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+      markerPlacementPending: data.markerPlacementPending.present
+          ? data.markerPlacementPending.value
+          : this.markerPlacementPending,
       jsonPayload:
           data.jsonPayload.present ? data.jsonPayload.value : this.jsonPayload,
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
@@ -1631,6 +1664,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           ..write('version: $version, ')
           ..write('syncConflict: $syncConflict, ')
           ..write('isSynced: $isSynced, ')
+          ..write('markerPlacementPending: $markerPlacementPending, ')
           ..write('jsonPayload: $jsonPayload, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt')
@@ -1654,6 +1688,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       version,
       syncConflict,
       isSynced,
+      markerPlacementPending,
       jsonPayload,
       deletedAt,
       updatedAt);
@@ -1675,6 +1710,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           other.version == this.version &&
           other.syncConflict == this.syncConflict &&
           other.isSynced == this.isSynced &&
+          other.markerPlacementPending == this.markerPlacementPending &&
           other.jsonPayload == this.jsonPayload &&
           other.deletedAt == this.deletedAt &&
           other.updatedAt == this.updatedAt);
@@ -1695,6 +1731,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
   final Value<int> version;
   final Value<bool> syncConflict;
   final Value<bool> isSynced;
+  final Value<bool> markerPlacementPending;
   final Value<String?> jsonPayload;
   final Value<DateTime?> deletedAt;
   final Value<DateTime> updatedAt;
@@ -1714,6 +1751,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.version = const Value.absent(),
     this.syncConflict = const Value.absent(),
     this.isSynced = const Value.absent(),
+    this.markerPlacementPending = const Value.absent(),
     this.jsonPayload = const Value.absent(),
     this.deletedAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -1734,6 +1772,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.version = const Value.absent(),
     this.syncConflict = const Value.absent(),
     this.isSynced = const Value.absent(),
+    this.markerPlacementPending = const Value.absent(),
     this.jsonPayload = const Value.absent(),
     this.deletedAt = const Value.absent(),
     required DateTime updatedAt,
@@ -1762,6 +1801,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     Expression<int>? version,
     Expression<bool>? syncConflict,
     Expression<bool>? isSynced,
+    Expression<bool>? markerPlacementPending,
     Expression<String>? jsonPayload,
     Expression<DateTime>? deletedAt,
     Expression<DateTime>? updatedAt,
@@ -1782,6 +1822,8 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       if (version != null) 'version': version,
       if (syncConflict != null) 'sync_conflict': syncConflict,
       if (isSynced != null) 'is_synced': isSynced,
+      if (markerPlacementPending != null)
+        'marker_placement_pending': markerPlacementPending,
       if (jsonPayload != null) 'json_payload': jsonPayload,
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -1804,6 +1846,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       Value<int>? version,
       Value<bool>? syncConflict,
       Value<bool>? isSynced,
+      Value<bool>? markerPlacementPending,
       Value<String?>? jsonPayload,
       Value<DateTime?>? deletedAt,
       Value<DateTime>? updatedAt,
@@ -1823,6 +1866,8 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       version: version ?? this.version,
       syncConflict: syncConflict ?? this.syncConflict,
       isSynced: isSynced ?? this.isSynced,
+      markerPlacementPending:
+          markerPlacementPending ?? this.markerPlacementPending,
       jsonPayload: jsonPayload ?? this.jsonPayload,
       deletedAt: deletedAt ?? this.deletedAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -1875,6 +1920,10 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
+    if (markerPlacementPending.present) {
+      map['marker_placement_pending'] =
+          Variable<bool>(markerPlacementPending.value);
+    }
     if (jsonPayload.present) {
       map['json_payload'] = Variable<String>(jsonPayload.value);
     }
@@ -1907,6 +1956,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
           ..write('version: $version, ')
           ..write('syncConflict: $syncConflict, ')
           ..write('isSynced: $isSynced, ')
+          ..write('markerPlacementPending: $markerPlacementPending, ')
           ..write('jsonPayload: $jsonPayload, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -3170,6 +3220,34 @@ class $LocalFloorDrawingsTable extends LocalFloorDrawings
   late final GeneratedColumn<int> height = GeneratedColumn<int>(
       'height', aliasedName, false,
       type: DriftSqlType.int, requiredDuringInsert: true);
+  static const VerificationMeta _downloadStatusMeta =
+      const VerificationMeta('downloadStatus');
+  @override
+  late final GeneratedColumn<String> downloadStatus = GeneratedColumn<String>(
+      'download_status', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('downloading'));
+  static const VerificationMeta _retryCountMeta =
+      const VerificationMeta('retryCount');
+  @override
+  late final GeneratedColumn<int> retryCount = GeneratedColumn<int>(
+      'retry_count', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _nextRetryAtMeta =
+      const VerificationMeta('nextRetryAt');
+  @override
+  late final GeneratedColumn<DateTime> nextRetryAt = GeneratedColumn<DateTime>(
+      'next_retry_at', aliasedName, true,
+      type: DriftSqlType.dateTime, requiredDuringInsert: false);
+  static const VerificationMeta _lastErrorMeta =
+      const VerificationMeta('lastError');
+  @override
+  late final GeneratedColumn<String> lastError = GeneratedColumn<String>(
+      'last_error', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -3177,8 +3255,20 @@ class $LocalFloorDrawingsTable extends LocalFloorDrawings
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [floorId, jobId, filePath, localPath, mimeType, width, height, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        floorId,
+        jobId,
+        filePath,
+        localPath,
+        mimeType,
+        width,
+        height,
+        downloadStatus,
+        retryCount,
+        nextRetryAt,
+        lastError,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3229,6 +3319,28 @@ class $LocalFloorDrawingsTable extends LocalFloorDrawings
     } else if (isInserting) {
       context.missing(_heightMeta);
     }
+    if (data.containsKey('download_status')) {
+      context.handle(
+          _downloadStatusMeta,
+          downloadStatus.isAcceptableOrUnknown(
+              data['download_status']!, _downloadStatusMeta));
+    }
+    if (data.containsKey('retry_count')) {
+      context.handle(
+          _retryCountMeta,
+          retryCount.isAcceptableOrUnknown(
+              data['retry_count']!, _retryCountMeta));
+    }
+    if (data.containsKey('next_retry_at')) {
+      context.handle(
+          _nextRetryAtMeta,
+          nextRetryAt.isAcceptableOrUnknown(
+              data['next_retry_at']!, _nextRetryAtMeta));
+    }
+    if (data.containsKey('last_error')) {
+      context.handle(_lastErrorMeta,
+          lastError.isAcceptableOrUnknown(data['last_error']!, _lastErrorMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -3258,6 +3370,14 @@ class $LocalFloorDrawingsTable extends LocalFloorDrawings
           .read(DriftSqlType.int, data['${effectivePrefix}width'])!,
       height: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}height'])!,
+      downloadStatus: attachedDatabase.typeMapping.read(
+          DriftSqlType.string, data['${effectivePrefix}download_status'])!,
+      retryCount: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}retry_count'])!,
+      nextRetryAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}next_retry_at']),
+      lastError: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}last_error']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -3278,6 +3398,12 @@ class LocalFloorDrawing extends DataClass
   final String mimeType;
   final int width;
   final int height;
+
+  /// missing | downloading | downloaded | error
+  final String downloadStatus;
+  final int retryCount;
+  final DateTime? nextRetryAt;
+  final String? lastError;
   final DateTime updatedAt;
   const LocalFloorDrawing(
       {required this.floorId,
@@ -3287,6 +3413,10 @@ class LocalFloorDrawing extends DataClass
       required this.mimeType,
       required this.width,
       required this.height,
+      required this.downloadStatus,
+      required this.retryCount,
+      this.nextRetryAt,
+      this.lastError,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3300,6 +3430,14 @@ class LocalFloorDrawing extends DataClass
     map['mime_type'] = Variable<String>(mimeType);
     map['width'] = Variable<int>(width);
     map['height'] = Variable<int>(height);
+    map['download_status'] = Variable<String>(downloadStatus);
+    map['retry_count'] = Variable<int>(retryCount);
+    if (!nullToAbsent || nextRetryAt != null) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt);
+    }
+    if (!nullToAbsent || lastError != null) {
+      map['last_error'] = Variable<String>(lastError);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -3315,6 +3453,14 @@ class LocalFloorDrawing extends DataClass
       mimeType: Value(mimeType),
       width: Value(width),
       height: Value(height),
+      downloadStatus: Value(downloadStatus),
+      retryCount: Value(retryCount),
+      nextRetryAt: nextRetryAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(nextRetryAt),
+      lastError: lastError == null && nullToAbsent
+          ? const Value.absent()
+          : Value(lastError),
       updatedAt: Value(updatedAt),
     );
   }
@@ -3330,6 +3476,10 @@ class LocalFloorDrawing extends DataClass
       mimeType: serializer.fromJson<String>(json['mimeType']),
       width: serializer.fromJson<int>(json['width']),
       height: serializer.fromJson<int>(json['height']),
+      downloadStatus: serializer.fromJson<String>(json['downloadStatus']),
+      retryCount: serializer.fromJson<int>(json['retryCount']),
+      nextRetryAt: serializer.fromJson<DateTime?>(json['nextRetryAt']),
+      lastError: serializer.fromJson<String?>(json['lastError']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -3344,6 +3494,10 @@ class LocalFloorDrawing extends DataClass
       'mimeType': serializer.toJson<String>(mimeType),
       'width': serializer.toJson<int>(width),
       'height': serializer.toJson<int>(height),
+      'downloadStatus': serializer.toJson<String>(downloadStatus),
+      'retryCount': serializer.toJson<int>(retryCount),
+      'nextRetryAt': serializer.toJson<DateTime?>(nextRetryAt),
+      'lastError': serializer.toJson<String?>(lastError),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -3356,6 +3510,10 @@ class LocalFloorDrawing extends DataClass
           String? mimeType,
           int? width,
           int? height,
+          String? downloadStatus,
+          int? retryCount,
+          Value<DateTime?> nextRetryAt = const Value.absent(),
+          Value<String?> lastError = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalFloorDrawing(
         floorId: floorId ?? this.floorId,
@@ -3365,6 +3523,10 @@ class LocalFloorDrawing extends DataClass
         mimeType: mimeType ?? this.mimeType,
         width: width ?? this.width,
         height: height ?? this.height,
+        downloadStatus: downloadStatus ?? this.downloadStatus,
+        retryCount: retryCount ?? this.retryCount,
+        nextRetryAt: nextRetryAt.present ? nextRetryAt.value : this.nextRetryAt,
+        lastError: lastError.present ? lastError.value : this.lastError,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalFloorDrawing copyWithCompanion(LocalFloorDrawingsCompanion data) {
@@ -3376,6 +3538,14 @@ class LocalFloorDrawing extends DataClass
       mimeType: data.mimeType.present ? data.mimeType.value : this.mimeType,
       width: data.width.present ? data.width.value : this.width,
       height: data.height.present ? data.height.value : this.height,
+      downloadStatus: data.downloadStatus.present
+          ? data.downloadStatus.value
+          : this.downloadStatus,
+      retryCount:
+          data.retryCount.present ? data.retryCount.value : this.retryCount,
+      nextRetryAt:
+          data.nextRetryAt.present ? data.nextRetryAt.value : this.nextRetryAt,
+      lastError: data.lastError.present ? data.lastError.value : this.lastError,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -3390,6 +3560,10 @@ class LocalFloorDrawing extends DataClass
           ..write('mimeType: $mimeType, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('downloadStatus: $downloadStatus, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('lastError: $lastError, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
@@ -3397,7 +3571,18 @@ class LocalFloorDrawing extends DataClass
 
   @override
   int get hashCode => Object.hash(
-      floorId, jobId, filePath, localPath, mimeType, width, height, updatedAt);
+      floorId,
+      jobId,
+      filePath,
+      localPath,
+      mimeType,
+      width,
+      height,
+      downloadStatus,
+      retryCount,
+      nextRetryAt,
+      lastError,
+      updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -3409,6 +3594,10 @@ class LocalFloorDrawing extends DataClass
           other.mimeType == this.mimeType &&
           other.width == this.width &&
           other.height == this.height &&
+          other.downloadStatus == this.downloadStatus &&
+          other.retryCount == this.retryCount &&
+          other.nextRetryAt == this.nextRetryAt &&
+          other.lastError == this.lastError &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -3420,6 +3609,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
   final Value<String> mimeType;
   final Value<int> width;
   final Value<int> height;
+  final Value<String> downloadStatus;
+  final Value<int> retryCount;
+  final Value<DateTime?> nextRetryAt;
+  final Value<String?> lastError;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalFloorDrawingsCompanion({
@@ -3430,6 +3623,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
     this.mimeType = const Value.absent(),
     this.width = const Value.absent(),
     this.height = const Value.absent(),
+    this.downloadStatus = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.lastError = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -3441,6 +3638,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
     required String mimeType,
     required int width,
     required int height,
+    this.downloadStatus = const Value.absent(),
+    this.retryCount = const Value.absent(),
+    this.nextRetryAt = const Value.absent(),
+    this.lastError = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : floorId = Value(floorId),
@@ -3458,6 +3659,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
     Expression<String>? mimeType,
     Expression<int>? width,
     Expression<int>? height,
+    Expression<String>? downloadStatus,
+    Expression<int>? retryCount,
+    Expression<DateTime>? nextRetryAt,
+    Expression<String>? lastError,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -3469,6 +3674,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
       if (mimeType != null) 'mime_type': mimeType,
       if (width != null) 'width': width,
       if (height != null) 'height': height,
+      if (downloadStatus != null) 'download_status': downloadStatus,
+      if (retryCount != null) 'retry_count': retryCount,
+      if (nextRetryAt != null) 'next_retry_at': nextRetryAt,
+      if (lastError != null) 'last_error': lastError,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -3482,6 +3691,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
       Value<String>? mimeType,
       Value<int>? width,
       Value<int>? height,
+      Value<String>? downloadStatus,
+      Value<int>? retryCount,
+      Value<DateTime?>? nextRetryAt,
+      Value<String?>? lastError,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalFloorDrawingsCompanion(
@@ -3492,6 +3705,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
       mimeType: mimeType ?? this.mimeType,
       width: width ?? this.width,
       height: height ?? this.height,
+      downloadStatus: downloadStatus ?? this.downloadStatus,
+      retryCount: retryCount ?? this.retryCount,
+      nextRetryAt: nextRetryAt ?? this.nextRetryAt,
+      lastError: lastError ?? this.lastError,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -3521,6 +3738,18 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
     if (height.present) {
       map['height'] = Variable<int>(height.value);
     }
+    if (downloadStatus.present) {
+      map['download_status'] = Variable<String>(downloadStatus.value);
+    }
+    if (retryCount.present) {
+      map['retry_count'] = Variable<int>(retryCount.value);
+    }
+    if (nextRetryAt.present) {
+      map['next_retry_at'] = Variable<DateTime>(nextRetryAt.value);
+    }
+    if (lastError.present) {
+      map['last_error'] = Variable<String>(lastError.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -3540,6 +3769,10 @@ class LocalFloorDrawingsCompanion extends UpdateCompanion<LocalFloorDrawing> {
           ..write('mimeType: $mimeType, ')
           ..write('width: $width, ')
           ..write('height: $height, ')
+          ..write('downloadStatus: $downloadStatus, ')
+          ..write('retryCount: $retryCount, ')
+          ..write('nextRetryAt: $nextRetryAt, ')
+          ..write('lastError: $lastError, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4899,6 +5132,7 @@ typedef $$LocalSealsTableCreateCompanionBuilder = LocalSealsCompanion Function({
   Value<int> version,
   Value<bool> syncConflict,
   Value<bool> isSynced,
+  Value<bool> markerPlacementPending,
   Value<String?> jsonPayload,
   Value<DateTime?> deletedAt,
   required DateTime updatedAt,
@@ -4919,6 +5153,7 @@ typedef $$LocalSealsTableUpdateCompanionBuilder = LocalSealsCompanion Function({
   Value<int> version,
   Value<bool> syncConflict,
   Value<bool> isSynced,
+  Value<bool> markerPlacementPending,
   Value<String?> jsonPayload,
   Value<DateTime?> deletedAt,
   Value<DateTime> updatedAt,
@@ -4975,6 +5210,10 @@ class $$LocalSealsTableFilterComposer
 
   ColumnFilters<bool> get isSynced => $composableBuilder(
       column: $table.isSynced, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get markerPlacementPending => $composableBuilder(
+      column: $table.markerPlacementPending,
+      builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => ColumnFilters(column));
@@ -5040,6 +5279,10 @@ class $$LocalSealsTableOrderingComposer
   ColumnOrderings<bool> get isSynced => $composableBuilder(
       column: $table.isSynced, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<bool> get markerPlacementPending => $composableBuilder(
+      column: $table.markerPlacementPending,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => ColumnOrderings(column));
 
@@ -5101,6 +5344,9 @@ class $$LocalSealsTableAnnotationComposer
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
 
+  GeneratedColumn<bool> get markerPlacementPending => $composableBuilder(
+      column: $table.markerPlacementPending, builder: (column) => column);
+
   GeneratedColumn<String> get jsonPayload => $composableBuilder(
       column: $table.jsonPayload, builder: (column) => column);
 
@@ -5148,6 +5394,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<int> version = const Value.absent(),
             Value<bool> syncConflict = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
+            Value<bool> markerPlacementPending = const Value.absent(),
             Value<String?> jsonPayload = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
@@ -5168,6 +5415,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             version: version,
             syncConflict: syncConflict,
             isSynced: isSynced,
+            markerPlacementPending: markerPlacementPending,
             jsonPayload: jsonPayload,
             deletedAt: deletedAt,
             updatedAt: updatedAt,
@@ -5188,6 +5436,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<int> version = const Value.absent(),
             Value<bool> syncConflict = const Value.absent(),
             Value<bool> isSynced = const Value.absent(),
+            Value<bool> markerPlacementPending = const Value.absent(),
             Value<String?> jsonPayload = const Value.absent(),
             Value<DateTime?> deletedAt = const Value.absent(),
             required DateTime updatedAt,
@@ -5208,6 +5457,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             version: version,
             syncConflict: syncConflict,
             isSynced: isSynced,
+            markerPlacementPending: markerPlacementPending,
             jsonPayload: jsonPayload,
             deletedAt: deletedAt,
             updatedAt: updatedAt,
@@ -5793,6 +6043,10 @@ typedef $$LocalFloorDrawingsTableCreateCompanionBuilder
   required String mimeType,
   required int width,
   required int height,
+  Value<String> downloadStatus,
+  Value<int> retryCount,
+  Value<DateTime?> nextRetryAt,
+  Value<String?> lastError,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -5805,6 +6059,10 @@ typedef $$LocalFloorDrawingsTableUpdateCompanionBuilder
   Value<String> mimeType,
   Value<int> width,
   Value<int> height,
+  Value<String> downloadStatus,
+  Value<int> retryCount,
+  Value<DateTime?> nextRetryAt,
+  Value<String?> lastError,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -5838,6 +6096,19 @@ class $$LocalFloorDrawingsTableFilterComposer
 
   ColumnFilters<int> get height => $composableBuilder(
       column: $table.height, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get downloadStatus => $composableBuilder(
+      column: $table.downloadStatus,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -5873,6 +6144,19 @@ class $$LocalFloorDrawingsTableOrderingComposer
   ColumnOrderings<int> get height => $composableBuilder(
       column: $table.height, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get downloadStatus => $composableBuilder(
+      column: $table.downloadStatus,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get lastError => $composableBuilder(
+      column: $table.lastError, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -5906,6 +6190,18 @@ class $$LocalFloorDrawingsTableAnnotationComposer
 
   GeneratedColumn<int> get height =>
       $composableBuilder(column: $table.height, builder: (column) => column);
+
+  GeneratedColumn<String> get downloadStatus => $composableBuilder(
+      column: $table.downloadStatus, builder: (column) => column);
+
+  GeneratedColumn<int> get retryCount => $composableBuilder(
+      column: $table.retryCount, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get nextRetryAt => $composableBuilder(
+      column: $table.nextRetryAt, builder: (column) => column);
+
+  GeneratedColumn<String> get lastError =>
+      $composableBuilder(column: $table.lastError, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -5946,6 +6242,10 @@ class $$LocalFloorDrawingsTableTableManager extends RootTableManager<
             Value<String> mimeType = const Value.absent(),
             Value<int> width = const Value.absent(),
             Value<int> height = const Value.absent(),
+            Value<String> downloadStatus = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -5957,6 +6257,10 @@ class $$LocalFloorDrawingsTableTableManager extends RootTableManager<
             mimeType: mimeType,
             width: width,
             height: height,
+            downloadStatus: downloadStatus,
+            retryCount: retryCount,
+            nextRetryAt: nextRetryAt,
+            lastError: lastError,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -5968,6 +6272,10 @@ class $$LocalFloorDrawingsTableTableManager extends RootTableManager<
             required String mimeType,
             required int width,
             required int height,
+            Value<String> downloadStatus = const Value.absent(),
+            Value<int> retryCount = const Value.absent(),
+            Value<DateTime?> nextRetryAt = const Value.absent(),
+            Value<String?> lastError = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -5979,6 +6287,10 @@ class $$LocalFloorDrawingsTableTableManager extends RootTableManager<
             mimeType: mimeType,
             width: width,
             height: height,
+            downloadStatus: downloadStatus,
+            retryCount: retryCount,
+            nextRetryAt: nextRetryAt,
+            lastError: lastError,
             updatedAt: updatedAt,
             rowid: rowid,
           ),

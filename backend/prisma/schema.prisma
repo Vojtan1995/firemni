@@ -138,6 +138,7 @@ model Seal {
   openingLengthMm Int?   @map("opening_length_mm")
   openingWidthMm  Int?   @map("opening_width_mm")
   status        SealStatus @default(draft)
+  markerPlacementPending Boolean @default(false) @map("marker_placement_pending")
   reviewStatus  String?    @map("review_status")
   reviewComment String?    @map("review_comment")
   version       Int        @default(1)

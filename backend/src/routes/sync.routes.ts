@@ -71,6 +71,7 @@ const sealCreatePayloadSchema = z
     internalNote: z.string().max(SEAL_NOTE_MAX_LENGTH).nullable().optional(),
     openingLengthMm: z.number().int().positive().optional(),
     openingWidthMm: z.number().int().positive().optional(),
+    markerPlacementPending: z.boolean().optional(),
     entries: z.array(sealEntrySchema).min(1),
   })
   .superRefine((data, ctx) => {
@@ -247,6 +248,7 @@ async function processMutation(
           internalNote: notes.internalNote,
           openingLengthMm: createPayload.openingLengthMm ?? null,
           openingWidthMm: createPayload.openingWidthMm ?? null,
+          markerPlacementPending: createPayload.markerPlacementPending ?? false,
           createdById: userId,
           updatedById: userId,
           entries: {
@@ -328,6 +330,11 @@ async function processMutation(
           internalNote: resolvedNotes.internalNote,
           openingLengthMm: patchPayloadField(p, 'openingLengthMm', seal.openingLengthMm),
           openingWidthMm: patchPayloadField(p, 'openingWidthMm', seal.openingWidthMm),
+          markerPlacementPending: patchPayloadField(
+            p,
+            'markerPlacementPending',
+            seal.markerPlacementPending,
+          ),
           status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,

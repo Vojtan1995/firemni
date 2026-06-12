@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:dio/dio.dart';
@@ -11,7 +10,7 @@ import '../../core/api/api_client.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
-import '../jobs/floor_drawing_storage.dart';
+import '../jobs/floor_plan/floor_drawing_download_service.dart';
 import '../seals/seal_detail_screen.dart';
 import '../seals/seal_note_helpers.dart';
 import '../seals/seal_photo_upload.dart';
@@ -122,6 +121,7 @@ class SyncService {
       await _pushOutbox(force: force, now: now);
       await _uploadPendingPhotos(force: force, now: now);
       await _pullChanges();
+      await processPendingDrawingDownloads(dio: _dio, db: _db, now: now);
       return SyncResult(success: true);
     } on DioException catch (e) {
       return SyncResult(success: false, error: e.message);
@@ -323,6 +323,11 @@ class SyncService {
               version: Value(m['version'] as int? ?? 1),
               isSynced: Value(syncFlags.isSynced),
               syncConflict: Value(syncFlags.syncConflict),
+              markerPlacementPending: Value(
+                m['markerPlacementPending'] as bool? ??
+                    existing?.markerPlacementPending ??
+                    false,
+              ),
               deletedAt: const Value(null),
               updatedAt: DateTime.parse(m['updatedAt'] as String),
             ));
@@ -350,24 +355,21 @@ class SyncService {
         final floor = await (_db.select(_db.localFloors)
               ..where((f) => f.id.equals(floorId)))
             .getSingleOrNull();
-        final jobId = floor?.jobId ?? '';
-        String? localPath;
-        if (jobId.isNotEmpty) {
-          localPath = await _downloadFloorDrawingFile(jobId, floorId, m);
-        }
-        await _db.into(_db.localFloorDrawings).insertOnConflictUpdate(
-              LocalFloorDrawingsCompanion.insert(
-                floorId: floorId,
-                jobId: jobId,
-                filePath: m['filePath'] as String,
-                localPath: Value(localPath),
-                mimeType: m['mimeType'] as String? ?? 'image/webp',
-                width: m['width'] as int? ?? 1,
-                height: m['height'] as int? ?? 1,
-                updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-                    DateTime.now(),
-              ),
-            );
+        final jobId = floor?.jobId ?? m['jobId'] as String? ?? '';
+        if (jobId.isEmpty) continue;
+        await upsertFloorDrawingMetadata(
+          _db,
+          floorId: floorId,
+          jobId: jobId,
+          meta: m,
+        );
+        await downloadFloorDrawingFile(
+          dio: _dio,
+          db: _db,
+          jobId: jobId,
+          floorId: floorId,
+          meta: m,
+        );
       }
 
       for (final mk in (data['sealMarkers'] as List? ?? [])) {
@@ -514,31 +516,6 @@ class SyncService {
     }
   }
 
-  Future<String?> _downloadFloorDrawingFile(
-    String jobId,
-    String floorId,
-    Map<String, dynamic> meta,
-  ) async {
-    try {
-      final res = await _dio.get(
-        '/api/jobs/$jobId/floors/$floorId/drawing/file',
-        options: Options(responseType: ResponseType.bytes),
-      );
-      final data = res.data;
-      Uint8List? bytes;
-      if (data is Uint8List) {
-        bytes = data;
-      } else if (data is List<int>) {
-        bytes = Uint8List.fromList(data);
-      }
-      if (bytes == null || bytes.isEmpty) return null;
-      final mime = meta['mimeType'] as String? ?? 'image/webp';
-      final ext = mime.contains('png') ? 'png' : 'webp';
-      return persistFloorDrawingBytes(floorId, bytes, extension: ext);
-    } catch (_) {
-      return null;
-    }
-  }
 }
 
 class SyncResult {

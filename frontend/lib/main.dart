@@ -4,8 +4,11 @@ import 'core/router.dart';
 import 'core/design_tokens.dart';
 import 'core/desktop_esc_handler.dart';
 import 'core/theme.dart';
+import 'core/api/api_client.dart';
+import 'core/app_update_service.dart';
 import 'features/auth/auth_provider.dart';
 import 'features/sync/sync_retry_scheduler.dart';
+import 'widgets/app_update_dialog.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -37,8 +40,23 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
       if (mounted) {
         setState(() => _ready = true);
         ref.read(syncRetrySchedulerProvider).start();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _checkAppUpdate();
+        });
       }
     }
+  }
+
+  Future<void> _checkAppUpdate() async {
+    final result = await evaluateAppUpdate(ref.read(dioProvider));
+    if (!mounted || result == null) return;
+    final navContext = rootNavigatorKey.currentContext;
+    if (navContext == null || !navContext.mounted) return;
+    await showAppUpdateDialog(
+      context: navContext,
+      release: result.release,
+      forced: result.forced,
+    );
   }
 
   @override

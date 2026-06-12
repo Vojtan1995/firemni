@@ -1,3 +1,4 @@
+import path from 'path';
 import sharp from 'sharp';
 import { pdf as pdfToImg } from 'pdf-to-img';
 import { UserRole } from '@prisma/client';
@@ -14,24 +15,64 @@ import { logActivity } from './audit.service.js';
 
 const maxDrawingBytes = 25 * 1024 * 1024;
 
-async function normalizeDrawingBuffer(
-  buffer: Buffer,
-  mimetype: string,
-): Promise<Buffer> {
-  if (mimetype === 'application/pdf') {
-    const doc = await pdfToImg(buffer, { scale: 2 });
-    try {
-      return await doc.getPage(1);
-    } finally {
-      await doc.destroy();
-    }
-  }
-  return buffer;
-}
-
 function clamp01(value: number) {
   if (!Number.isFinite(value)) throw badRequest('Souřadnice musí být číslo');
   return Math.min(1, Math.max(0, value));
+}
+
+function resolveDrawingMimeAndExt(
+  mimetype: string,
+  originalname: string,
+): { mimeType: string; ext: string } {
+  const normalized = mimetype.toLowerCase();
+  if (normalized === 'application/pdf') {
+    return { mimeType: 'application/pdf', ext: 'pdf' };
+  }
+  if (normalized === 'image/png') {
+    return { mimeType: 'image/png', ext: 'png' };
+  }
+  if (normalized === 'image/jpeg' || normalized === 'image/jpg') {
+    return { mimeType: 'image/jpeg', ext: 'jpg' };
+  }
+  if (normalized === 'image/webp') {
+    return { mimeType: 'image/webp', ext: 'webp' };
+  }
+
+  const ext = path.extname(originalname).toLowerCase();
+  if (ext === '.pdf') return { mimeType: 'application/pdf', ext: 'pdf' };
+  if (ext === '.png') return { mimeType: 'image/png', ext: 'png' };
+  if (ext === '.jpg' || ext === '.jpeg') return { mimeType: 'image/jpeg', ext: 'jpg' };
+  if (ext === '.webp') return { mimeType: 'image/webp', ext: 'webp' };
+
+  throw badRequest('Nepodporovaný formát výkresu');
+}
+
+async function getPdfPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
+  const doc = await pdfToImg(buffer, { scale: 1 });
+  try {
+    const pageBuffer = await doc.getPage(1);
+    const meta = await sharp(pageBuffer).metadata();
+    if (!meta.width || !meta.height) {
+      throw badRequest('Nelze určit rozměry PDF výkresu');
+    }
+    return { width: meta.width, height: meta.height };
+  } catch {
+    throw badRequest('Soubor není platný PDF výkres');
+  } finally {
+    await doc.destroy();
+  }
+}
+
+async function getImageDimensions(buffer: Buffer): Promise<{ width: number; height: number }> {
+  try {
+    const meta = await sharp(buffer, { failOn: 'error' }).metadata();
+    if (!meta.width || !meta.height) {
+      throw badRequest('Nelze určit rozměry výkresu');
+    }
+    return { width: meta.width, height: meta.height };
+  } catch {
+    throw badRequest('Soubor není platný obrázek výkresu');
+  }
 }
 
 export async function getFloorDrawingBundle(floorId: string, role: UserRole, userId: string) {
@@ -128,35 +169,15 @@ export async function uploadFloorDrawing(
     throw badRequest(`Výkres nesmí být větší než ${maxDrawingBytes} B`);
   }
 
-  const sourceBuffer = await normalizeDrawingBuffer(file.buffer, file.mimetype);
+  const { mimeType, ext } = resolveDrawingMimeAndExt(file.mimetype, file.originalname);
+  const output = file.buffer;
 
-  let meta: sharp.Metadata;
-  try {
-    meta = await sharp(sourceBuffer, { failOn: 'error' }).metadata();
-  } catch {
-    throw badRequest('Soubor není platný obrázek výkresu');
-  }
-  if (!meta.width || !meta.height) {
-    throw badRequest('Nelze určit rozměry výkresu');
-  }
+  const dimensions =
+    mimeType === 'application/pdf'
+      ? await getPdfPageSize(output)
+      : await getImageDimensions(output);
 
   const storage = getObjectStorage();
-  const ext = meta.format === 'png' ? 'png' : 'webp';
-  const mimeType = ext === 'png' ? 'image/png' : 'image/webp';
-  let output: Buffer;
-  if (ext === 'png') {
-    output = await sharp(sourceBuffer, { failOn: 'error' })
-      .resize(4096, 4096, { fit: 'inside', withoutEnlargement: true })
-      .png()
-      .toBuffer();
-  } else {
-    output = await sharp(sourceBuffer, { failOn: 'error' })
-      .resize(4096, 4096, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 90 })
-      .toBuffer();
-  }
-
-  const outMeta = await sharp(output).metadata();
   const filePath = sanitizeObjectKey(
     `drawing-${floorId.slice(0, 8)}-${Date.now()}.${ext}`,
   );
@@ -178,16 +199,16 @@ export async function uploadFloorDrawing(
       floorId,
       filePath,
       mimeType,
-      width: outMeta.width ?? meta.width,
-      height: outMeta.height ?? meta.height,
+      width: dimensions.width,
+      height: dimensions.height,
       fileSize: output.length,
       uploadedById: userId,
     },
     update: {
       filePath,
       mimeType,
-      width: outMeta.width ?? meta.width,
-      height: outMeta.height ?? meta.height,
+      width: dimensions.width,
+      height: dimensions.height,
       fileSize: output.length,
       uploadedById: userId,
     },
@@ -225,20 +246,27 @@ export async function upsertSealMarker(
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
   if (!drawing) throw badRequest('Patro nemá nahraný výkres');
 
-  const marker = await prisma.sealMarker.upsert({
-    where: { sealId },
-    create: {
-      sealId,
-      floorId,
-      x: nx,
-      y: ny,
-      createdById: userId,
-    },
-    update: {
-      floorId,
-      x: nx,
-      y: ny,
-    },
+  const marker = await prisma.$transaction(async (tx) => {
+    const upserted = await tx.sealMarker.upsert({
+      where: { sealId },
+      create: {
+        sealId,
+        floorId,
+        x: nx,
+        y: ny,
+        createdById: userId,
+      },
+      update: {
+        floorId,
+        x: nx,
+        y: ny,
+      },
+    });
+    await tx.seal.update({
+      where: { id: sealId },
+      data: { markerPlacementPending: false },
+    });
+    return upserted;
   });
 
   await logActivity(userId, 'seal_marker_upsert', 'seal', sealId, {

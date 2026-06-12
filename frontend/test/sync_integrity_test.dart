@@ -30,6 +30,7 @@ void main() {
             version: 1,
             isSynced: true,
             syncConflict: false,
+            markerPlacementPending: false,
             jsonPayload: null,
             deletedAt: null,
             updatedAt: DateTime.now(),

@@ -1,0 +1,71 @@
+name: DB Backup
+
+on:
+  schedule:
+    # Každý den ve 2:00 UTC (4:00 Prague letní čas)
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Umožní ruční spuštění z GitHub Actions UI
+
+jobs:
+  backup:
+    name: pg_dump → R2/S3
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Install postgresql-client
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+
+      - name: Run pg_dump
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
+          FILENAME="ucpavky_${TIMESTAMP}.sql.gz"
+          echo "BACKUP_FILENAME=${FILENAME}" >> $GITHUB_ENV
+          pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
+          SIZE=$(du -sh "${FILENAME}" | cut -f1)
+          echo "Backup hotov: ${FILENAME} (${SIZE})"
+
+      - name: Upload to Cloudflare R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          pip install --quiet awscli
+          aws s3 cp "${BACKUP_FILENAME}" \
+            "s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}" \
+            --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}" \
+            --no-progress
+          echo "Upload hotov: s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}"
+
+      - name: Prune backups older than 30 days
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
+                   date -u -v -30d +%Y-%m-%dT%H:%M:%SZ)
+          echo "Mazání záloh starších než: ${CUTOFF}"
+          aws s3api list-objects-v2 \
+            --bucket "${{ secrets.BACKUP_S3_BUCKET }}" \
+            --prefix "backups/" \
+            --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}" \
+            --query "Contents[?LastModified<='${CUTOFF}'].Key" \
+            --output text | \
+          tr '\t' '\n' | \
+          grep -v '^$' | \
+          while read key; do
+            echo "Mazání: ${key}"
+            aws s3 rm "s3://${{ secrets.BACKUP_S3_BUCKET }}/${key}" \
+              --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}"
+          done || true
+
+      - name: Cleanup local dump
+        if: always()
+        run: rm -f "${BACKUP_FILENAME}"

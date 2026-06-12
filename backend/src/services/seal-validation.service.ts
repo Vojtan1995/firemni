@@ -11,6 +11,9 @@ type SealForValidation = {
   construction: string;
   location: string;
   fireRating: string;
+  markerPlacementPending?: boolean;
+  floor?: { drawing: { id: string } | null } | null;
+  marker?: { id: string } | null;
   entries: Array<{
     entryType: string;
     dimension: string;
@@ -34,6 +37,15 @@ export function validateSealForChecked(seal: SealForValidation): SealValidationI
   }
   if (!seal.fireRating?.trim()) {
     issues.push({ field: 'fireRating', message: 'Chybí požární odolnost' });
+  }
+  const hasDrawing = seal.floor !== undefined && !!seal.floor?.drawing;
+  const hasMarker = !!seal.marker;
+  if (hasDrawing && !hasMarker) {
+    if (seal.markerPlacementPending) {
+      issues.push({ field: 'marker', message: 'Čeká umístění značky na výkresu' });
+    } else {
+      issues.push({ field: 'marker', message: 'Chybí značka na výkresu' });
+    }
   }
   if (!seal.photos?.length) {
     issues.push({ field: 'photos', message: 'Chybí alespoň jedna fotka' });
@@ -71,6 +83,9 @@ export async function loadSealForCheckedValidation(sealId: string) {
       construction: true,
       location: true,
       fireRating: true,
+      markerPlacementPending: true,
+      floor: { select: { drawing: { select: { id: true } } } },
+      marker: { select: { id: true } },
       entries: {
         where: { deletedAt: null },
         select: {

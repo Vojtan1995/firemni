@@ -36,6 +36,7 @@ export const sealBodyBaseSchema = z.object({
   internalNote: optionalNote,
   openingLengthMm: optionalMm,
   openingWidthMm: optionalMm,
+  markerPlacementPending: z.boolean().optional(),
   entries: z.array(sealEntrySchema).min(1),
   baseVersion: z.number().int().optional(),
 });

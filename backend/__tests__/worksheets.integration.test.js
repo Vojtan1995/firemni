@@ -1,7 +1,31 @@
-import { describe, it, expect, beforeAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
+import { markSealChecked } from './helpers/integration-helpers.js';
+
+const WS_TEST_PREFIX = '990';
+
+function sealBody(jobId, floorId, sealNumber) {
+  return {
+    jobId,
+    floorId,
+    sealNumber,
+    system: 'WS',
+    construction: 'Stěna',
+    location: 'Test',
+    fireRating: 'EI 60',
+    entries: [
+      {
+        entryType: 'EL.V.',
+        dimension: '50',
+        quantity: 1,
+        insulation: 'žádná',
+        materials: ['Pena'],
+      },
+    ],
+  };
+}
 
 describe('Worksheets module integration', () => {
   const app = createApp();
@@ -210,5 +234,112 @@ describe('Worksheets module integration', () => {
       .set('Authorization', `Bearer ${ucetniToken}`)
       .send({ status: 'submitted' });
     expect(denied.status).toBe(403);
+  });
+
+  describe('worksheet items', () => {
+    let jobIdLocal;
+    let floorId;
+    let populateFloorId;
+    let populateWorksheetId;
+    let duplicateWs1Id;
+    let duplicateWs2Id;
+
+    beforeAll(async () => {
+      const jobRes = await request(app)
+        .get('/api/jobs/by-number/12345678')
+        .set('Authorization', `Bearer ${workerToken}`);
+      jobIdLocal = jobRes.body.id;
+      floorId = jobRes.body.floors[0].id;
+      populateFloorId = jobRes.body.floors[1].id;
+
+      const wsPopulate = await request(app)
+        .post('/api/worksheets')
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal });
+      expect(wsPopulate.status).toBe(201);
+      populateWorksheetId = wsPopulate.body.id;
+
+      const ws1 = await request(app)
+        .post('/api/worksheets')
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal });
+      expect(ws1.status).toBe(201);
+      duplicateWs1Id = ws1.body.id;
+
+      const ws2 = await request(app)
+        .post('/api/worksheets')
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal });
+      expect(ws2.status).toBe(201);
+      duplicateWs2Id = ws2.body.id;
+    });
+
+    afterAll(async () => {
+      const seals = await prisma.seal.findMany({
+        where: { sealNumber: { startsWith: WS_TEST_PREFIX } },
+        select: { id: true },
+      });
+      if (seals.length > 0) {
+        const sealIds = seals.map((s) => s.id);
+        await prisma.workSheetItem.deleteMany({ where: { sealId: { in: sealIds } } });
+        await prisma.seal.deleteMany({ where: { id: { in: sealIds } } });
+      }
+    });
+
+    function uniqueSealNumber(suffix) {
+      return `${WS_TEST_PREFIX}${String(Date.now()).slice(-7)}${suffix}`;
+    }
+
+    async function createSeal(suffix, targetFloorId = floorId) {
+      const res = await request(app)
+        .post('/api/seals')
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send(sealBody(jobIdLocal, targetFloorId, uniqueSealNumber(suffix)));
+      expect(res.status).toBe(201);
+      return res.body;
+    }
+
+    it('rejects adding seal entry already on another worksheet', async () => {
+      const seal = await createSeal('1');
+      const entryId = seal.entries[0].id;
+
+      const first = await request(app)
+        .post(`/api/worksheets/${duplicateWs1Id}/items`)
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ sealEntryIds: [entryId] });
+      expect(first.status).toBe(201);
+
+      const second = await request(app)
+        .post(`/api/worksheets/${duplicateWs2Id}/items`)
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ sealEntryIds: [entryId] });
+      expect(second.status).toBe(400);
+      expect(second.body.error).toMatch(/jiném soupisu/i);
+    });
+
+    it('populate without status filter includes draft and checked seals only', async () => {
+      const draftSeal = await createSeal('0', populateFloorId);
+      const checkedSeal = await createSeal('1', populateFloorId);
+      const invoicedSeal = await createSeal('2', populateFloorId);
+
+      await markSealChecked(app, vedeniToken, workerToken, checkedSeal.id);
+
+      await markSealChecked(app, vedeniToken, workerToken, invoicedSeal.id);
+      await prisma.seal.update({
+        where: { id: invoicedSeal.id },
+        data: { status: 'invoiced' },
+      });
+
+      const populate = await request(app)
+        .post(`/api/worksheets/${populateWorksheetId}/populate`)
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ floorIds: [populateFloorId] });
+      expect(populate.status).toBe(201);
+
+      const addedEntryIds = populate.body.map((item) => item.sealEntryId);
+      expect(addedEntryIds).toContain(draftSeal.entries[0].id);
+      expect(addedEntryIds).toContain(checkedSeal.entries[0].id);
+      expect(addedEntryIds).not.toContain(invoicedSeal.entries[0].id);
+    });
   });
 });

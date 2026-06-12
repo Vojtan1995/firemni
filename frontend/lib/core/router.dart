@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/auth_provider.dart';
@@ -21,6 +21,7 @@ import '../features/reports/reports_screen.dart';
 import '../features/pricing/price_list_screen.dart';
 import '../features/logs/logs_screen.dart';
 import '../features/jobs/my_jobs_screen.dart';
+import '../features/jobs/jobs_screen.dart';
 import '../features/messages/messages_screen.dart';
 import '../features/notifications/notifications_screen.dart';
 import '../features/search/search_screen.dart';
@@ -30,6 +31,9 @@ import '../features/worksheets/worksheets_screen.dart';
 import '../features/worksheets/saved_worksheets_screen.dart';
 import '../features/worksheets/soupisy_screen.dart';
 import '../features/worksheets/worksheet_detail_screen.dart';
+
+/// Globální klíč pro dialogy nad celou aplikací (např. update checker).
+final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 /// Keeps a single [GoRouter] instance; re-runs redirect when auth changes.
 class GoRouterRefresh extends ChangeNotifier {
@@ -49,6 +53,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ref.watch(_routerRefreshProvider);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     refreshListenable: refresh,
     initialLocation: '/login',
     redirect: (context, state) {
@@ -81,8 +86,9 @@ final routerProvider = Provider<GoRouter>((ref) {
             state.matchedLocation == '/worksheets') {
           return '/soupisy';
         }
-        if (!AppPermissions.canViewStats(role) &&
-            state.matchedLocation == '/stats') {
+        if (state.matchedLocation == '/stats' &&
+            (role == 'worker' ||
+                !AppPermissions.canViewStats(role))) {
           return '/';
         }
         if (!AppPermissions.canManageWorksheets(role) &&
@@ -112,8 +118,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/',
         builder: (_, __) => const HomeScreen(),
         routes: [
+          GoRoute(path: 'jobs', builder: (_, __) => const JobsScreen()),
           GoRoute(
-              path: 'job-number', builder: (_, __) => const JobNumberScreen()),
+              path: 'job-number',
+              redirect: (_, __) => '/jobs'),
+          GoRoute(
+              path: 'job-number-legacy',
+              builder: (_, __) => const JobNumberScreen()),
           GoRoute(
               path: 'floors/:jobId',
               builder: (c, s) =>
@@ -125,6 +136,8 @@ final routerProvider = Provider<GoRouter>((ref) {
                 floorId: s.pathParameters['floorId']!,
                 placeSealId: s.uri.queryParameters['placeSealId'],
                 focusSealId: s.uri.queryParameters['focusSealId'],
+                draftPlacement: s.uri.queryParameters['draftPlacement'] == '1',
+                draftSealNumber: s.uri.queryParameters['sealNumber'],
               ),
             ),
           GoRoute(
@@ -154,7 +167,12 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (c, s) =>
                   SealDetailScreen(sealId: s.pathParameters['id']!)),
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
-          GoRoute(path: 'my-jobs', builder: (_, __) => const MyJobsScreen()),
+          GoRoute(
+              path: 'my-jobs',
+              redirect: (_, __) => '/jobs'),
+          GoRoute(
+              path: 'my-jobs-legacy',
+              builder: (_, __) => const MyJobsScreen()),
           GoRoute(path: 'messages', builder: (_, __) => const MessagesScreen()),
           GoRoute(path: 'notifications', builder: (_, __) => const NotificationsScreen()),
           GoRoute(path: 'search', builder: (_, __) => const SearchScreen()),

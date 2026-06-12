@@ -113,6 +113,7 @@ router.get('/floors/:floorId/seals', async (req, res, next) => {
         hasPublicNote: role !== UserRole.worker && !!s.note?.trim(),
         hasInternalNote: !!s.internalNote?.trim(),
         reviewStatus: s.reviewStatus,
+        markerPlacementPending: s.markerPlacementPending,
         worker: showWorker && 'createdBy' in s ? s.createdBy : undefined,
       })),
     );
@@ -260,6 +261,7 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
           internalNote: notes.internalNote,
           openingLengthMm: body.openingLengthMm ?? null,
           openingWidthMm: body.openingWidthMm ?? null,
+          markerPlacementPending: body.markerPlacementPending ?? false,
           status: SealStatus.draft,
           createdById: req.user!.id,
           updatedById: req.user!.id,
@@ -383,6 +385,7 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       'fireRating',
       'openingLengthMm',
       'openingWidthMm',
+      'markerPlacementPending',
     ] as const;
     for (const f of fields) {
       if (body[f] !== undefined) {

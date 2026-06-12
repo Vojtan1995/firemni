@@ -118,6 +118,26 @@ Více: [KNOWN_ISSUES.md](KNOWN_ISSUES.md).
 
 ---
 
+## 5b. Vydání nové verze Android klienta (update checker)
+
+Po sestavení APK (`build-release.ps1` nebo `flutter build apk --release`):
+
+1. Zvýšit `version` v `frontend/pubspec.yaml` (např. `1.1.0+2` — číslo za `+` je `APP_RELEASE_BUILD`).
+2. Nahrát `app-release.apk` na **HTTPS** (GitHub Releases, R2 public URL, firemní CDN).
+3. Na backendu nastavit env proměnné (viz `backend/.env.production.example`):
+   - `APP_RELEASE_VERSION_NAME` — zobrazená verze
+   - `APP_RELEASE_BUILD` — build číslo z pubspec
+   - `APP_RELEASE_MIN_BUILD` — pod tímto buildem app vynutí aktualizaci
+   - `APP_RELEASE_APK_URL` — HTTPS odkaz na APK
+   - `APP_RELEASE_NOTES` — volitelný text změn
+4. Restart / redeploy backendu.
+
+Uživatelé se starším APK při příštím startu (online) uvidí dialog **Stáhnout aktualizaci** — bez ručního hledání souboru. Kontrola běží jen na **Android release** (ne v debug).
+
+Ověření: `GET /api/app/release?platform=android` → JSON s `updateAvailable: true`.
+
+---
+
 ## 6. Checklist před spuštěním interní bety
 
 ### Infrastruktura

@@ -1,0 +1,115 @@
+import 'package:dio/dio.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:ucpavky/core/app_release_info.dart';
+import 'package:ucpavky/core/app_update_service.dart';
+
+Dio _dioWithResponse(dynamic data, {int statusCode = 200}) {
+  final dio = Dio();
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: options,
+            statusCode: statusCode,
+            data: data,
+          ),
+        );
+      },
+    ),
+  );
+  return dio;
+}
+
+Dio _dioWithError() {
+  final dio = Dio();
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        handler.reject(
+          DioException(
+            requestOptions: options,
+            type: DioExceptionType.connectionError,
+          ),
+        );
+      },
+    ),
+  );
+  return dio;
+}
+
+void main() {
+  group('fetchAppReleaseInfo', () {
+    test('parses configured release from backend', () async {
+      final dio = _dioWithResponse({
+        'platform': 'android',
+        'updateAvailable': true,
+        'versionName': '1.1.0',
+        'latestBuild': 2,
+        'minBuild': 1,
+        'apkUrl': 'https://releases.example.com/app.apk',
+        'releaseNotes': 'Changelog',
+      });
+
+      final info = await fetchAppReleaseInfo(dio);
+      expect(info, isNotNull);
+      expect(info!.updateAvailable, isTrue);
+      expect(info.versionName, '1.1.0');
+      expect(info.latestBuild, 2);
+      expect(info.minBuild, 1);
+      expect(info.apkUrl, 'https://releases.example.com/app.apk');
+      expect(info.releaseNotes, 'Changelog');
+    });
+
+    test('returns null when backend is unavailable', () async {
+      final info = await fetchAppReleaseInfo(_dioWithError());
+      expect(info, isNull);
+    });
+
+    test('parses updateAvailable false without prompting client', () async {
+      final dio = _dioWithResponse({
+        'platform': 'android',
+        'updateAvailable': false,
+      });
+
+      final info = await fetchAppReleaseInfo(dio);
+      expect(info, isNotNull);
+      expect(info!.updateAvailable, isFalse);
+      expect(
+        shouldShowAppUpdate(currentBuild: 1, release: info),
+        isFalse,
+      );
+    });
+  });
+
+  group('version comparison scenarios', () {
+    const configured = AppReleaseInfo(
+      platform: 'android',
+      updateAvailable: true,
+      versionName: '1.1.0',
+      latestBuild: 5,
+      minBuild: 4,
+      apkUrl: 'https://releases.example.com/app.apk',
+    );
+
+    test('no prompt when already on latest build', () {
+      expect(shouldShowAppUpdate(currentBuild: 5, release: configured), isFalse);
+    });
+
+    test('optional prompt when below latest but above min', () {
+      expect(shouldShowAppUpdate(currentBuild: 4, release: configured), isTrue);
+      expect(
+        isAppUpdateForced(currentBuild: 4, release: configured),
+        isFalse,
+      );
+    });
+
+    test('forced prompt when below minBuild', () {
+      expect(shouldShowAppUpdate(currentBuild: 3, release: configured), isTrue);
+      expect(
+        isAppUpdateForced(currentBuild: 3, release: configured),
+        isTrue,
+      );
+    });
+  });
+}

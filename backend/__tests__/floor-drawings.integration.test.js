@@ -8,6 +8,10 @@ const tinyPng = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=',
   'base64',
 );
+const tinyJpeg = Buffer.from(
+  '/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwCwAA//2Q==',
+  'base64',
+);
 
 function sealBody(jobId, floorId, sealNumber) {
   return {
@@ -79,15 +83,42 @@ describe('Floor drawings and markers (task 5.3)', () => {
     await prisma.$disconnect();
   });
 
-  it('vedení can upload floor drawing', async () => {
+  it('vedení can upload floor drawing and preserve original PNG', async () => {
     const res = await request(app)
       .post(`/api/jobs/${jobId}/floors/${floor1Id}/drawing`)
       .set('Authorization', `Bearer ${managementToken}`)
       .attach('drawing', tinyPng, { filename: 'plan.png', contentType: 'image/png' });
 
     expect(res.status).toBe(201);
+    expect(res.body.mimeType).toBe('image/png');
     expect(res.body.width).toBeGreaterThan(0);
     expect(res.body.height).toBeGreaterThan(0);
+
+    const file = await request(app)
+      .get(`/api/jobs/${jobId}/floors/${floor1Id}/drawing/file`)
+      .set('Authorization', `Bearer ${workerToken}`);
+
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toMatch(/image\/png/);
+    expect(Buffer.compare(file.body, tinyPng)).toBe(0);
+  });
+
+  it('vedení can upload JPEG floor drawing without WebP conversion', async () => {
+    const res = await request(app)
+      .post(`/api/jobs/${jobId}/floors/${floor1Id}/drawing`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .attach('drawing', tinyJpeg, { filename: 'plan.jpg', contentType: 'image/jpeg' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.mimeType).toBe('image/jpeg');
+
+    const file = await request(app)
+      .get(`/api/jobs/${jobId}/floors/${floor1Id}/drawing/file`)
+      .set('Authorization', `Bearer ${workerToken}`);
+
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toMatch(/image\/jpeg/);
+    expect(Buffer.compare(file.body, tinyJpeg)).toBe(0);
   });
 
   it('worker cannot upload drawing', async () => {
@@ -157,7 +188,7 @@ describe('Floor drawings and markers (task 5.3)', () => {
       .set('Authorization', `Bearer ${workerToken}`);
 
     expect(file.status).toBe(200);
-    expect(file.headers['content-type']).toMatch(/image\//);
+    expect(file.headers['content-type']).toMatch(/image\/(png|jpeg|webp)/);
   });
 
   it('worker can place and read seal marker', async () => {

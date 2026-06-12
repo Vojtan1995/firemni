@@ -42,6 +42,13 @@ export const config = {
     retentionCount: parseInt(process.env.BACKUP_RETENTION_COUNT || '7', 10),
     intervalHours: parseInt(process.env.BACKUP_INTERVAL_HOURS || '24', 10),
   },
+  appRelease: {
+    versionName: process.env.APP_RELEASE_VERSION_NAME || '',
+    build: parseInt(process.env.APP_RELEASE_BUILD || '', 10) || 0,
+    minBuild: parseInt(process.env.APP_RELEASE_MIN_BUILD || '0', 10) || 0,
+    apkUrl: process.env.APP_RELEASE_APK_URL || '',
+    notes: process.env.APP_RELEASE_NOTES || '',
+  },
 };
 
 export function validateConfig() {
