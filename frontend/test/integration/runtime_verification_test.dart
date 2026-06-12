@@ -129,7 +129,7 @@ void main() {
             bytes[2] == 0xBF;
         expect(hasUtf8Bom, isTrue);
         final text = utf8.decode(bytes);
-        expect(text, contains('Zakázky'));
+        expect(text, contains('Stavba;Název stavby'));
       } finally {
         client.close();
       }
