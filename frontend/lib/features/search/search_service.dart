@@ -1,7 +1,6 @@
 import 'package:drift/drift.dart' hide Column;
 
 import '../../database/database.dart';
-import '../seals/seal_list_helpers.dart';
 
 class SearchHit {
   SearchHit({

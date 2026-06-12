@@ -254,10 +254,10 @@ describe('Reports and exports (BE-05)', () => {
       const res = await request(app)
         .get('/api/reports/work-summary')
         .set('Authorization', `Bearer ${managementToken}`)
-        .query({ jobId, entryType: 'Kabel' });
+        .query({ jobId, entryType: 'EL.V.' });
       expect(res.status).toBe(200);
       expect(res.body.count).toBeGreaterThanOrEqual(3);
-      expect(res.body.rows.every((r) => r.typProstupu === 'Kabel')).toBe(true);
+      expect(res.body.rows.every((r) => r.typProstupu === 'EL.V.')).toBe(true);
     });
 
     it('filters by date range (from/to)', async () => {
