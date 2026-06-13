@@ -8,12 +8,12 @@ const router = Router();
 
 const loginSchema = z.object({
   username: z.string().min(1),
-  pin: z.string().min(4).max(8),
+  pin: z.string().min(6).max(8),
 });
 
 const changePinSchema = z.object({
-  currentPin: z.string().min(4).max(8),
-  newPin: z.string().min(4).max(8),
+  currentPin: z.string().min(6).max(8),
+  newPin: z.string().min(6).max(8),
 });
 
 router.post('/login', loginRateLimiter, async (req, res, next) => {

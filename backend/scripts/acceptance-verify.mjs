@@ -14,7 +14,7 @@ function record(id, name, ok, detail) {
 }
 
 async function login(app, username) {
-  const res = await request(app).post('/api/auth/login').send({ username, pin: '1234' });
+  const res = await request(app).post('/api/auth/login').send({ username, pin: '123456' });
   return res.body.token;
 }
 
@@ -63,7 +63,7 @@ async function main() {
   const ucetniUser = await request(app)
     .post('/api/users')
     .set('Authorization', `Bearer ${ucetniToken}`)
-    .send({ username: `acc_${Date.now()}`, displayName: 'X', pin: '1234', role: 'worker' });
+    .send({ username: `acc_${Date.now()}`, displayName: 'X', pin: '123456', role: 'worker' });
   record('R-UCETNI-1', 'Administrativa nemůže založit uživatele', ucetniUser.status === 403);
 
   const vedeniUsers = await request(app)

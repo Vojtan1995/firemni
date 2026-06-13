@@ -13,17 +13,17 @@ describe('Users admin (management / admin)', () => {
   beforeAll(async () => {
     const mgmt = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     managementToken = mgmt.body.token;
 
     const admin = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', pin: '1234' });
+      .send({ username: 'admin', pin: '123456' });
     adminToken = admin.body.token;
 
     const worker = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     workerToken = worker.body.token;
   });
 
@@ -66,7 +66,7 @@ describe('Users admin (management / admin)', () => {
       .send({
         username: 'eviladmin',
         displayName: 'Evil',
-        pin: '5678',
+        pin: '567890',
         role: 'admin',
       });
     expect(res.status).toBe(403);
@@ -80,7 +80,7 @@ describe('Users admin (management / admin)', () => {
       .send({
         username,
         displayName: 'Test Worker',
-        pin: '9999',
+        pin: '999999',
         role: 'worker',
       });
     expect(created.status).toBe(201);
@@ -90,7 +90,7 @@ describe('Users admin (management / admin)', () => {
 
     const login = await request(app)
       .post('/api/auth/login')
-      .send({ username, pin: '9999' });
+      .send({ username, pin: '999999' });
     expect(login.status).toBe(200);
     expect(login.body.user.username).toBe(username);
     expect(login.body.user.mustChangePin).toBe(true);
@@ -98,7 +98,7 @@ describe('Users admin (management / admin)', () => {
     const changed = await request(app)
       .post('/api/auth/change-pin')
       .set('Authorization', `Bearer ${login.body.token}`)
-      .send({ currentPin: '9999', newPin: '7777' });
+      .send({ currentPin: '999999', newPin: '777777' });
     expect(changed.status).toBe(200);
     expect(changed.body.mustChangePin).toBe(false);
 
@@ -110,7 +110,7 @@ describe('Users admin (management / admin)', () => {
 
     const oldPinLogin = await request(app)
       .post('/api/auth/login')
-      .send({ username, pin: '9999' });
+      .send({ username, pin: '999999' });
     expect(oldPinLogin.status).toBe(401);
   });
 
@@ -118,13 +118,13 @@ describe('Users admin (management / admin)', () => {
     const res = await request(app)
       .patch(`/api/users/${createdUserId}`)
       .set('Authorization', `Bearer ${managementToken}`)
-      .send({ pin: '8888' });
+      .send({ pin: '888888' });
     expect(res.status).toBe(200);
     expect(res.body.mustChangePin).toBe(true);
 
     const login = await request(app)
       .post('/api/auth/login')
-      .send({ username: (await prisma.user.findUnique({ where: { id: createdUserId } })).username, pin: '8888' });
+      .send({ username: (await prisma.user.findUnique({ where: { id: createdUserId } })).username, pin: '888888' });
     expect(login.status).toBe(200);
   });
 
@@ -139,7 +139,7 @@ describe('Users admin (management / admin)', () => {
     const user = await prisma.user.findUnique({ where: { id: createdUserId } });
     const login = await request(app)
       .post('/api/auth/login')
-      .send({ username: user.username, pin: '8888' });
+      .send({ username: user.username, pin: '888888' });
     expect(login.status).toBe(401);
 
     await request(app)
@@ -156,7 +156,7 @@ describe('Users admin (management / admin)', () => {
       .send({
         username,
         displayName: 'Test Admin',
-        pin: '4321',
+        pin: '432109',
         role: 'admin',
       });
     expect(created.status).toBe(201);

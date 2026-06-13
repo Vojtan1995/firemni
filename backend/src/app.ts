@@ -28,6 +28,11 @@ import appRoutes from './routes/app.routes.js';
 export function createApp() {
   const app = express();
 
+  // Railway (a každá jiná reverzní proxy) přepisuje req.ip na IP proxy.
+  // Bez trust proxy by login rate limiter počítal všechny klienty pod jednou IP
+  // a LoginLog.ipAddress by byl k ničemu. Hodnota 1 = důvěřuj prvnímu proxy hopu.
+  app.set('trust proxy', 1);
+
   app.use(
     pinoHttp({
       logger,
@@ -72,6 +77,11 @@ export function createApp() {
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api/admin', adminRoutes);
+
+  // Fallback 404 — musí být před errorMiddleware a za všemi routami
+  app.use((_req, res) => {
+    res.status(404).json({ error: 'Endpoint nenalezen', code: 'NOT_FOUND' });
+  });
 
   app.use(errorMiddleware);
 

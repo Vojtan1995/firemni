@@ -15,7 +15,7 @@ describe('Seals pricing with dimensions', () => {
   beforeAll(async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     workerToken = loginRes.body.token;
 
     const jobRes = await request(app)

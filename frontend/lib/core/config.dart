@@ -5,7 +5,7 @@ class AppConfig {
   static const String _envApiBaseUrl = String.fromEnvironment('API_BASE_URL');
 
   /// Debug APK na fyzickém zařízení ve stejné Wi‑Fi → backend na PC.
-  static const String _debugLanApiBaseUrl = 'http://192.168.1.110:3000';
+  static const String _debugLanApiBaseUrl = 'http://192.168.1.105:3000';
 
   @visibleForTesting
   static String resolveApiBaseUrl({

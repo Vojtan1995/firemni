@@ -10,64 +10,76 @@ function resolveSeedPin(): string {
   if (process.env.NODE_ENV === 'production') {
     throw new Error('SEED_DEMO_PIN must be set when seeding in production');
   }
-  return '1234';
+  return '123456';
 }
+
+const DEMO_USERNAMES = ['admin', 'vedeni', 'ucetni', 'worker1', 'worker2'];
 
 async function main() {
   const pinHash = await bcrypt.hash(resolveSeedPin(), 10);
 
+  if (process.env.NODE_ENV === 'test') {
+    // Vyčisti staré LoginLog záznamy, aby předchozí neúspěšné pokusy nezpůsobily lockout (DB-01)
+    await prisma.loginLog.deleteMany({ where: { username: { in: DEMO_USERNAMES } } });
+  }
+
   const admin = await prisma.user.upsert({
     where: { username: 'admin' },
-    update: {},
+    update: { pinHash, mustChangePin: true },
     create: {
       username: 'admin',
       displayName: 'Administrátor',
       pinHash,
       role: UserRole.admin,
+      mustChangePin: true,
     },
   });
 
   const vedeni = await prisma.user.upsert({
     where: { username: 'vedeni' },
-    update: { role: UserRole.vedeni },
+    update: { role: UserRole.vedeni, pinHash, mustChangePin: true },
     create: {
       username: 'vedeni',
       displayName: 'Vedení',
       pinHash,
       role: UserRole.vedeni,
+      mustChangePin: true,
     },
   });
 
   await prisma.user.upsert({
     where: { username: 'ucetni' },
-    update: { role: UserRole.ucetni, displayName: 'Administrativa' },
+    update: { role: UserRole.ucetni, displayName: 'Administrativa', pinHash, mustChangePin: true },
     create: {
       username: 'ucetni',
       displayName: 'Administrativa',
       pinHash,
       role: UserRole.ucetni,
+      mustChangePin: true,
     },
   });
 
   await prisma.user.upsert({
     where: { username: 'worker1' },
-    update: {},
+    update: { pinHash, mustChangePin: true },
     create: {
       username: 'worker1',
       displayName: 'Pracovník 1',
       pinHash,
       role: UserRole.worker,
+      mustChangePin: true,
     },
   });
 
   await prisma.user.upsert({
     where: { username: 'worker2' },
-    update: {},
+    update: { pinHash, mustChangePin: true },
     create: {
       username: 'worker2',
       displayName: 'Pracovník 2',
       pinHash,
       role: UserRole.worker,
+      mustChangePin: true,
     },
   });
 

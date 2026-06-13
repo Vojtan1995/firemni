@@ -32,7 +32,7 @@ describe('Worker joins a job by project number', () => {
   beforeAll(async () => {
     const management = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     expect(management.status).toBe(200);
     managementToken = management.body.token;
 
@@ -42,7 +42,7 @@ describe('Worker joins a job by project number', () => {
       .send({
         username,
         displayName: 'Join by number worker',
-        pin: '1234',
+        pin: '123456',
         role: 'worker',
       });
     expect(worker.status).toBe(201);
@@ -50,7 +50,7 @@ describe('Worker joins a job by project number', () => {
 
     const login = await request(app)
       .post('/api/auth/login')
-      .send({ username, pin: '1234' });
+      .send({ username, pin: '123456' });
     expect(login.status).toBe(200);
     workerToken = login.body.token;
 

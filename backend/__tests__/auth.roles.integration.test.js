@@ -16,7 +16,7 @@ describe('Auth and role authorization (BE-02)', () => {
   async function login(username) {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username, pin: '1234' });
+      .send({ username, pin: '123456' });
     return res;
   }
 

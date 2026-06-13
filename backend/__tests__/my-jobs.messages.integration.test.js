@@ -14,17 +14,17 @@ describe('My jobs and messages (phase 2)', () => {
   beforeAll(async () => {
     const worker = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     workerToken = worker.body.token;
 
     const vedeni = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     vedeniToken = vedeni.body.token;
 
     const ucetni = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'ucetni', pin: '1234' });
+      .send({ username: 'ucetni', pin: '123456' });
     ucetniToken = ucetni.body.token;
 
     const jobRes = await request(app)

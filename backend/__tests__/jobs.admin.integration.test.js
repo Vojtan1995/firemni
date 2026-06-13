@@ -13,12 +13,12 @@ describe('Jobs and floors admin (management)', () => {
   beforeAll(async () => {
     const mgmt = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     managementToken = mgmt.body.token;
 
     const worker = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     workerToken = worker.body.token;
 
     const adminJobNumber = `7${Date.now().toString().slice(-7)}`;

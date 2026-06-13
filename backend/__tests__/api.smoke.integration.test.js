@@ -12,13 +12,13 @@ describe('API smoke (integration)', () => {
   beforeAll(async () => {
     const workerLogin = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     expect(workerLogin.status).toBe(200);
     workerToken = workerLogin.body.token;
 
     const mgmtLogin = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     expect(mgmtLogin.status).toBe(200);
     managementToken = mgmtLogin.body.token;
   });
@@ -45,7 +45,7 @@ describe('API smoke (integration)', () => {
   it('POST /api/auth/login → token + role', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'worker1', pin: '1234' });
+      .send({ username: 'worker1', pin: '123456' });
     expect(res.status).toBe(200);
     expect(res.body.token).toEqual(expect.any(String));
     expect(res.body.user.username).toBe('worker1');

@@ -55,9 +55,3 @@ export function requireRole(...roles: UserRole[]) {
     next();
   };
 }
-
-export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return next();
-  authMiddleware(req, _res, next).catch(next);
-}

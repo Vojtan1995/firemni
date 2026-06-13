@@ -18,7 +18,7 @@ describe('RBAC refactor integration', () => {
   const uniqueProject = `${Date.now()}`.slice(-8).padStart(8, '0');
 
   async function login(username) {
-    const res = await request(app).post('/api/auth/login').send({ username, pin: '1234' });
+    const res = await request(app).post('/api/auth/login').send({ username, pin: '123456' });
     expect(res.status).toBe(200);
     return res.body.token;
   }
@@ -44,7 +44,7 @@ describe('RBAC refactor integration', () => {
       .send({
         username: 'blocked_user',
         displayName: 'Blocked',
-        pin: '1234',
+        pin: '123456',
         role: 'worker',
       });
     expect(res.status).toBe(403);

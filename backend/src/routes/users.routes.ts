@@ -11,7 +11,7 @@ const router = Router();
 router.use(authMiddleware);
 router.use(requirePermission('user.manage'));
 
-const pinSchema = z.string().min(4).max(8);
+const pinSchema = z.string().min(6).max(8);
 
 const createUserSchema = z.object({
   username: z.string().min(1).max(64),

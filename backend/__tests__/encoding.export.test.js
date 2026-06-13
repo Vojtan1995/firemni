@@ -16,7 +16,7 @@ describe('Czech encoding in exports', () => {
   beforeAll(async () => {
     const login = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'vedeni', pin: '1234' });
+      .send({ username: 'vedeni', pin: '123456' });
     managementToken = login.body.token;
 
     const jobRes = await request(app)

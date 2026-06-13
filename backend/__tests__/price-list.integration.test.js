@@ -12,7 +12,7 @@ describe('Price list (read-only for workers)', () => {
   async function login(username) {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username, pin: '1234' });
+      .send({ username, pin: '123456' });
     expect(res.status).toBe(200);
     return res.body.token;
   }

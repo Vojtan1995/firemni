@@ -4,10 +4,27 @@ import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../lib/prisma.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
+import { AppError } from '../lib/errors.js';
 import { hashSessionToken } from '../lib/session-token.js';
 import { logActivity } from './audit.service.js';
 
+const LOCKOUT_WINDOW_MS = 15 * 60 * 1000; // 15 minut
+const LOCKOUT_MAX_ATTEMPTS = 10;
+
+async function checkAccountLockout(username: string): Promise<void> {
+  const since = new Date(Date.now() - LOCKOUT_WINDOW_MS);
+  const recentFailures = await prisma.loginLog.count({
+    where: { username, success: false, createdAt: { gte: since } },
+  });
+  if (recentFailures >= LOCKOUT_MAX_ATTEMPTS) {
+    throw new AppError(429, 'ACCOUNT_LOCKED', 'Účet je dočasně zablokován kvůli příliš mnoha neúspěšným pokusům. Zkuste to za 15 minut.');
+  }
+}
+
 export async function login(username: string, pin: string, meta?: { ip?: string; userAgent?: string }) {
+  // Zkontroluj lockout před načtením uživatele (brání user enumeration přes timing)
+  await checkAccountLockout(username);
+
   const user = await prisma.user.findUnique({ where: { username } });
 
   if (!user || !user.isActive) {

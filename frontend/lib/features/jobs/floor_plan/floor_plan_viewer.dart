@@ -44,7 +44,7 @@ class FloorPlanViewer extends StatefulWidget {
 }
 
 class _FloorPlanViewerState extends State<FloorPlanViewer> {
-  late final PdfDocumentRef _pdfDocumentRef;
+  late PdfDocumentRef _pdfDocumentRef;
 
   @override
   void initState() {
