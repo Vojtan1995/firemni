@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../core/permissions.dart';
+import '../../widgets/app_help_dialog.dart';
 import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
@@ -112,13 +114,10 @@ class HomeScreen extends ConsumerWidget {
           _MenuTile(
             icon: Icons.help_outline,
             title: 'Nápověda',
-            onTap: () {
-              showAboutDialog(
-                context: context,
-                applicationName: 'Ucpávky',
-                applicationVersion: '1.0.0',
-              );
-            },
+            onTap: () => showAppHelpDialog(
+              context: context,
+              dio: ref.read(dioProvider),
+            ),
           ),
         ],
       ),

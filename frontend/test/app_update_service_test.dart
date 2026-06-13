@@ -93,7 +93,8 @@ void main() {
     );
 
     test('no prompt when already on latest build', () {
-      expect(shouldShowAppUpdate(currentBuild: 5, release: configured), isFalse);
+      expect(
+          shouldShowAppUpdate(currentBuild: 5, release: configured), isFalse);
     });
 
     test('optional prompt when below latest but above min', () {
@@ -110,6 +111,52 @@ void main() {
         isAppUpdateForced(currentBuild: 3, release: configured),
         isTrue,
       );
+    });
+  });
+
+  group('checkAppUpdateManually', () {
+    test('returns upToDate when backend has no newer build', () async {
+      final result = await checkAppUpdateManually(
+        _dioWithResponse({
+          'platform': 'android',
+          'updateAvailable': true,
+          'latestBuild': 2,
+          'minBuild': 1,
+          'apkUrl': 'https://releases.example.com/app.apk',
+        }),
+        supported: true,
+        buildReader: () async => 2,
+      );
+
+      expect(result.status, ManualAppUpdateStatus.upToDate);
+    });
+
+    test('returns update details when a newer build exists', () async {
+      final result = await checkAppUpdateManually(
+        _dioWithResponse({
+          'platform': 'android',
+          'updateAvailable': true,
+          'latestBuild': 2,
+          'minBuild': 2,
+          'apkUrl': 'https://releases.example.com/app.apk',
+        }),
+        supported: true,
+        buildReader: () async => 1,
+      );
+
+      expect(result.status, ManualAppUpdateStatus.updateAvailable);
+      expect(result.update, isNotNull);
+      expect(result.update!.forced, isTrue);
+    });
+
+    test('returns unavailable when backend cannot be reached', () async {
+      final result = await checkAppUpdateManually(
+        _dioWithError(),
+        supported: true,
+        buildReader: () async => 1,
+      );
+
+      expect(result.status, ManualAppUpdateStatus.unavailable);
     });
   });
 }
