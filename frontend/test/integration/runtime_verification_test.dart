@@ -71,7 +71,7 @@ void main() {
     test('login returns token for seed user worker1', () async {
       final data = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',
-        'pin': '1234',
+        'pin': '123456',
       });
       expect(data['token'], isNotNull);
       expect((data['user'] as Map)['role'], 'worker');
@@ -106,7 +106,7 @@ void main() {
     test('management can download reports CSV export', () async {
       final data = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'vedeni',
-        'pin': '1234',
+        'pin': '123456',
       });
       final mgmtToken = data['token'] as String;
       expect((data['user'] as Map)['role'], 'vedeni');
@@ -138,7 +138,7 @@ void main() {
     test('management can download reports PDF export', () async {
       final data = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'vedeni',
-        'pin': '1234',
+        'pin': '123456',
       });
       final mgmtToken = data['token'] as String;
 
@@ -165,7 +165,7 @@ void main() {
     test('worker can access own reports PDF export', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',
-        'pin': '1234',
+        'pin': '123456',
       });
       final workerToken = login['token'] as String;
 
@@ -191,7 +191,7 @@ void main() {
     test('worker can access own reports CSV export', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'worker1',
-        'pin': '1234',
+        'pin': '123456',
       });
       final workerToken = login['token'] as String;
 
@@ -212,7 +212,7 @@ void main() {
     test('admin can access seals trash list', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'admin',
-        'pin': '1234',
+        'pin': '123456',
       });
       final adminToken = login['token'] as String;
 
@@ -233,7 +233,7 @@ void main() {
     test('management cannot access seals trash', () async {
       final login = await _jsonRequest('POST', '/api/auth/login', body: {
         'username': 'vedeni',
-        'pin': '1234',
+        'pin': '123456',
       });
       final token = login['token'] as String;
 
