@@ -1,4 +1,4 @@
-import { SealStatus, UserRole } from '@prisma/client';
+import { Prisma, SealStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { AppError, badRequest, conflict, forbidden, notFound } from '../lib/errors.js';
 import { logActivity, logChange } from './audit.service.js';
@@ -84,6 +84,18 @@ export async function suggestNextSealNumber(floorId: string) {
     }
   }
   return String(max + 1);
+}
+
+/**
+ * Převede Prisma P2002 (porušení partiálního unique indexu na čísle ucpávky)
+ * na čistý conflict. Backstop proti race condition, kdy dva požadavky projdou
+ * `checkDuplicateSealNumber` současně. Ostatní chyby propustí dál.
+ */
+export function rethrowAsDuplicateSealNumber(e: unknown): never {
+  if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+    throw conflict('Duplicitní číslo ucpávky na tomto patře');
+  }
+  throw e;
 }
 
 export async function checkDuplicateSealNumber(
@@ -216,14 +228,16 @@ export async function bulkMoveSeals(
         sealId,
       );
 
-      const updated = await prisma.seal.update({
-        where: { id: sealId },
-        data: {
-          floorId: targetFloorId,
-          version: { increment: 1 },
-          updatedById: userId,
-        },
-      });
+      const updated = await prisma.seal
+        .update({
+          where: { id: sealId },
+          data: {
+            floorId: targetFloorId,
+            version: { increment: 1 },
+            updatedById: userId,
+          },
+        })
+        .catch(rethrowAsDuplicateSealNumber);
 
       await prisma.sealMarker.updateMany({
         where: { sealId },

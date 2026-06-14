@@ -17,6 +17,7 @@ import {
   changeSealStatus,
   checkDuplicateSealNumber,
   restoreSeal,
+  rethrowAsDuplicateSealNumber,
   reviewSeal,
   softDeleteSeal,
   statusAfterWorkerEdit,
@@ -247,40 +248,42 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
       internalNote: body.internalNote,
     });
 
-    const priced = await prisma.$transaction(async (tx) => {
-      const seal = await tx.seal.create({
-        data: {
-          jobId: body.jobId,
-          floorId: body.floorId,
-          sealNumber: body.sealNumber,
-          system: body.system,
-          construction: body.construction,
-          location: body.location,
-          fireRating: body.fireRating,
-          note: notes.note,
-          internalNote: notes.internalNote,
-          openingLengthMm: body.openingLengthMm ?? null,
-          openingWidthMm: body.openingWidthMm ?? null,
-          markerPlacementPending: body.markerPlacementPending ?? false,
-          status: SealStatus.draft,
-          createdById: req.user!.id,
-          updatedById: req.user!.id,
-          entries: {
-            create: body.entries.map((e, i) => entryCreateData(e, i)),
+    const priced = await prisma
+      .$transaction(async (tx) => {
+        const seal = await tx.seal.create({
+          data: {
+            jobId: body.jobId,
+            floorId: body.floorId,
+            sealNumber: body.sealNumber,
+            system: body.system,
+            construction: body.construction,
+            location: body.location,
+            fireRating: body.fireRating,
+            note: notes.note,
+            internalNote: notes.internalNote,
+            openingLengthMm: body.openingLengthMm ?? null,
+            openingWidthMm: body.openingWidthMm ?? null,
+            markerPlacementPending: body.markerPlacementPending ?? false,
+            status: SealStatus.draft,
+            createdById: req.user!.id,
+            updatedById: req.user!.id,
+            entries: {
+              create: body.entries.map((e, i) => entryCreateData(e, i)),
+            },
           },
-        },
-      });
-      await priceSealEntries(seal.id, req.user!.id, tx);
-      return tx.seal.findFirst({
-        where: { id: seal.id },
-        include: {
-          entries: { where: { deletedAt: null }, include: { materials: true } },
-          photos: true,
-          createdBy: { select: { id: true, displayName: true } },
-          updatedBy: { select: { id: true, displayName: true } },
-        },
-      });
-    });
+        });
+        await priceSealEntries(seal.id, req.user!.id, tx);
+        return tx.seal.findFirst({
+          where: { id: seal.id },
+          include: {
+            entries: { where: { deletedAt: null }, include: { materials: true } },
+            photos: true,
+            createdBy: { select: { id: true, displayName: true } },
+            updatedBy: { select: { id: true, displayName: true } },
+          },
+        });
+      })
+      .catch(rethrowAsDuplicateSealNumber);
 
     await logActivity(req.user!.id, 'create', 'seal', priced!.id);
     await touchJobParticipant(body.jobId, req.user!.id, 'worker');
@@ -399,7 +402,8 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
     let seal;
     if (body.entries) {
       await logChange(req.user!.id, 'seal', existing.id, 'entries', 'updated', 'updated');
-      seal = await prisma.$transaction(async (tx) => {
+      seal = await prisma
+        .$transaction(async (tx) => {
         await tx.sealEntry.updateMany({
           where: { sealId: existing.id },
           data: { deletedAt: new Date() },
@@ -437,18 +441,21 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
             updatedBy: { select: { id: true, displayName: true } },
           },
         });
-      });
+        })
+        .catch(rethrowAsDuplicateSealNumber);
     } else {
-      seal = await prisma.seal.update({
-        where: { id: existing.id },
-        data: updateData,
-        include: {
-          entries: { where: { deletedAt: null }, include: { materials: true } },
-          photos: true,
-          createdBy: { select: { id: true, displayName: true } },
-          updatedBy: { select: { id: true, displayName: true } },
-        },
-      });
+      seal = await prisma.seal
+        .update({
+          where: { id: existing.id },
+          data: updateData,
+          include: {
+            entries: { where: { deletedAt: null }, include: { materials: true } },
+            photos: true,
+            createdBy: { select: { id: true, displayName: true } },
+            updatedBy: { select: { id: true, displayName: true } },
+          },
+        })
+        .catch(rethrowAsDuplicateSealNumber);
     }
 
     if (!seal) throw notFound('Ucpávka nenalezena');

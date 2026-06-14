@@ -27,6 +27,19 @@ export function parseIsoDateQueryEnd(value: unknown): Date | undefined {
   return new Date(`${parsed.data}T23:59:59.999Z`);
 }
 
+/**
+ * Parsuje plný ISO timestamp (např. `since` u logů, inkrementální sync).
+ * Na rozdíl od `parseIsoDateQuery` přijímá i čas; nevalidní vstup → 400.
+ */
+export function parseIsoDateTimeQuery(value: unknown): Date | undefined {
+  if (value == null || value === '') return undefined;
+  const parsed = new Date(String(value));
+  if (Number.isNaN(parsed.getTime())) {
+    throw badRequest('Neplatné datum');
+  }
+  return parsed;
+}
+
 export function assertPairedMm(
   length: number | undefined,
   width: number | undefined,

@@ -420,8 +420,9 @@ class SyncService {
       }
       for (final s in (deleted['seals'] as List? ?? [])) {
         final m = s as Map<String, dynamic>;
+        final sealId = m['id'] as String;
         await (_db.update(_db.localSeals)
-              ..where((row) => row.id.equals(m['id'] as String)))
+              ..where((row) => row.id.equals(sealId)))
             .write(
           LocalSealsCompanion(
             deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
@@ -430,6 +431,10 @@ class SyncService {
                 DateTime.now()),
           ),
         );
+        // Smazat i marker, aby na výkrese nezůstala fantomová značka.
+        await (_db.delete(_db.localSealMarkers)
+              ..where((row) => row.sealId.equals(sealId)))
+            .go();
       }
 
       final archived = data['archived'] as Map<String, dynamic>? ?? const {};

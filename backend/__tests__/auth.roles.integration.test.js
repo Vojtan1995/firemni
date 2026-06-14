@@ -144,6 +144,23 @@ describe('Auth and role authorization (BE-02)', () => {
     expect(Array.isArray(res.body)).toBe(true);
   });
 
+  it('GET /api/logs/login with invalid since → 400', async () => {
+    const res = await request(app)
+      .get('/api/logs/login')
+      .query({ since: 'neni-datum' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/logs/login with valid ISO since → 200', async () => {
+    const res = await request(app)
+      .get('/api/logs/login')
+      .query({ since: '2020-01-01T00:00:00.000Z' })
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
   it('management can PATCH /api/seals/:id/status → 200', async () => {
     const res = await markSealChecked(app, managementToken, workerToken, sealId);
     expect(res.status).toBe('checked');

@@ -402,6 +402,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
               'mimeType': drawingRow.mimeType,
             };
       _markers = markerRows
+          // Přeskočit osiřelé markery (ucpávka smazaná/neexistuje), aby
+          // na výkrese nezůstala fantomová značka.
+          .where((m) => sealById.containsKey(m.sealId))
           .map((m) {
             final seal = sealById[m.sealId];
             return {

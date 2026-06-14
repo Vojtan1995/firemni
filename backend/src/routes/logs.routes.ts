@@ -3,6 +3,7 @@ import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
 import { mapLogUsers } from '../lib/user-privacy.js';
+import { parseIsoDateTimeQuery } from '../lib/zod-helpers.js';
 
 const userLogSelect = { id: true, displayName: true, username: true, role: true } as const;const router = Router();
 router.use(authMiddleware);
@@ -10,7 +11,7 @@ router.use(requirePermission('logs.view'));
 
 router.get('/login', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const logs = await prisma.loginLog.findMany({
       where: since ? { createdAt: { gte: since } } : {},
       include: { user: { select: userLogSelect } },
@@ -24,7 +25,7 @@ router.get('/login', async (req, res, next) => {
 });
 router.get('/errors', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const logs = await prisma.errorLog.findMany({
       where: since ? { createdAt: { gte: since } } : {},
       orderBy: { createdAt: 'desc' },
@@ -38,7 +39,7 @@ router.get('/errors', async (req, res, next) => {
 
 router.get('/activity', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const userId = req.query.userId as string | undefined;
     const entityType = req.query.entityType as string | undefined;
 
@@ -75,7 +76,7 @@ router.get('/changes', async (req, res, next) => {
 
 router.get('/sync', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const logs = await prisma.syncMutation.findMany({
       where: since ? { createdAt: { gte: since } } : {},
       orderBy: { createdAt: 'desc' },
@@ -91,7 +92,7 @@ const PHOTO_ACTIONS = ['photo_upload', 'photo_delete'];
 
 router.get('/photos', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const logs = await prisma.activityLog.findMany({
       where: {
         action: { in: PHOTO_ACTIONS },
@@ -121,7 +122,7 @@ const ADMIN_ACTIONS = [
 
 router.get('/admin', async (req, res, next) => {
   try {
-    const since = req.query.since ? new Date(String(req.query.since)) : undefined;
+    const since = parseIsoDateTimeQuery(req.query.since);
     const logs = await prisma.activityLog.findMany({
       where: {
         action: { in: ADMIN_ACTIONS },
