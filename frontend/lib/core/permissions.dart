@@ -7,7 +7,7 @@ class AppPermissions {
     'seal.delete': ['vedeni', 'admin'],
     'seal.restore': ['admin'],
     'seal.history': ['vedeni', 'ucetni', 'admin'],
-    'photo.upload': ['worker', 'vedeni', 'admin'],
+    'photo.upload': ['worker', 'vedeni', 'ucetni', 'admin'],
     'photo.delete': [],
     'job.manage': ['vedeni', 'admin'],
     'floor.manage': ['vedeni', 'admin'],

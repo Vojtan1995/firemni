@@ -128,7 +128,7 @@ router.post('/bulk-status', requirePermission('seal.status'), async (req, res, n
       .object({
         ids: z.array(z.string().uuid()).min(1),
         status: z.nativeEnum(SealStatus),
-        comment: z.string().optional(),
+        comment: z.string().max(2000).optional(),
       })
       .parse(req.body);
     const { succeeded, failed } = await bulkChangeSealStatus(
@@ -297,7 +297,7 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       .extend({
         entries: z.array(sealEntrySchema).optional(),
         baseVersion: z.number().int(),
-        overrideReason: z.string().optional(),
+        overrideReason: z.string().max(2000).optional(),
       })
       .superRefine((data, ctx) => {
         if (data.openingLengthMm != null || data.openingWidthMm != null) {
@@ -466,7 +466,7 @@ router.patch('/:id/status', requirePermission('seal.status'), async (req, res, n
     const body = z
       .object({
         status: z.nativeEnum(SealStatus),
-        comment: z.string().optional(),
+        comment: z.string().max(2000).optional(),
       })
       .parse(req.body);
     const seal = await changeSealStatus(
@@ -487,7 +487,7 @@ router.patch('/:id/review', requirePermission('seal.status'), async (req, res, n
     const body = z
       .object({
         action: z.enum(['approved', 'returned']),
-        comment: z.string().optional(),
+        comment: z.string().max(2000).optional(),
       })
       .parse(req.body);
     const seal = await reviewSeal(
@@ -505,7 +505,8 @@ router.patch('/:id/review', requirePermission('seal.status'), async (req, res, n
 
 router.delete('/:id', requirePermission('seal.delete'), async (req, res, next) => {
   try {
-    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const reason =
+      typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 2000) : undefined;
     const seal = await softDeleteSeal(paramId(req.params.id), req.user!.id, reason);
     res.json(seal);
   } catch (e) {

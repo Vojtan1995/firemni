@@ -7,7 +7,7 @@ const router = Router();
 router.use(authMiddleware);
 
 const querySchema = z.object({
-  q: z.string().optional(),
+  q: z.string().max(100).optional(),
   limit: z.coerce.number().int().min(1).max(50).optional(),
   offset: z.coerce.number().int().min(0).optional(),
   jobId: z.string().uuid().optional(),

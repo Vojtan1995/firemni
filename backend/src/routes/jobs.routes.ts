@@ -108,9 +108,9 @@ router.get('/by-number/:projectNumber', jobNumberRateLimiter, async (req, res, n
 
 const createJobSchema = z.object({
   projectNumber: projectNumberSchema,
-  name: z.string().min(1),
-  address: z.string().optional(),
-  note: z.string().optional(),
+  name: z.string().min(1).max(200),
+  address: z.string().max(200).optional(),
+  note: z.string().max(2000).optional(),
 });
 
 router.post('/', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
@@ -130,13 +130,13 @@ router.post('/', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
 });
 
 const updateJobSchema = z.object({
-  name: z.string().min(1).optional(),
-  address: z.string().optional().nullable(),
-  note: z.string().optional().nullable(),
+  name: z.string().min(1).max(200).optional(),
+  address: z.string().max(200).optional().nullable(),
+  note: z.string().max(2000).optional().nullable(),
 });
 
 const deleteReasonSchema = z.object({
-  deleteReason: z.string().optional(),
+  deleteReason: z.string().max(2000).optional(),
 });
 
 async function getActiveJob(id: string) {

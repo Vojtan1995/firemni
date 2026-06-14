@@ -93,7 +93,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 TextField(
                   controller: pinCtrl,
                   decoration:
-                      const InputDecoration(labelText: 'PIN (4–8 znaků)'),
+                      const InputDecoration(labelText: 'PIN (6–8 znaků)'),
                   obscureText: true,
                   keyboardType: TextInputType.number,
                 ),

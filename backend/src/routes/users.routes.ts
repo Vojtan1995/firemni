@@ -15,13 +15,13 @@ const pinSchema = z.string().min(6).max(8);
 
 const createUserSchema = z.object({
   username: z.string().min(1).max(64),
-  displayName: z.string().min(1),
+  displayName: z.string().min(1).max(100),
   pin: pinSchema,
   role: z.nativeEnum(UserRole),
 });
 
 const updateUserSchema = z.object({
-  displayName: z.string().min(1).optional(),
+  displayName: z.string().min(1).max(100).optional(),
   pin: pinSchema.optional(),
   role: z.nativeEnum(UserRole).optional(),
   isActive: z.boolean().optional(),

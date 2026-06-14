@@ -16,9 +16,9 @@ router.use(authMiddleware);
 
 const publishItemSchema = z.object({
   id: z.string().uuid().optional(),
-  category: z.string().min(1),
-  sizeLabel: z.string().min(1),
-  unit: z.string().min(1).default('kus'),
+  category: z.string().min(1).max(100),
+  sizeLabel: z.string().min(1).max(100),
+  unit: z.string().min(1).max(100).default('kus'),
   priceWithMaterial: z.number().nonnegative(),
   priceWithoutMaterial: z.number().nonnegative().nullable().optional(),
   active: z.boolean().optional(),

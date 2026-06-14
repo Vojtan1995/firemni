@@ -23,8 +23,8 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
 
   Future<void> _submit() async {
     final newPin = _newCtrl.text;
-    if (newPin.length < 4 || newPin.length > 8) {
-      setState(() => _error = 'Nový PIN musí mít 4 až 8 číslic');
+    if (newPin.length < 6 || newPin.length > 8) {
+      setState(() => _error = 'Nový PIN musí mít 6 až 8 číslic');
       return;
     }
     if (newPin != _confirmCtrl.text) {

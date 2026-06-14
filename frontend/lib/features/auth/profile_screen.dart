@@ -25,9 +25,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _changePin() async {
     final newPin = _newCtrl.text;
-    if (newPin.length < 4 || newPin.length > 8) {
+    if (newPin.length < 6 || newPin.length > 8) {
       setState(() {
-        _error = 'Nový PIN musí mít 4 až 8 číslic';
+        _error = 'Nový PIN musí mít 6 až 8 číslic';
         _success = null;
       });
       return;
