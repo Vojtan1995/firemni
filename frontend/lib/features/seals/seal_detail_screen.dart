@@ -33,6 +33,13 @@ double _num(dynamic value) {
   return double.tryParse(value?.toString() ?? '') ?? 0;
 }
 
+/// Kultivovaný fallback pro chybějící hodnotu v detailu.
+String _valueOr(dynamic value) {
+  if (value == null) return 'Neuvedeno';
+  final s = value.toString().trim();
+  return s.isEmpty ? 'Neuvedeno' : s;
+}
+
 /// Uloží metadata fotek z API do Drift (server ID, status done).
 Future<void> cacheSealPhotosFromApiList(
   AppDatabase db,
@@ -637,111 +644,211 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     }
   }
 
-  Widget _photoTile(Map<String, dynamic> m, int index, List<Map<String, dynamic>> allPhotos) {
-    final status = m['status'] as String?;
-    final lastError = m['lastError'] as String?;
-
-    Widget image;
+  /// Obrázek fotky (lokální soubor / online bytes / fallback), vyplní svůj box.
+  Widget _photoImageWidget(Map<String, dynamic> m) {
     final localPath = m['localPath'] as String?;
     if (localPath != null &&
         localPath.isNotEmpty &&
         File(localPath).existsSync()) {
-      image = Image.file(File(localPath), height: 200, fit: BoxFit.cover);
-    } else {
-      final id = m['id'] as String?;
-      if (_dataSource == SealDetailDataSource.online && id != null) {
-        final photoId = id;
-        image = FutureBuilder<Response<List<int>>>(
-          future: ref.read(dioProvider).get<List<int>>(
-                '/api/photos/$photoId/file',
-                options: Options(responseType: ResponseType.bytes),
-              ),
-          builder: (context, snapshot) {
-            if (snapshot.connectionState != ConnectionState.done) {
-              return Container(
-                height: 200,
-                color: AppColors.bgSecondary,
-                child: const Center(child: CircularProgressIndicator()),
-              );
-            }
-            final bytes = snapshot.data?.data;
-            if (snapshot.hasError || bytes == null || bytes.isEmpty) {
-              return const SizedBox(
-                height: 120,
-                child: Center(child: Icon(Icons.broken_image, size: 100)),
-              );
-            }
-            _photoBytesCache[photoId] = Uint8List.fromList(bytes);
-            return Image.memory(Uint8List.fromList(bytes),
-                height: 200, fit: BoxFit.cover);
-          },
-        );
-      } else {
-        final filePath = m['filePath'] as String?;
-        image = Container(
-          height: 120,
-          color: AppColors.bgSecondary,
-          child: Center(
-            child: Text(
-              filePath != null
-                  ? 'Foto: $filePath\n(načtení vyžaduje síť)'
-                  : 'Lokální foto',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-        );
-      }
+      return Image.file(File(localPath), fit: BoxFit.cover);
     }
+    final id = m['id'] as String?;
+    if (_dataSource == SealDetailDataSource.online && id != null) {
+      if (_photoBytesCache.containsKey(id)) {
+        return Image.memory(_photoBytesCache[id]!, fit: BoxFit.cover);
+      }
+      return FutureBuilder<Response<List<int>>>(
+        future: ref.read(dioProvider).get<List<int>>(
+              '/api/photos/$id/file',
+              options: Options(responseType: ResponseType.bytes),
+            ),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return Container(
+              color: AppColors.bgSecondary,
+              child: const Center(child: CircularProgressIndicator()),
+            );
+          }
+          final bytes = snapshot.data?.data;
+          if (snapshot.hasError || bytes == null || bytes.isEmpty) {
+            return Container(
+              color: AppColors.bgSecondary,
+              child: const Center(child: Icon(Icons.broken_image, size: 36)),
+            );
+          }
+          _photoBytesCache[id] = Uint8List.fromList(bytes);
+          return Image.memory(_photoBytesCache[id]!, fit: BoxFit.cover);
+        },
+      );
+    }
+    return Container(
+      color: AppColors.bgSecondary,
+      child: const Center(
+        child: Icon(Icons.image_not_supported_outlined, size: 36),
+      ),
+    );
+  }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GestureDetector(
-          onTap: () => _openPhotoGallery(index, allPhotos),
-          child: ClipRRect(
-            borderRadius: AppRadius.mdAll,
-            child: image,
-          ),
-        ),
-        if (status != null && status.isNotEmpty) ...[
-          const SizedBox(height: 4),
-          Row(
+  /// Čtvercový náhled fotky pro galerii (klepnutím otevře fullscreen).
+  Widget _photoThumb(
+      Map<String, dynamic> m, int index, List<Map<String, dynamic>> allPhotos) {
+    final status = m['status'] as String?;
+    return GestureDetector(
+      onTap: () => _openPhotoGallery(index, allPhotos),
+      child: ClipRRect(
+        borderRadius: AppRadius.mdAll,
+        child: AspectRatio(
+          aspectRatio: 1,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              Icon(Icons.circle, size: 10, color: _photoStatusColor(status)),
-              const SizedBox(width: 6),
-              Text(
-                _photoStatusLabel(status),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              _photoImageWidget(m),
+              if (status != null && status.isNotEmpty && status != 'done')
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
                       color: _photoStatusColor(status),
-                      fontWeight: FontWeight.w600,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-              ),
+                    child: Text(
+                      _photoStatusLabel(status),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
-          if (status == 'failed' && lastError != null && lastError.isNotEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
+        ),
+      ),
+    );
+  }
+
+  /// Řádky pro fotky, které selhaly při uploadu — s možností opakování.
+  List<Widget> _failedPhotoRows(List<Map<String, dynamic>> photos) {
+    final out = <Widget>[];
+    for (final m in photos) {
+      if (m['status'] != 'failed') continue;
+      final lastError = m['lastError'] as String?;
+      out.add(Padding(
+        padding: const EdgeInsets.only(top: AppSpacing.sm),
+        child: Row(
+          children: [
+            const Icon(Icons.error_outline, color: AppColors.error, size: 18),
+            const SizedBox(width: AppSpacing.sm),
+            Expanded(
               child: Text(
-                lastError,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.error,
-                    ),
+                lastError != null && lastError.isNotEmpty
+                    ? 'Foto selhalo: $lastError'
+                    : 'Foto se nepodařilo nahrát',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: AppColors.error),
               ),
             ),
-          if (status == 'failed')
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _uploadingPhoto
-                    ? null
-                    : () => _retryPhotoUpload(m['id'] as String),
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Zkusit znovu'),
-              ),
+            TextButton.icon(
+              onPressed: _uploadingPhoto
+                  ? null
+                  : () => _retryPhotoUpload(m['id'] as String),
+              icon: const Icon(Icons.refresh, size: 18),
+              label: const Text('Zkusit znovu'),
             ),
-        ],
-      ],
+          ],
+        ),
+      ));
+    }
+    return out;
+  }
+
+  /// Karta jednoho prostupu (typ, rozměr, množství, materiály, ceny).
+  Widget _entryCard(Map<String, dynamic> m) {
+    final materials = m['materials'] as List?;
+    final matText = materials == null
+        ? ''
+        : materials
+            .map((x) => x is Map ? x['material'] : x.toString())
+            .join(', ');
+    final unitPrice = m['unitPrice'];
+    final totalPrice = m['totalPrice'];
+    final priceVersion = m['priceListVersion'] as String?;
+    final unit = (m['unit'] as String?) ?? 'kus';
+    final qty = m['quantity'];
+    final qtyNum =
+        qty is num ? qty.toDouble() : double.tryParse(qty?.toString() ?? '') ?? 1;
+    final hasPrice = unitPrice != null && totalPrice != null;
+    String formatCzk(dynamic value) {
+      if (value == null) return '—';
+      final n =
+          value is num ? value.toDouble() : double.tryParse(value.toString());
+      if (n == null) return '—';
+      return '${n.toStringAsFixed(0)} Kč';
+    }
+
+    String qtyDisplay() {
+      if (unit == 'm2') return '${formatArea(qtyNum)} ${unitLabel(unit)}';
+      if (unit == 'mb') return '${formatMb(qtyNum)} ${unitLabel(unit)}';
+      return '${qtyNum.round()} ${unitLabel(unit)}';
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${m['entryType']} – ${m['dimension']}',
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+            Text('${qtyDisplay()}, ${m['insulation']}'),
+            if (matText.isNotEmpty) Text('Materiály: $matText'),
+            if (m['calculatedAreaM2'] != null)
+              Text(
+                'Plocha: ${formatArea(_num(m['calculatedAreaM2']))} m²',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (m['calculatedNetAreaM2'] != null)
+              Text(
+                'Čistá plocha: ${formatArea(_num(m['calculatedNetAreaM2']))} m²',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            if (m['calculatedLinearMeters'] != null)
+              Text(
+                'Běžné metry: ${formatMb(_num(m['calculatedLinearMeters']))} mb',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            const SizedBox(height: 8),
+            if (hasPrice) ...[
+              Text('Cena celkem: ${formatCzk(totalPrice)}'),
+              if (qtyNum > 1 || unit != 'kus')
+                Text(
+                  'Jednotková cena: ${formatCzk(unitPrice)} / ${unitLabel(unit)}',
+                )
+              else
+                Text('Jednotková cena: ${formatCzk(unitPrice)}'),
+              if (priceVersion != null && priceVersion.isNotEmpty)
+                Text(
+                  'Ceník: $priceVersion',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ] else
+              const Chip(
+                label: Text('Bez ceny'),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -845,206 +952,182 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       ),
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        children: [
-          if (floorId != null && jobId != null && jobId.isNotEmpty)
-            AppSecondaryButton(
-              label: 'Otevřít ve výkresu',
-              icon: Icons.map_outlined,
-              onPressed: () {
-                final params = marker != null
-                    ? 'jobId=$jobId&focusSealId=${widget.sealId}'
-                    : 'jobId=$jobId&placeSealId=${widget.sealId}';
-                context.push('/floor-plan/$floorId?$params');
-              },
-            ),
-          if (offline)
-            Container(
-              margin: const EdgeInsets.only(bottom: AppSpacing.lg),
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.1),
-                borderRadius: AppRadius.mdAll,
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
-                  const SizedBox(width: AppSpacing.md),
-                  Expanded(
-                    child: Text(
-                      _offlineHint ??
-                          'Zobrazena poslastní uložená data z zařízení. Po připojení k serveru obnovte detail.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: AppColors.warning,
-                          ),
-                    ),
-                  ),
-                  TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
-                ],
-              ),
-            ),
-          StatusBadge(status: status),
-          const SizedBox(height: AppSpacing.lg),
-          Text('Systém: ${seal['system']}'),
-          Text('Konstrukce: ${seal['construction']}'),
-          Text('Umístění: ${seal['location']}'),
-          Text('Odolnost: ${seal['fireRating']}'),
-          if (seal['openingLengthMm'] != null && seal['openingWidthMm'] != null)
-            Text(
-              'Rozměr prostupu: ${seal['openingLengthMm']} × ${seal['openingWidthMm']} mm',
-            ),
-          if (SealNoteHelpers.showPublicNoteInDetail(auth.role) &&
-              seal['note'] != null &&
-              (seal['note'] as String).trim().isNotEmpty)
-            _SealNoteBlock(label: 'Poznámka', text: seal['note'] as String),
-          if (SealNoteHelpers.showInternalNoteInDetail(auth.role) &&
-              seal['internalNote'] != null &&
-              (seal['internalNote'] as String).trim().isNotEmpty)
-            _SealNoteBlock(
-              label: auth.isWorker ? 'Interní poznámka' : 'Interní poznámka z terénu',
-              text: seal['internalNote'] as String,
-            ),
-          if (auth.isVedeni || auth.isAdmin || auth.isUcetni) ...[
-            const Divider(height: 24),
-            const Text('Evidence', style: TextStyle(fontWeight: FontWeight.bold)),
-            Text(
-              'Vytvořil: ${(seal['createdBy'] as Map?)?['displayName'] ?? '—'}',
-            ),
-            Text('Datum vytvoření: ${_formatDate(seal['createdAt'] as String?)}'),
-            Text(
-              'Poslední editor: ${(seal['updatedBy'] as Map?)?['displayName'] ?? '—'}',
-            ),
-            Text('Poslední editace: ${_formatDate(seal['updatedAt'] as String?)}'),
-          ],
-          if (status == 'invoiced') ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: AppSpacing.md),
-              padding: const EdgeInsets.all(AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.warning.withValues(alpha: 0.12),
-                borderRadius: AppRadius.mdAll,
-                border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.lock, size: 18, color: AppColors.warning),
-                  SizedBox(width: AppSpacing.sm),
-                  Expanded(child: Text('Uzamčeno — fakturováno')),
-                ],
-              ),
-            ),
-          ],
-          if (status == 'draft' || status == 'checked') ...[
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: () {
-                final jobId = seal['jobId'] as String? ?? '';
-                final floorId = seal['floorId'] as String? ?? '';
-                context.push(
-                  '/seal/${widget.sealId}/edit?jobId=$jobId&floorId=$floorId',
-                );
-              },
-              icon: const Icon(Icons.edit),
-              label: Text(status == 'checked'
-                  ? 'Upravit (vrátí na rozpracováno)'
-                  : 'Upravit ucpávku'),
-            ),
-          ],
-          const SectionHeader(title: 'Prostupy', style: SectionHeaderStyle.h3),
-          if ((seal['entries'] as List? ?? []).isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Žádné prostupy v cache.'),
-            )
-          else
-            ...(seal['entries'] as List).map((e) {
-              final m = e as Map<String, dynamic>;
-              final materials = m['materials'] as List?;
-              final matText = materials == null
-                  ? ''
-                  : materials
-                      .map((x) => x is Map ? x['material'] : x.toString())
-                      .join(', ');
-              final unitPrice = m['unitPrice'];
-              final totalPrice = m['totalPrice'];
-              final priceVersion = m['priceListVersion'] as String?;
-              final unit = (m['unit'] as String?) ?? 'kus';
-              final qty = m['quantity'];
-              final qtyNum = qty is num
-                  ? qty.toDouble()
-                  : double.tryParse(qty?.toString() ?? '') ?? 1;
-              final hasPrice = unitPrice != null && totalPrice != null;
-              String formatCzk(dynamic value) {
-                if (value == null) return '—';
-                final n = value is num
-                    ? value.toDouble()
-                    : double.tryParse(value.toString());
-                if (n == null) return '—';
-                return '${n.toStringAsFixed(0)} Kč';
-              }
+        children: _buildSections(
+          seal: seal,
+          status: status,
+          auth: auth,
+          offline: offline,
+          floorId: floorId,
+          jobId: jobId,
+          marker: marker,
+        ),
+      ),
+    );
+  }
 
-              String qtyDisplay() {
-                if (unit == 'm2') return '${formatArea(qtyNum)} ${unitLabel(unit)}';
-                if (unit == 'mb') return '${formatMb(qtyNum)} ${unitLabel(unit)}';
-                return '${qtyNum.round()} ${unitLabel(unit)}';
-              }
+  List<Widget> _buildSections({
+    required Map<String, dynamic> seal,
+    required String status,
+    required AuthService auth,
+    required bool offline,
+    required String? floorId,
+    required String? jobId,
+    required Map<String, dynamic>? marker,
+  }) {
+    final photos = (seal['photos'] as List? ?? []).cast<Map<String, dynamic>>();
+    final floorName = _valueOr(
+      seal['floorName'] ?? (seal['floor'] as Map?)?['name'],
+    );
 
-              return Card(
-                margin: const EdgeInsets.only(bottom: 8),
-                child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '${m['entryType']} – ${m['dimension']}',
-                        style: const TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      Text('${qtyDisplay()}, ${m['insulation']}'),
-                      if (matText.isNotEmpty) Text('Materiály: $matText'),
-                      if (m['calculatedAreaM2'] != null)
-                        Text(
-                          'Plocha: ${formatArea(_num(m['calculatedAreaM2']))} m²',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      if (m['calculatedNetAreaM2'] != null)
-                        Text(
-                          'Čistá plocha: ${formatArea(_num(m['calculatedNetAreaM2']))} m²',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      if (m['calculatedLinearMeters'] != null)
-                        Text(
-                          'Běžné metry: ${formatMb(_num(m['calculatedLinearMeters']))} mb',
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      const SizedBox(height: 8),
-                      if (hasPrice) ...[
-                        Text('Cena celkem: ${formatCzk(totalPrice)}'),
-                        if (qtyNum > 1 || unit != 'kus')
-                          Text(
-                            'Jednotková cena: ${formatCzk(unitPrice)} / ${unitLabel(unit)}',
-                          )
-                        else
-                          Text('Jednotková cena: ${formatCzk(unitPrice)}'),
-                        if (priceVersion != null && priceVersion.isNotEmpty)
-                          Text(
-                            'Ceník: $priceVersion',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                      ] else
-                        Chip(
-                          label: const Text('Bez ceny'),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                    ],
+    // Poznámky (jen pokud existují) — sloučené do jedné sekce.
+    final noteWidgets = <Widget>[];
+    if (SealNoteHelpers.showPublicNoteInDetail(auth.role) &&
+        (seal['note'] as String?)?.trim().isNotEmpty == true) {
+      noteWidgets.add(_SealNoteBlock(
+          label: 'Poznámka pro zákazníka', text: seal['note'] as String));
+    }
+    if (SealNoteHelpers.showInternalNoteInDetail(auth.role) &&
+        (seal['internalNote'] as String?)?.trim().isNotEmpty == true) {
+      noteWidgets.add(_SealNoteBlock(
+        label: auth.isWorker ? 'Interní poznámka' : 'Interní poznámka z terénu',
+        text: seal['internalNote'] as String,
+      ));
+    }
+    if ((seal['reviewComment'] as String?)?.trim().isNotEmpty == true) {
+      noteWidgets.add(_SealNoteBlock(
+          label: 'Poznámka k revizi', text: seal['reviewComment'] as String));
+    }
+
+    final entries = (seal['entries'] as List? ?? []);
+
+    return [
+      if (offline)
+        Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.1),
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Text(
+                  _offlineHint ??
+                      'Zobrazena poslední uložená data ze zařízení. Po připojení k serveru obnovte detail.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(color: AppColors.warning),
+                ),
+              ),
+              TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+            ],
+          ),
+        ),
+
+      // HLAVIČKA
+      AppCard(
+        showChevron: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    'Ucpávka #${seal['sealNumber']}',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleLarge
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
                 ),
-              );
-            }),
-          const SectionHeader(title: 'Fotky', style: SectionHeaderStyle.h3),
+                const SizedBox(width: AppSpacing.sm),
+                StatusBadge(status: status),
+              ],
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            _KvRow(label: 'Systém', value: _valueOr(seal['system'])),
+            if (floorName != 'Neuvedeno')
+              _KvRow(label: 'Patro', value: floorName),
+          ],
+        ),
+      ),
+      const SizedBox(height: AppSpacing.md),
+
+      if (status == 'invoiced')
+        Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.warning.withValues(alpha: 0.12),
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+          ),
+          child: const Row(
+            children: [
+              Icon(Icons.lock, size: 18, color: AppColors.warning),
+              SizedBox(width: AppSpacing.sm),
+              Expanded(child: Text('Uzamčeno — fakturováno')),
+            ],
+          ),
+        ),
+
+      if (floorId != null && jobId != null && jobId.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.md),
+          child: AppSecondaryButton(
+            label: 'Otevřít ve výkresu',
+            icon: Icons.map_outlined,
+            onPressed: () {
+              final params = marker != null
+                  ? 'jobId=$jobId&focusSealId=${widget.sealId}'
+                  : 'jobId=$jobId&placeSealId=${widget.sealId}';
+              context.push('/floor-plan/$floorId?$params');
+            },
+          ),
+        ),
+
+      // ZÁKLADNÍ ÚDAJE
+      _DetailSection(
+        title: 'Základní údaje',
+        children: [
+          _KvRow(label: 'Konstrukce', value: _valueOr(seal['construction'])),
+          _KvRow(label: 'Umístění', value: _valueOr(seal['location'])),
+          _KvRow(
+              label: 'Požární odolnost', value: _valueOr(seal['fireRating'])),
+          if (seal['openingLengthMm'] != null &&
+              seal['openingWidthMm'] != null)
+            _KvRow(
+              label: 'Rozměr prostupu',
+              value:
+                  '${seal['openingLengthMm']} × ${seal['openingWidthMm']} mm',
+            ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.md),
+
+      // PROSTUPY / MATERIÁLY
+      _DetailSection(
+        title: 'Prostupy / materiály',
+        children: entries.isEmpty
+            ? const [Text('Neuvedeno')]
+            : entries
+                .map((e) => _entryCard(e as Map<String, dynamic>))
+                .toList(),
+      ),
+      const SizedBox(height: AppSpacing.md),
+
+      // FOTOGRAFIE
+      _DetailSection(
+        title: 'Fotografie',
+        children: [
           if (status == 'draft') ...[
-            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
@@ -1056,7 +1139,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                     label: const Text('Vyfotit'),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.sm),
                 Expanded(
                   child: OutlinedButton.icon(
                     onPressed: _uploadingPhoto
@@ -1070,48 +1153,105 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             ),
             if (_uploadingPhoto)
               const Padding(
-                padding: EdgeInsets.only(top: 8),
+                padding: EdgeInsets.only(top: AppSpacing.sm),
                 child: LinearProgressIndicator(),
               ),
+            const SizedBox(height: AppSpacing.sm),
           ],
-          if ((seal['photos'] as List? ?? []).isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text('Žádné fotky v cache.'),
-            )
+          if (photos.isEmpty)
+            const Text('Neuvedeno')
           else
-            ...(seal['photos'] as List).toList().asMap().entries.map((entry) {
-              final m = entry.value as Map<String, dynamic>;
-              final allPhotos = (seal['photos'] as List)
-                  .cast<Map<String, dynamic>>();
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: _photoTile(m, entry.key, allPhotos),
-              );
-            }),
-          if (auth.canViewSealHistory && _history.isNotEmpty) ...[
-            const Divider(height: 24),
-            const Text('Historie změn', style: TextStyle(fontWeight: FontWeight.bold)),
-            ..._history.map((h) {
-              final editor = h['editor'] as Map<String, dynamic>?;
-              final ts = h['timestamp'] as String?;
-              final desc = _formatHistoryEntry(h);
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.history, size: 18),
-                title: Text(desc, style: const TextStyle(fontSize: 13)),
-                subtitle: Text(
-                  '${_formatDate(ts)} · ${editor?['displayName'] ?? ''}',
-                  style: const TextStyle(fontSize: 11),
-                ),
-              );
-            }),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: AppSpacing.sm,
+              crossAxisSpacing: AppSpacing.sm,
+              children: [
+                for (var i = 0; i < photos.length; i++)
+                  _photoThumb(photos[i], i, photos),
+              ],
+            ),
+          ..._failedPhotoRows(photos),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.md),
+
+      // POZNÁMKY
+      if (noteWidgets.isNotEmpty) ...[
+        _DetailSection(title: 'Poznámky', children: noteWidgets),
+        const SizedBox(height: AppSpacing.md),
+      ],
+
+      // EVIDENCE (vedení / účetní / admin)
+      if (auth.isVedeni || auth.isAdmin || auth.isUcetni) ...[
+        _DetailSection(
+          title: 'Evidence',
+          children: [
+            _KvRow(
+              label: 'Vytvořil',
+              value: _valueOr((seal['createdBy'] as Map?)?['displayName']),
+            ),
+            _KvRow(
+              label: 'Datum vytvoření',
+              value: _formatDate(seal['createdAt'] as String?),
+            ),
+            _KvRow(
+              label: 'Poslední editor',
+              value: _valueOr((seal['updatedBy'] as Map?)?['displayName']),
+            ),
+            _KvRow(
+              label: 'Poslední editace',
+              value: _formatDate(seal['updatedAt'] as String?),
+            ),
           ],
-          if (seal['reviewComment'] != null &&
-              (seal['reviewComment'] as String).trim().isNotEmpty)
-            _SealNoteBlock(
-              label: 'Poznámka k revizi',
-              text: seal['reviewComment'] as String,
+        ),
+        const SizedBox(height: AppSpacing.md),
+      ],
+
+      // HISTORIE
+      if (auth.canViewSealHistory && _history.isNotEmpty) ...[
+        _DetailSection(
+          title: 'Historie změn',
+          children: _history.map((h) {
+            final editor = h['editor'] as Map<String, dynamic>?;
+            final ts = h['timestamp'] as String?;
+            return ListTile(
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.history, size: 18),
+              title:
+                  Text(_formatHistoryEntry(h), style: const TextStyle(fontSize: 13)),
+              subtitle: Text(
+                '${_formatDate(ts)} · ${editor?['displayName'] ?? ''}',
+                style: const TextStyle(fontSize: 11),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: AppSpacing.md),
+      ],
+
+      // AKCE PODLE ROLE
+      _DetailSection(
+        title: 'Akce',
+        children: [
+          if (status == 'draft' || status == 'checked')
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: FilledButton.icon(
+                onPressed: () {
+                  final jId = seal['jobId'] as String? ?? '';
+                  final fId = seal['floorId'] as String? ?? '';
+                  context.push(
+                    '/seal/${widget.sealId}/edit?jobId=$jId&floorId=$fId',
+                  );
+                },
+                icon: const Icon(Icons.edit),
+                label: Text(status == 'checked'
+                    ? 'Upravit (vrátí na rozpracováno)'
+                    : 'Upravit ucpávku'),
+              ),
             ),
           SealStatusActions(
             auth: auth,
@@ -1122,6 +1262,70 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             onReturnForRepair: () => _reviewSeal('returned'),
             onInvoice: () => _changeStatus('invoiced'),
             onRevertToDraft: () => _changeStatus('draft'),
+          ),
+        ],
+      ),
+    ];
+  }
+}
+
+/// Titulovaná sekce detailu (karta s nadpisem).
+class _DetailSection extends StatelessWidget {
+  const _DetailSection({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      showChevron: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SectionHeader(title: title, style: SectionHeaderStyle.h3),
+          const SizedBox(height: AppSpacing.sm),
+          ...children,
+        ],
+      ),
+    );
+  }
+}
+
+/// Řádek „popisek vlevo — hodnota vpravo".
+class _KvRow extends StatelessWidget {
+  const _KvRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 130,
+            child: Text(
+              label,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(color: AppColors.textSecondary),
+            ),
+          ),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: Theme.of(context)
+                  .textTheme
+                  .bodyMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
           ),
         ],
       ),

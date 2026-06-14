@@ -124,24 +124,42 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
       );
     }
 
-    final grouped = <String, List<Map<String, dynamic>>>{};
+    // Vedení/účetní: seznam pracovníků, po rozkliknutí jeho soupisy.
+    // Soupis s více pracovníky se objeví u každého z nich.
+    final byWorker = <String, _WorkerGroup>{};
     for (final ws in _worksheets) {
-      final key = _workersLabel(ws);
-      grouped.putIfAbsent(key, () => []).add(ws);
+      final workers = (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
+      if (workers.isEmpty) {
+        final name = ws['createdBy']?['displayName'] as String? ?? '—';
+        (byWorker[name] ??= _WorkerGroup(name)).add(ws);
+      } else {
+        for (final w in workers) {
+          final user = w['user'] as Map<String, dynamic>?;
+          final id = user?['id'] as String? ?? '';
+          final name = user?['displayName'] as String? ?? '—';
+          (byWorker[id.isEmpty ? name : id] ??= _WorkerGroup(name)).add(ws);
+        }
+      }
     }
-    final keys = grouped.keys.toList()..sort();
+    final groups = byWorker.values.toList()
+      ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
     return ListView.builder(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: keys.length,
+      itemCount: groups.length,
       itemBuilder: (_, i) {
-        final name = keys[i];
-        final items = grouped[name]!;
-        return ExpansionTile(
-          title: Text(name, style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: Text('${items.length} soupisů'),
-          initiallyExpanded: i == 0,
-          children: items.map(_worksheetCard).toList(),
+        final g = groups[i];
+        return Card(
+          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+          child: ExpansionTile(
+            leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+            title:
+                Text(g.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text(g.summaryLabel),
+            initiallyExpanded: groups.length == 1,
+            childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+            children: g.worksheets.map(_worksheetCard).toList(),
+          ),
         );
       },
     );
@@ -153,7 +171,8 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(auth.isWorker ? 'Moje uložené soupisy' : 'Uložené soupisy'),
+        title:
+            Text(auth.isWorker ? 'Moje uložené soupisy' : 'Soupisy podle pracovníků'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -244,5 +263,33 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
         ],
       ),
     );
+  }
+}
+
+/// Soupisy jednoho pracovníka + rozpad podle stavu pro přehled vedení/účetní.
+class _WorkerGroup {
+  _WorkerGroup(this.name);
+
+  final String name;
+  final List<Map<String, dynamic>> worksheets = [];
+  final Map<String, int> _statusCounts = {};
+
+  void add(Map<String, dynamic> ws) {
+    worksheets.add(ws);
+    final status = ws['status'] as String? ?? 'draft';
+    _statusCounts[status] = (_statusCounts[status] ?? 0) + 1;
+  }
+
+  /// Např. „5 soupisů · 2 odevzdané · 1 zkontrolovaný".
+  String get summaryLabel {
+    final parts = <String>['${worksheets.length} soupisů'];
+    final submitted = _statusCounts['submitted'] ?? 0;
+    final reviewed = _statusCounts['reviewed'] ?? 0;
+    final invoicing = (_statusCounts['ready_for_invoice'] ?? 0) +
+        (_statusCounts['invoiced'] ?? 0);
+    if (submitted > 0) parts.add('$submitted odevzdaných');
+    if (reviewed > 0) parts.add('$reviewed zkontrolovaných');
+    if (invoicing > 0) parts.add('$invoicing ve fakturaci');
+    return parts.join(' · ');
   }
 }

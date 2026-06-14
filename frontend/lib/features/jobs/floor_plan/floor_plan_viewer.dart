@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -7,7 +8,10 @@ import 'seal_marker_widget.dart';
 
 const double kFloorPlanMinScale = 0.5;
 const double kFloorPlanMaxScale = 12.0;
-const double kPdfRenderScaleFactor = 12.0;
+
+/// Maximální delší strana vyrenderované PDF bitmapy v px. Strop chrání RAM na
+/// mobilu — i při velkém zoomu se nikdy nerenderuje extrémně velký obraz.
+const double kPdfMaxRenderDim = 4000.0;
 
 class FloorPlanViewer extends StatefulWidget {
   const FloorPlanViewer({
@@ -107,6 +111,7 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                         documentRef: _pdfDocumentRef,
                         width: w,
                         height: h,
+                        viewerScale: widget.viewerScale,
                       )
                     else
                       Image.memory(
@@ -114,7 +119,9 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                         width: w,
                         height: h,
                         fit: BoxFit.fill,
-                        filterQuality: FilterQuality.none,
+                        // medium dává hladší interpolaci při přiblížení než
+                        // none; originální bitmapa zůstává nezměněná.
+                        filterQuality: FilterQuality.medium,
                         gaplessPlayback: true,
                       ),
                     ...widget.markers.map((m) {
@@ -153,14 +160,35 @@ class _PdfCanvas extends StatelessWidget {
     required this.documentRef,
     required this.width,
     required this.height,
+    required this.viewerScale,
   });
 
   final PdfDocumentRef documentRef;
   final double width;
   final double height;
+  final double viewerScale;
 
   @override
   Widget build(BuildContext context) {
+    // Adaptivní render kvality: cílové rozlišení bitmapy roste se zoomem,
+    // takže přiblížený výkres zůstává ostrý. Zoom kvantujeme do celých
+    // stupňů, aby se PDF nererenderovalo při každém drobném pohybu, a delší
+    // stranu stropujeme (kPdfMaxRenderDim) kvůli paměti na mobilu.
+    //
+    // Omezení knihovny pdfrx: PdfPageView renderuje celou stránku do jedné
+    // bitmapy (žádné pravé tile-rendering). Strop + kvantizace to drží
+    // bezpečné; pro extrémně velké výkresy by do budoucna dávalo smysl
+    // přejít na PdfViewer s nativním dlaždicovým renderem.
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final zoomBucket = viewerScale.clamp(1.0, 6.0).ceilToDouble();
+    double renderW = width * dpr * zoomBucket;
+    double renderH = height * dpr * zoomBucket;
+    final longest = math.max(renderW, renderH);
+    if (longest > kPdfMaxRenderDim) {
+      final k = kPdfMaxRenderDim / longest;
+      renderW *= k;
+      renderH *= k;
+    }
     return PdfDocumentViewBuilder(
       documentRef: documentRef,
       builder: (context, document) {
@@ -173,12 +201,9 @@ class _PdfCanvas extends StatelessWidget {
         return PdfPageView(
           document: document,
           pageNumber: 1,
-          maximumDpi: 1200,
+          maximumDpi: 2400,
           decoration: const BoxDecoration(color: Colors.white),
-          pageSizeCallback: (_, __) => Size(
-            width * kPdfRenderScaleFactor,
-            height * kPdfRenderScaleFactor,
-          ),
+          pageSizeCallback: (_, __) => Size(renderW, renderH),
           decorationBuilder: (context, pageSize, page, pageImage) {
             return SizedBox(
               width: width,

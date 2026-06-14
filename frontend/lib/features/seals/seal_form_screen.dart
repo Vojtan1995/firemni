@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Value, OrderingTerm;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -86,6 +86,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         if (!mounted) return;
         final db = ref.read(databaseProvider);
         await _loadFloorContext(db);
+        await _applyNewSealDefaults(db);
         var next = await suggestNextSealNumber(db, floorId: widget.floorId);
         try {
           final res = await ref.read(dioProvider).get(
@@ -229,6 +230,28 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     });
   }
 
+  /// Předvyplní bezpečné výchozí hodnoty pro NOVOU ucpávku (nikdy pro editaci).
+  /// Preferuje poslední použité hodnoty pracovníka na této zakázce (z poslední
+  /// lokální ucpávky), jinak bezpečný default požární odolnosti. Materiály ani
+  /// konkrétní produkty se nepředvybírají, aby nevznikla chybná evidence.
+  Future<void> _applyNewSealDefaults(AppDatabase db) async {
+    final lastSeal = await (db.select(db.localSeals)
+          ..where((s) => s.jobId.equals(widget.jobId))
+          ..where((s) => s.deletedAt.isNull())
+          ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)])
+          ..limit(1))
+        .getSingleOrNull();
+    if (lastSeal != null) {
+      _system ??= lastSeal.system;
+      _construction ??= lastSeal.construction;
+      _location ??= lastSeal.location;
+      _fireRating ??= lastSeal.fireRating;
+    }
+    // Bezpečný default odolnosti, pokud není co převzít (90 min je nejběžnější).
+    _fireRating ??= '90 min';
+    if (mounted) setState(() {});
+  }
+
   Future<void> _openDraftPlacement() async {
     final sealNumber = _numberCtrl.text.trim();
     if (sealNumber.isEmpty) {
@@ -360,7 +383,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   style:
-                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                      OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
                   onPressed: () => _addPhotoFromSource(ImageSource.camera),
                   icon: const Icon(Icons.camera_alt),
                   label: const Text('Vyfotit'),
@@ -370,7 +393,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               Expanded(
                 child: OutlinedButton.icon(
                   style:
-                      OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                      OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
                   onPressed: () => _addPhotoFromSource(ImageSource.gallery),
                   icon: const Icon(Icons.photo_library),
                   label: const Text('Galerie'),
@@ -807,7 +830,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -835,7 +858,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               ),
               keyboardType: TextInputType.number,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             ChipSelector(
               label: 'Systém *',
               options: sealSystems,
@@ -845,7 +868,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             const SectionHeader(
               title: 'Hlavní prostup',
               subtitle: 'Technické údaje',
@@ -864,7 +887,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 },
               ),
             if (_entries.length > 1) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: 8),
               const SectionHeader(
                 title: 'Další prostupy',
                 style: SectionHeaderStyle.h3,
@@ -892,7 +915,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               icon: const Icon(Icons.add),
               label: const Text('Přidat prostup'),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             const SectionHeader(
               title: 'Umístění',
               style: SectionHeaderStyle.h3,
@@ -906,7 +929,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             ChipSelector(
               label: 'Umístění *',
               options: locations,
@@ -916,7 +939,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             ChipSelector(
               label: 'Požární odolnost *',
               options: fireRatings,
@@ -926,18 +949,18 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 _markDirty();
               },
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             const SectionHeader(title: 'Výkres', style: SectionHeaderStyle.h3),
             _drawingSection(),
             if (!widget.isEdit) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 14),
               const SectionHeader(title: 'Fotky', style: SectionHeaderStyle.h3),
               _photosSection(),
             ],
-            const SizedBox(height: 20),
+            const SizedBox(height: 14),
             const SectionHeader(title: 'Poznámky', style: SectionHeaderStyle.h3),
             ..._noteFields(ref.read(authServiceProvider).role),
-            const SizedBox(height: 24),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _saving ? null : _save,
               child: _saving
@@ -1258,9 +1281,9 @@ class _EntryEditorState extends State<_EntryEditor> {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

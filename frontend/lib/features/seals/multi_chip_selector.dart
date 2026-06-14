@@ -79,10 +79,10 @@ class MultiChipSelector extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ],
-        const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: AppSpacing.xs),
         Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
           children: [
             ..._displayOptions.map((o) {
               final isSelected = selected.contains(o);
@@ -90,6 +90,8 @@ class MultiChipSelector extends StatelessWidget {
                 label: Text(o),
                 selected: isSelected,
                 onSelected: (_) => _toggle(o),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 selectedColor: AppColors.accent.withValues(alpha: 0.2),
                 backgroundColor: AppColors.bgSecondary,
                 checkmarkColor: AppColors.accent,
@@ -106,6 +108,8 @@ class MultiChipSelector extends StatelessWidget {
             if (allowCustom)
               ActionChip(
                 label: const Text('Vlastní'),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 backgroundColor: AppColors.bgSecondary,
                 labelStyle: const TextStyle(color: AppColors.textSecondary),
                 side: const BorderSide(color: AppColors.border),

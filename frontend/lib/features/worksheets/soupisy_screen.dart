@@ -191,8 +191,12 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
                   ),
                 if (auth.canAccessReports) const SizedBox(height: AppSpacing.lg),
                 AppSecondaryButton(
-                  label: 'Zobrazit uložené soupisy',
-                  icon: Icons.folder_open_outlined,
+                  label: auth.isWorker
+                      ? 'Zobrazit uložené soupisy'
+                      : 'Soupisy podle pracovníků',
+                  icon: auth.isWorker
+                      ? Icons.folder_open_outlined
+                      : Icons.people_outline,
                   onPressed: () => context.push('/saved-worksheets'),
                 ),
               ],

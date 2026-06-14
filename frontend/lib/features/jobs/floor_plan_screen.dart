@@ -108,6 +108,16 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
 
   bool get _isDraftMode => widget.draftPlacement;
 
+  /// True pokud je podkladem rastrový obrázek (ne PDF) s nízkým rozlišením,
+  /// kde přiblížení bude rozmazané — zobrazí varovný banner.
+  bool get _isLowResRaster {
+    if (_loading || _imageBytes == null) return false;
+    final mime = (_drawing?['mimeType'] as String?)?.toLowerCase() ?? '';
+    if (mime.contains('pdf')) return false;
+    final width = (_drawing?['width'] as int?) ?? 0;
+    return width > 0 && width < 2500;
+  }
+
   List<Map<String, dynamic>> get _displayMarkers {
     if (!_isDraftMode || _draftX == null || _draftY == null) {
       return _visibleMarkers;
@@ -523,6 +533,11 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         data: {'x': x, 'y': y},
       );
       await ref.read(syncServiceProvider).syncAll();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pozice značky uložena')),
+        );
+      }
       setState(() {
         _placingSealId = null;
         _movingSealId = null;
@@ -556,30 +571,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           content: Text('Značka uložena lokálně — synchronizuje se po připojení'),
         ),
       );
-    }
-  }
-
-  Future<void> _confirmAndSavePendingMove() async {
-    if (_movingSealId == null || _pendingX == null || _pendingY == null) return;
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Potvrdit přesun'),
-        content: const Text('Uložit novou pozici značky?'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Uložit')),
-        ],
-      ),
-    );
-    if (ok == true) {
-      await _saveMarker(_movingSealId!, _pendingX!, _pendingY!);
-    } else {
-      setState(() {
-        _movingSealId = null;
-        _pendingX = null;
-        _pendingY = null;
-      });
     }
   }
 
@@ -642,29 +633,30 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
       return;
     }
 
-    if (_placingSealId != null) {
-      final confirm = await showDialog<bool>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Umístit značku'),
-          content: Text('Potvrdit umístění ucpávky na výkres?'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Uložit')),
-          ],
-        ),
-      );
-      if (confirm == true) await _saveMarker(_placingSealId!, x, y);
-      return;
-    }
-
-    if (_movingSealId != null) {
+    if (_placingSealId != null || _movingSealId != null) {
+      // Klepnutí jen označí cílovou pozici; uloží se až tlačítkem „Uložit"
+      // ve spodní liště — méně rušivé než potvrzovací dialog.
       setState(() {
         _pendingX = x;
         _pendingY = y;
       });
-      await _confirmAndSavePendingMove();
     }
+  }
+
+  /// Uloží rozpracované umístění/přesun značky (tlačítko „Uložit" ve spodní liště).
+  Future<void> _savePendingPlacement() async {
+    final sealId = _placingSealId ?? _movingSealId;
+    if (sealId == null || _pendingX == null || _pendingY == null) return;
+    await _saveMarker(sealId, _pendingX!, _pendingY!);
+  }
+
+  void _cancelPlacement() {
+    setState(() {
+      _placingSealId = null;
+      _movingSealId = null;
+      _pendingX = null;
+      _pendingY = null;
+    });
   }
 
   bool _canMoveMarker(Map<String, dynamic> marker) {
@@ -975,6 +967,15 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
+                if (_isLowResRaster)
+                  Container(
+                    padding: const EdgeInsets.all(AppSpacing.sm),
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    child: Text(
+                      'Výkres má nízké rozlišení a při přiblížení může být rozmazaný.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
                 if (_isDraftMode || _placingSealId != null || _movingSealId != null)
                   Container(
                     padding: const EdgeInsets.all(AppSpacing.md),
@@ -983,8 +984,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                       _isDraftMode
                           ? 'Klepněte na výkres a potvrďte umístění tlačítkem dole'
                           : _placingSealId != null
-                              ? 'Klepněte na výkres a potvrďte umístění značky'
-                              : 'Klepněte na nové místo a potvrďte přesun značky',
+                              ? 'Klepněte na výkres a uložte značku tlačítkem dole'
+                              : 'Klepněte na nové místo a uložte přesun tlačítkem dole',
                       style: Theme.of(context).textTheme.bodyMedium,
                     ),
                   ),
@@ -1039,19 +1040,54 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                 ),
               ],
             ),
-      bottomNavigationBar: _isDraftMode
-          ? SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.lg),
-                child: FilledButton(
-                  onPressed:
-                      _draftX != null && _draftY != null ? _confirmDraftPlacement : null,
-                  child: const Text('Potvrdit umístění'),
-                ),
-              ),
-            )
-          : null,
+      bottomNavigationBar: _buildBottomBar(),
     ),
     );
+  }
+
+  /// Spodní akční lišta: výrazné tlačítko Uložit pro umístění/přesun značky,
+  /// případně potvrzení umístění v draft režimu formuláře.
+  Widget? _buildBottomBar() {
+    if (_isDraftMode) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          child: FilledButton(
+            onPressed:
+                _draftX != null && _draftY != null ? _confirmDraftPlacement : null,
+            child: const Text('Potvrdit umístění'),
+          ),
+        ),
+      );
+    }
+    if (_placingSealId != null || _movingSealId != null) {
+      final canSave = _pendingX != null && _pendingY != null;
+      final label = _placingSealId != null ? 'Uložit značku' : 'Uložit pozici';
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.md),
+          child: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _cancelPlacement,
+                  child: const Text('Zrušit'),
+                ),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                flex: 2,
+                child: FilledButton.icon(
+                  onPressed: canSave ? _savePendingPlacement : null,
+                  icon: const Icon(Icons.save_outlined),
+                  label: Text(label),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    return null;
   }
 }

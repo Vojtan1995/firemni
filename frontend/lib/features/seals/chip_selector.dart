@@ -29,10 +29,10 @@ class ChipSelector extends StatelessWidget {
                 color: AppColors.textPrimary,
               ),
         ),
-        const SizedBox(height: AppSpacing.sm),
+        const SizedBox(height: AppSpacing.xs),
         Wrap(
-          spacing: AppSpacing.sm,
-          runSpacing: AppSpacing.sm,
+          spacing: AppSpacing.xs,
+          runSpacing: AppSpacing.xs,
           children: [
             ...options.map((o) {
               final isSelected = selected == o;
@@ -40,6 +40,9 @@ class ChipSelector extends StatelessWidget {
                 label: Text(o),
                 selected: isSelected,
                 onSelected: (_) => onSelected(o),
+                // Kompaktnější chipy — nižší výška, menší tap padding.
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 selectedColor: AppColors.accent.withValues(alpha: 0.2),
                 backgroundColor: AppColors.bgSecondary,
                 labelStyle: TextStyle(
@@ -55,6 +58,8 @@ class ChipSelector extends StatelessWidget {
             if (allowCustom)
               ActionChip(
                 label: const Text('Vlastní'),
+                visualDensity: VisualDensity.compact,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 backgroundColor: AppColors.bgSecondary,
                 labelStyle: const TextStyle(color: AppColors.textSecondary),
                 side: const BorderSide(color: AppColors.border),
