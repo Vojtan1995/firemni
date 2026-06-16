@@ -16,6 +16,7 @@ import {
 import { csvWithBom } from '../lib/csv-export.js';
 import { createNotification } from './notification.service.js';
 import { anonymizeUserForViewer } from '../lib/user-privacy.js';
+import { isSealLockedByWorksheet, STATUS_LABELS as WORKSHEET_STATUS_LABELS } from './worksheet.service.js';
 
 export type BulkItemError = { id: string; message: string };
 
@@ -46,7 +47,7 @@ export async function assertSealEditable(
   sealId: string,
   userRole: UserRole,
   userId: string,
-  opts?: { overrideLocked?: boolean; overrideReason?: string },
+  opts?: { overrideLocked?: boolean; overrideReason?: string; entriesChanged?: boolean },
 ) {
   const seal = await assertSealReadable(sealId, userRole, userId);
   if (!jobAllowsWrites(seal.job.status)) {
@@ -64,6 +65,28 @@ export async function assertSealEditable(
       return seal;
     }
     throw forbidden('Ucpávka je zamčena (fakturováno)');
+  }
+  // Pokud request mění prostupy (entries), zkontroluj, zda nejsou součástí odevzdaného
+  // soupisu – ten by se po přepisu entries odpojil od aktuálních dat.
+  if (opts?.entriesChanged) {
+    const lock = await isSealLockedByWorksheet(sealId);
+    if (lock) {
+      if (
+        opts.overrideLocked &&
+        hasPermission(userRole, 'seal.override_locked') &&
+        opts.overrideReason?.trim()
+      ) {
+        await logActivity(userId, 'override_locked_edit', 'seal', sealId, {
+          reason: opts.overrideReason.trim(),
+          worksheetId: lock.worksheetId,
+        });
+      } else {
+        throw forbidden(
+          `Ucpávka je součástí odevzdaného soupisu (${WORKSHEET_STATUS_LABELS[lock.status]}) a nelze upravit prostupy. ` +
+            'Vraťte soupis do rozpracovaného stavu nebo kontaktujte vedení.',
+        );
+      }
+    }
   }
   if (userRole === UserRole.worker && !canWorkerEdit(seal.status)) {
     throw forbidden('Worker může editovat pouze rozpracované ucpávky');

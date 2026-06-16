@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 
@@ -50,15 +51,8 @@ class _ProfileWorksheetsSectionState extends ConsumerState<ProfileWorksheetsSect
       });
     } on DioException catch (e) {
       if (!mounted) return;
-      final data = e.response?.data;
-      String message = 'Nepodařilo se načíst soupisy';
-      if (data is Map) {
-        message = data['message']?.toString() ?? data['error']?.toString() ?? message;
-      } else if (data is String && data.isNotEmpty) {
-        message = data;
-      }
       setState(() {
-        _error = message;
+        _error = apiErrorMessage(e, fallback: 'Nepodařilo se načíst soupisy');
         _loading = false;
       });
     } catch (_) {

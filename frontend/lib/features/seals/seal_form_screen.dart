@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../widgets/widgets.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
@@ -539,8 +540,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       }
     } catch (e) {
       if (mounted) {
+        final msg = apiErrorMessage(e, fallback: 'Chyba: $e');
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Chyba: $e')));
+            .showSnackBar(SnackBar(content: Text(msg)));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

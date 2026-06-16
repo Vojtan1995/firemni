@@ -108,6 +108,60 @@ function sumItemTotals(items: { totalPrice: unknown }[]) {
   return items.reduce((acc, item) => acc + (item.totalPrice != null ? Number(item.totalPrice) : 0), 0);
 }
 
+export type EntryWorksheetMembership = {
+  worksheetId: string;
+  status: WorkSheetStatus;
+  jobProjectNumber: string;
+};
+
+/**
+ * Pro daný seznam ID prostupů (SealEntry) vrátí mapu sealEntryId -> info o soupisu,
+ * jehož je prostup součástí. Prostup může být max v jednom soupisu (unique constraint),
+ * takže mapa má vždy jeden záznam na entry.
+ */
+export async function getEntryWorksheetMembership(
+  sealEntryIds: string[],
+): Promise<Map<string, EntryWorksheetMembership>> {
+  if (sealEntryIds.length === 0) return new Map();
+  const items = await prisma.workSheetItem.findMany({
+    where: { sealEntryId: { in: sealEntryIds } },
+    select: {
+      sealEntryId: true,
+      worksheetId: true,
+      worksheet: { select: { status: true, job: { select: { projectNumber: true } } } },
+    },
+  });
+  return new Map(
+    items.map((i) => [
+      i.sealEntryId,
+      {
+        worksheetId: i.worksheetId,
+        status: i.worksheet.status,
+        jobProjectNumber: i.worksheet.job.projectNumber,
+      },
+    ]),
+  );
+}
+
+/**
+ * Vrátí info o soupisu, pokud je ucpávka „zamčená" pro přepis prostupů – tj. některý
+ * z jejích aktuálních prostupů je součástí soupisu, který už opustil stav `draft`.
+ * Vrací první nalezený ne-draft soupis, jinak null.
+ */
+export async function isSealLockedByWorksheet(
+  sealId: string,
+): Promise<EntryWorksheetMembership | null> {
+  const entries = await prisma.sealEntry.findMany({
+    where: { sealId, deletedAt: null },
+    select: { id: true },
+  });
+  const membership = await getEntryWorksheetMembership(entries.map((e) => e.id));
+  for (const m of membership.values()) {
+    if (m.status !== WorkSheetStatus.draft) return m;
+  }
+  return null;
+}
+
 export function getAllowedStatusTargets(
   role: UserRole,
   current: WorkSheetStatus,
@@ -467,17 +521,21 @@ export async function populateWorksheetFromFilters(
     if (filters.to) (sealWhere.createdAt as Record<string, Date>).lte = new Date(filters.to);
   }
 
+  // Vynech prostupy, které už jsou v jakémkoliv soupisu – jinak by jediná zabraná
+  // položka shodila celý dávkový import přes addWorksheetItems.
   const entries = await prisma.sealEntry.findMany({
-    where: { deletedAt: null, seal: sealWhere },
+    where: { deletedAt: null, seal: sealWhere, worksheetItems: { none: {} } },
     select: { id: true },
   });
 
-  return addWorksheetItems(
+  const created = await addWorksheetItems(
     worksheetId,
     role,
     userId,
     entries.map((e) => e.id),
   );
+
+  return { items: created, requestedCount: entries.length, addedCount: created.length };
 }
 
 type WorksheetExportRow = Record<string, string | number | null>;

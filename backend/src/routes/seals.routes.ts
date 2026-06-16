@@ -37,6 +37,7 @@ import {
 } from '../lib/seal-notes.js';
 import { parseSealFilters } from '../lib/seal-list-filters.js';
 import { listFloorSealsFiltered } from '../services/search.service.js';
+import { getEntryWorksheetMembership } from '../services/worksheet.service.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -230,7 +231,21 @@ router.get('/:id', async (req, res, next) => {
       },
     });
     if (!seal) throw notFound('Ucpávka nenalezena');
-    res.json(filterSealNotesForViewer(req.user!.role, seal));
+
+    const membership = await getEntryWorksheetMembership(seal.entries.map((e) => e.id));
+    const sealWithMembership = {
+      ...seal,
+      entries: seal.entries.map((e) => {
+        const m = membership.get(e.id);
+        return {
+          ...e,
+          worksheet: m
+            ? { worksheetId: m.worksheetId, status: m.status, jobProjectNumber: m.jobProjectNumber }
+            : null,
+        };
+      }),
+    };
+    res.json(filterSealNotesForViewer(req.user!.role, sealWithMembership));
   } catch (e) {
     next(e);
   }
@@ -325,6 +340,7 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
       {
         overrideLocked: true,
         overrideReason: body.overrideReason,
+        entriesChanged: !!body.entries,
       },
     );
 

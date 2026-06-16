@@ -336,7 +336,7 @@ describe('Worksheets module integration', () => {
         .send({ floorIds: [populateFloorId] });
       expect(populate.status).toBe(201);
 
-      const addedEntryIds = populate.body.map((item) => item.sealEntryId);
+      const addedEntryIds = populate.body.items.map((item) => item.sealEntryId);
       expect(addedEntryIds).toContain(draftSeal.entries[0].id);
       expect(addedEntryIds).toContain(checkedSeal.entries[0].id);
       expect(addedEntryIds).not.toContain(invoicedSeal.entries[0].id);

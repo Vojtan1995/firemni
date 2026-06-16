@@ -7,6 +7,7 @@ import '../../core/design_tokens.dart';
 import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../worksheets/worksheet_navigation.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
   const StatsScreen({super.key});
@@ -84,13 +85,13 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   }
 
   void _goSoupisy({String? status, String? jobId, String? reportStatus, String? workerId}) {
-    final params = <String, String>{};
-    if (status != null) params['status'] = status;
-    if (jobId != null) params['jobId'] = jobId;
-    if (reportStatus != null) params['reportStatus'] = reportStatus;
-    if (workerId != null) params['workerId'] = workerId;
-    final uri = Uri(path: '/soupisy', queryParameters: params.isEmpty ? null : params);
-    context.go(uri.toString());
+    goToSoupisy(
+      context,
+      status: status,
+      jobId: jobId,
+      reportStatus: reportStatus,
+      workerId: workerId,
+    );
   }
 
   Widget _kpiGrid(List<Widget> cards) {

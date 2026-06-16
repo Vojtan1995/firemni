@@ -1,8 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
+import '../auth/auth_provider.dart';
+
+/// Definice jedné sekce (tabu) logů – nadpis, endpoint a zda jde o systémové záznamy.
+class _LogSection {
+  const _LogSection({
+    required this.label,
+    required this.endpoint,
+    this.isSystem = false,
+  });
+  final String label;
+  final String endpoint;
+  final bool isSystem;
+}
 
 class LogsScreen extends ConsumerStatefulWidget {
   const LogsScreen({super.key});
@@ -13,213 +28,251 @@ class LogsScreen extends ConsumerStatefulWidget {
 
 class _LogsScreenState extends ConsumerState<LogsScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs;
-  final _activity = <Map<String, dynamic>>[];
-  final _changes = <Map<String, dynamic>>[];
-  final _login = <Map<String, dynamic>>[];
-  final _sync = <Map<String, dynamic>>[];
-  final _errors = <Map<String, dynamic>>[];
-  final _photos = <Map<String, dynamic>>[];
-  final _admin = <Map<String, dynamic>>[];
+  TabController? _tabs;
+  late List<_LogSection> _sections;
+  final Map<String, List<Map<String, dynamic>>> _data = {};
   bool _loading = true;
+  int _sinceDays = 7;
+
+  static const _dayFormat = 'yyyy-MM-dd';
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 7, vsync: this);
+    // Sekce se odvodí podle role v didChangeDependencies (potřebuje ref).
+    WidgetsBinding.instance.addPostFrameCallback((_) => _init());
+  }
+
+  void _init() {
+    final auth = ref.read(authServiceProvider);
+    final sections = <_LogSection>[
+      if (auth.canViewLogs || auth.isUcetni)
+        const _LogSection(label: 'Historie změn', endpoint: '/api/logs/history'),
+      if (auth.canViewLogs)
+        const _LogSection(
+            label: 'Aktivita uživatelů', endpoint: '/api/logs/user-activity'),
+      if (auth.isAdmin)
+        const _LogSection(
+            label: 'Systém', endpoint: '/api/logs/system', isSystem: true),
+    ];
+    setState(() {
+      _sections = sections;
+      _tabs = TabController(length: sections.length, vsync: this);
+    });
     _load();
   }
 
   @override
   void dispose() {
-    _tabs.dispose();
+    _tabs?.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     final dio = ref.read(dioProvider);
+    final since = DateTime.now()
+        .subtract(Duration(days: _sinceDays))
+        .toUtc()
+        .toIso8601String();
     try {
-      final results = await Future.wait([
-        dio.get('/api/logs/activity'),
-        dio.get('/api/logs/changes'),
-        dio.get('/api/logs/login'),
-        dio.get('/api/logs/sync'),
-        dio.get('/api/logs/errors'),
-        dio.get('/api/logs/photos'),
-        dio.get('/api/logs/admin'),
-      ]);
-      _activity
-        ..clear()
-        ..addAll((results[0].data as List).cast<Map<String, dynamic>>());
-      _changes
-        ..clear()
-        ..addAll((results[1].data as List).cast<Map<String, dynamic>>());
-      _login
-        ..clear()
-        ..addAll((results[2].data as List).cast<Map<String, dynamic>>());
-      _sync
-        ..clear()
-        ..addAll((results[3].data as List).cast<Map<String, dynamic>>());
-      _errors
-        ..clear()
-        ..addAll((results[4].data as List).cast<Map<String, dynamic>>());
-      _photos
-        ..clear()
-        ..addAll((results[5].data as List).cast<Map<String, dynamic>>());
-      _admin
-        ..clear()
-        ..addAll((results[6].data as List).cast<Map<String, dynamic>>());
+      await Future.wait(_sections.map((s) async {
+        final res = await dio.get(
+          s.endpoint,
+          queryParameters: {'since': since},
+        );
+        _data[s.endpoint] =
+            (res.data as List).cast<Map<String, dynamic>>();
+      }));
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
 
+  void _openEntity(Map<String, dynamic>? entity) {
+    if (entity == null) return;
+    final id = entity['id'] as String?;
+    if (id == null || id.isEmpty) return;
+    switch (entity['type']) {
+      case 'seal':
+        context.push('/seal/$id');
+        break;
+      case 'job':
+        context.go('/floors/$id');
+        break;
+      case 'job_floor':
+        context.go('/seals/$id');
+        break;
+      case 'worksheet':
+        context.push('/worksheets/$id');
+        break;
+      case 'user':
+        if (ref.read(authServiceProvider).canManageUsers) {
+          context.push('/users-admin');
+        }
+        break;
+    }
+  }
+
+  String _dayLabel(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final day = DateTime(d.year, d.month, d.day);
+    final diff = today.difference(day).inDays;
+    if (diff == 0) return 'Dnes';
+    if (diff == 1) return 'Včera';
+    return DateFormat('d.M.y').format(d);
+  }
+
+  DateTime? _parseTs(dynamic ts) =>
+      ts is String ? DateTime.tryParse(ts)?.toLocal() : null;
+
   @override
   Widget build(BuildContext context) {
+    final tabs = _tabs;
+    if (tabs == null) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Logy')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Logy'),
         bottom: TabBar(
-          controller: _tabs,
+          controller: tabs,
           isScrollable: true,
           labelColor: AppColors.accent,
           unselectedLabelColor: AppColors.textSecondary,
           indicatorColor: AppColors.accent,
           indicatorSize: TabBarIndicatorSize.label,
           dividerColor: AppColors.border,
-          labelStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+          labelStyle: Theme.of(context)
+              .textTheme
+              .bodyMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
           unselectedLabelStyle: Theme.of(context).textTheme.bodyMedium,
-          tabs: const [
-            Tab(text: 'Aktivita'),
-            Tab(text: 'Změny'),
-            Tab(text: 'Přihlášení'),
-            Tab(text: 'Synchronizace'),
-            Tab(text: 'Chyby'),
-            Tab(text: 'Fotky'),
-            Tab(text: 'Admin'),
-          ],
+          tabs: _sections.map((s) => Tab(text: s.label)).toList(),
         ),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabs,
-              children: [
-                _activityList(),
-                _changesList(),
-                _loginList(),
-                _syncList(),
-                _errorsList(),
-                _photosList(),
-                _adminList(),
-              ],
-            ),
+      body: Column(
+        children: [
+          _rangeBar(),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : TabBarView(
+                    controller: tabs,
+                    children: _sections.map(_sectionView).toList(),
+                  ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _logList({
-    required List<Map<String, dynamic>> items,
-    required String Function(Map<String, dynamic>) titleFor,
-    required String Function(Map<String, dynamic>) subtitleFor,
-    IconData emptyIcon = Icons.inbox_outlined,
-  }) {
-    if (items.isEmpty) {
-      return EmptyState(message: 'Žádné záznamy', icon: emptyIcon);
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: items.length,
-      itemBuilder: (_, i) {
-        final item = items[i];
-        return AppCard(
-          showChevron: false,
-          title: titleFor(item),
-          subtitle: subtitleFor(item),
+  Widget _rangeBar() {
+    Widget chip(String label, int days) => Padding(
+          padding: const EdgeInsets.only(right: AppSpacing.sm),
+          child: ChoiceChip(
+            label: Text(label),
+            selected: _sinceDays == days,
+            onSelected: (_) {
+              setState(() => _sinceDays = days);
+              _load();
+            },
+          ),
         );
-      },
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppSpacing.lg,
+        vertical: AppSpacing.sm,
+      ),
+      child: Row(
+        children: [chip('Dnes', 1), chip('7 dní', 7), chip('30 dní', 30)],
+      ),
     );
   }
 
-  Widget _activityList() {
-    return _logList(
-      items: _activity,
-      titleFor: (l) => '${l['action']} – ${l['entityType'] ?? ''}',
-      subtitleFor: (l) {
-        final user = l['user'] as Map<String, dynamic>?;
-        return '${user?['displayName'] ?? ''} | ${l['createdAt']}';
-      },
-      emptyIcon: Icons.history,
+  Widget _sectionView(_LogSection section) {
+    final items = _data[section.endpoint] ?? const [];
+    if (items.isEmpty) {
+      return const EmptyState(message: 'Žádné záznamy', icon: Icons.history);
+    }
+
+    // Seskupení po dnech.
+    final groups = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final ts = _parseTs(item['timestamp']);
+      final key = ts != null ? DateFormat(_dayFormat).format(ts) : 'starší';
+      groups.putIfAbsent(key, () => []).add(item);
+    }
+    final keys = groups.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    final children = <Widget>[];
+    for (final key in keys) {
+      final first = _parseTs(groups[key]!.first['timestamp']);
+      children.add(SectionHeader(
+        title: first != null ? _dayLabel(first) : 'Starší',
+        style: SectionHeaderStyle.h3,
+      ));
+      for (final item in groups[key]!) {
+        children.add(section.isSystem ? _systemRow(item) : _historyRow(item));
+      }
+    }
+
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(AppSpacing.lg),
+        children: children,
+      ),
     );
   }
 
-  Widget _changesList() {
-    return _logList(
-      items: _changes,
-      titleFor: (l) => '${l['fieldName'] ?? l['entityType']}',
-      subtitleFor: (l) {
-        final user = l['user'] as Map<String, dynamic>?;
-        return '${user?['displayName'] ?? ''}: ${l['oldValue']} → ${l['newValue']}';
-      },
-      emptyIcon: Icons.edit_note,
+  Widget _historyRow(Map<String, dynamic> item) {
+    final entity = item['entity'] as Map<String, dynamic>?;
+    final user = item['user'] as Map<String, dynamic>?;
+    final ts = _parseTs(item['timestamp']);
+    final time = ts != null ? DateFormat('HH:mm').format(ts) : '';
+    final who = user?['displayName'] as String?;
+    final subtitle = [who, time].where((e) => e != null && e.isNotEmpty).join(' · ');
+    return AppCard(
+      title: item['title'] as String? ?? '',
+      subtitle: subtitle.isEmpty ? null : subtitle,
+      showChevron: entity != null,
+      onTap: entity != null ? () => _openEntity(entity) : null,
     );
   }
 
-  Widget _loginList() {
-    return _logList(
-      items: _login,
-      titleFor: (l) => l['success'] == true ? 'Úspěch' : 'Neúspěch',
-      subtitleFor: (l) {
-        final user = l['user'] as Map<String, dynamic>?;
-        return '${user?['displayName'] ?? l['username'] ?? ''} | ${l['createdAt']}';
-      },
-      emptyIcon: Icons.login,
-    );
-  }
-
-  Widget _syncList() {
-    return _logList(
-      items: _sync,
-      titleFor: (l) => '${l['operation']} – ${l['entityType']}',
-      subtitleFor: (l) => 'device ${l['deviceId'] ?? ''} | ${l['createdAt']}',
-      emptyIcon: Icons.sync,
-    );
-  }
-
-  Widget _errorsList() {
-    return _logList(
-      items: _errors,
-      titleFor: (l) => l['message'] as String? ?? 'Chyba',
-      subtitleFor: (l) => '${l['path'] ?? ''} | ${l['createdAt']}',
-      emptyIcon: Icons.error_outline,
-    );
-  }
-
-  Widget _photosList() {
-    return _logList(
-      items: _photos,
-      titleFor: (l) => l['action'] as String? ?? 'foto',
-      subtitleFor: (l) {
-        final user = l['user'] as Map<String, dynamic>?;
-        return '${user?['displayName'] ?? ''} | seal ${l['entityId'] ?? ''} | ${l['createdAt']}';
-      },
-      emptyIcon: Icons.photo_camera_outlined,
-    );
-  }
-
-  Widget _adminList() {
-    return _logList(
-      items: _admin,
-      titleFor: (l) => l['action'] as String? ?? 'admin',
-      subtitleFor: (l) {
-        final user = l['user'] as Map<String, dynamic>?;
-        return '${user?['displayName'] ?? ''} (${user?['role'] ?? ''}) | ${l['createdAt']}';
-      },
-      emptyIcon: Icons.admin_panel_settings_outlined,
+  Widget _systemRow(Map<String, dynamic> item) {
+    final ts = _parseTs(item['timestamp']);
+    final time = ts != null ? DateFormat('HH:mm').format(ts) : '';
+    final detail = item['detail'] as String?;
+    final kind = item['kind'] as String?;
+    final color = switch (kind) {
+      'error' => AppColors.error,
+      'backup' => AppColors.success,
+      _ => AppColors.textMuted,
+    };
+    return AppCard(
+      showChevron: false,
+      leading: AppIconBox(
+        icon: switch (kind) {
+          'error' => Icons.error_outline,
+          'sync' => Icons.sync,
+          'backup' => Icons.backup_outlined,
+          _ => Icons.info_outline,
+        },
+        backgroundColor: color.withValues(alpha: 0.12),
+        color: color,
+      ),
+      title: item['title'] as String? ?? '',
+      subtitle:
+          [detail, time].where((e) => e != null && e.isNotEmpty).join(' · '),
     );
   }
 }

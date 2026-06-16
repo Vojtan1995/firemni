@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 
@@ -79,13 +80,8 @@ class _AdminTrashScreenState extends ConsumerState<AdminTrashScreen> {
     }
   }
 
-  String _messageFromDio(DioException e, String fallback) {
-    final data = e.response?.data;
-    if (data is Map && data['message'] != null) {
-      return data['message'].toString();
-    }
-    return fallback;
-  }
+  String _messageFromDio(DioException e, String fallback) =>
+      apiErrorMessage(e, fallback: fallback);
 
   String _formatDeletedAt(dynamic value) {
     if (value == null) return '—';

@@ -9,6 +9,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
@@ -16,6 +17,7 @@ import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../jobs/work_context_service.dart';
+import '../worksheets/worksheet_status_labels.dart';
 import '../sync/sync_retry.dart';
 import '../sync/sync_service.dart';
 import 'seal_photo_storage.dart';
@@ -361,7 +363,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Revize selhala')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Revize selhala'))),
       );
     }
   }
@@ -425,7 +427,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Změna stavu selhala')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Změna stavu selhala'))),
       );
     }
   }
@@ -805,9 +807,17 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              '${m['entryType']} – ${m['dimension']}',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${m['entryType']} – ${m['dimension']}',
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                if (m['worksheet'] is Map<String, dynamic>)
+                  _entryWorksheetChip(m['worksheet'] as Map<String, dynamic>),
+              ],
             ),
             Text('${qtyDisplay()}, ${m['insulation']}'),
             if (matText.isNotEmpty) Text('Materiály: $matText'),
@@ -846,6 +856,38 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _entryWorksheetChip(Map<String, dynamic> ws) {
+    final st = ws['status'] as String?;
+    final id = ws['worksheetId'] as String?;
+    final color = worksheetStatusColor(st);
+    return InkWell(
+      onTap: id != null ? () => context.push('/worksheets/$id') : null,
+      borderRadius: AppRadius.smAll,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: AppRadius.smAll,
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.assignment_outlined, size: 13, color: color),
+            const SizedBox(width: 4),
+            Text(
+              'Soupis: ${worksheetStatusLabel(st)}',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: color, fontWeight: FontWeight.w600),
+            ),
           ],
         ),
       ),
@@ -1000,6 +1042,16 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
     final entries = (seal['entries'] as List? ?? []);
 
+    String? lockedWorksheetStatus;
+    for (final e in entries) {
+      final ws = (e as Map<String, dynamic>)['worksheet'] as Map<String, dynamic>?;
+      final st = ws?['status'] as String?;
+      if (st != null && st != 'draft') {
+        lockedWorksheetStatus = st;
+        break;
+      }
+    }
+
     return [
       if (offline)
         Container(
@@ -1074,6 +1126,30 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               Icon(Icons.lock, size: 18, color: AppColors.warning),
               SizedBox(width: AppSpacing.sm),
               Expanded(child: Text('Uzamčeno — fakturováno')),
+            ],
+          ),
+        ),
+
+      if (lockedWorksheetStatus != null)
+        Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.info.withValues(alpha: 0.12),
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(color: AppColors.info.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.assignment_outlined,
+                  size: 18, color: AppColors.info),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                child: Text(
+                  'Tato ucpávka je součástí soupisu (${worksheetStatusLabel(lockedWorksheetStatus)}) – '
+                  'úpravy prostupů nejsou možné.',
+                ),
+              ),
             ],
           ),
         ),

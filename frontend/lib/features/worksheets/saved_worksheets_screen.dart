@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
@@ -71,7 +72,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
       if (!mounted) return;
       setState(() => _loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba načtení')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba načtení'))),
       );
     }
   }

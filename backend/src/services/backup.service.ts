@@ -43,6 +43,21 @@ export async function pruneOldBackups() {
   }
 }
 
+const LOG_RETENTION_DAYS = 90;
+
+/**
+ * Promaže staré technické logy (přihlášení, chyby, zpracované sync mutace).
+ * Audit (ActivityLog / ChangeLog) se záměrně NEMAŽE – je to trvalá historie.
+ */
+export async function pruneOldLogs() {
+  const cutoff = new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  await prisma.loginLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  await prisma.errorLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
+  await prisma.syncMutation.deleteMany({
+    where: { createdAt: { lt: cutoff }, processedAt: { not: null } },
+  });
+}
+
 export async function runBackup(triggeredBy?: string) {
   await ensureBackupDir();
   const fileName = `ucpavky_${timestampSlug()}.dump`;
@@ -61,6 +76,11 @@ export async function runBackup(triggeredBy?: string) {
       },
     });
     await pruneOldBackups();
+    try {
+      await pruneOldLogs();
+    } catch (err) {
+      logger.warn({ err: String(err) }, 'pruneOldLogs failed');
+    }
     logger.info({ fileName, size: stat.size }, 'DB backup OK');
     return log;
   } catch (err) {

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
@@ -48,8 +49,7 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.response?.data?['message']?.toString() ??
-                'Nepodařilo se načíst filtry',
+            apiErrorMessage(e, fallback: 'Nepodařilo se načíst filtry'),
           ),
           backgroundColor: AppColors.error,
         ),
@@ -128,14 +128,30 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
 
                   final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
                   final ws = res.data as Map<String, dynamic>;
-                  await ref.read(dioProvider).post(
+                  final popRes = await ref.read(dioProvider).post(
                         '/api/worksheets/${ws['id']}/populate',
                         data: {},
                       );
+                  if (!mounted) return;
+                  final pop = popRes.data as Map<String, dynamic>?;
+                  final requested = (pop?['requestedCount'] as num?)?.toInt();
+                  final added = (pop?['addedCount'] as num?)?.toInt();
+                  if (requested != null &&
+                      added != null &&
+                      requested > added) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Do soupisu bylo přidáno $added z $requested položek. '
+                          '${requested - added} je již součástí jiného soupisu.',
+                        ),
+                      ),
+                    );
+                  }
                 } on DioException catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba')),
+                    SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba'))),
                   );
                 }
               },

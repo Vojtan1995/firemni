@@ -122,13 +122,13 @@ router.post('/:id/populate', requirePermission('worksheet.create'), async (req, 
         to: z.string().optional(),
       })
       .parse(req.body);
-    const items = await populateWorksheetFromFilters(
+    const result = await populateWorksheetFromFilters(
       paramId(req.params.id),
       req.user!.role,
       req.user!.id,
       body,
     );
-    res.status(201).json(items);
+    res.status(201).json(result);
   } catch (e) {
     next(e);
   }

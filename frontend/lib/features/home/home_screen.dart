@@ -9,6 +9,7 @@ import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../jobs/resume_work_context_card.dart';
+import 'action_items_card.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -60,6 +61,10 @@ class HomeScreen extends ConsumerWidget {
           ),
           const SizedBox(height: AppSpacing.sm),
           const ResumeWorkContextCard(),
+          ActionItemsCard(role: role),
+
+          // --- Práce ---
+          const SectionHeader(title: 'Práce', style: SectionHeaderStyle.h3),
           _MenuTile(
             icon: Icons.work,
             title: 'Zakázky',
@@ -71,46 +76,62 @@ class HomeScreen extends ConsumerWidget {
               title: auth.isWorker ? 'Moje soupisy' : 'Soupisy práce',
               onTap: () => context.push('/soupisy'),
             ),
-          if (auth.canViewStats && !auth.isWorker)
-            _MenuTile(
-              icon: Icons.analytics_outlined,
-              title: auth.isWorker
-                  ? 'Moje statistiky'
-                  : auth.isUcetni
-                      ? 'Statistiky fakturace'
-                      : 'Dashboard',
-              onTap: () => context.push('/stats'),
-            ),
-          if (auth.canViewPriceList)
-            _MenuTile(
-              icon: Icons.price_check,
-              title: 'Ceník',
-              onTap: () => context.push('/price-list'),
-            ),
-          if (auth.canManageJobs)
-            _MenuTile(
-              icon: Icons.admin_panel_settings,
-              title: 'Správa staveb',
-              onTap: () => context.push('/jobs-admin'),
-            ),
-          if (auth.canManageUsers)
-            _MenuTile(
-              icon: Icons.people,
-              title: 'Uživatelé',
-              onTap: () => context.push('/users-admin'),
-            ),
-          if (auth.canManageJobs)
-            _MenuTile(
-              icon: Icons.history,
-              title: 'Logy',
-              onTap: () => context.push('/logs'),
-            ),
-          if (auth.canAccessTrash)
-            _MenuTile(
-              icon: Icons.delete_outline,
-              title: 'Koš / Smazané položky',
-              onTap: () => context.push('/trash'),
-            ),
+
+          // --- Přehledy ---
+          if (auth.canViewStats || auth.canViewPriceList) ...[
+            const SectionHeader(title: 'Přehledy', style: SectionHeaderStyle.h3),
+            if (auth.canViewStats)
+              _MenuTile(
+                icon: Icons.analytics_outlined,
+                title: auth.isWorker
+                    ? 'Moje statistiky'
+                    : auth.isUcetni
+                        ? 'Statistiky fakturace'
+                        : 'Dashboard',
+                onTap: () => context.push('/stats'),
+              ),
+            if (auth.canViewPriceList)
+              _MenuTile(
+                icon: Icons.price_check,
+                title: 'Ceník',
+                onTap: () => context.push('/price-list'),
+              ),
+          ],
+
+          // --- Správa ---
+          if (auth.canManageJobs ||
+              auth.canManageUsers ||
+              auth.canViewLogs ||
+              auth.isUcetni ||
+              auth.canAccessTrash) ...[
+            const SectionHeader(title: 'Správa', style: SectionHeaderStyle.h3),
+            if (auth.canManageJobs)
+              _MenuTile(
+                icon: Icons.admin_panel_settings,
+                title: 'Správa staveb',
+                onTap: () => context.push('/jobs-admin'),
+              ),
+            if (auth.canManageUsers)
+              _MenuTile(
+                icon: Icons.people,
+                title: 'Uživatelé',
+                onTap: () => context.push('/users-admin'),
+              ),
+            if (auth.canViewLogs || auth.isUcetni)
+              _MenuTile(
+                icon: Icons.history,
+                title: 'Logy',
+                onTap: () => context.push('/logs'),
+              ),
+            if (auth.canAccessTrash)
+              _MenuTile(
+                icon: Icons.delete_outline,
+                title: 'Koš / Smazané položky',
+                onTap: () => context.push('/trash'),
+              ),
+          ],
+
+          const SizedBox(height: AppSpacing.sm),
           _MenuTile(
             icon: Icons.help_outline,
             title: 'Nápověda',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
@@ -53,7 +54,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.response?.data?['message'] as String? ?? 'Nepodařilo se načíst soupis';
+        _error = apiErrorMessage(e, fallback: 'Nepodařilo se načíst soupis');
       });
     }
   }
@@ -102,7 +103,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Export selhal')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Export selhal'))),
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -146,7 +147,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba změny stavu')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
       );
     }
   }
@@ -276,7 +277,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba změny stavu')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
       );
     } finally {
       commentCtrl.dispose();

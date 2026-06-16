@@ -6,6 +6,7 @@ import '../../widgets/widgets.dart';
 import '../jobs/resume_work_context_card.dart';
 import '../sync/sync_service.dart';
 import 'auth_provider.dart';
+import 'profile_activity_section.dart';
 import 'profile_worksheets_section.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -92,6 +93,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             const SizedBox(height: AppSpacing.xl),
             ProfileWorksheetsSection(role: role),
             const SizedBox(height: AppSpacing.xl),
+            const ProfileActivitySection(),
             const SectionHeader(title: 'Změna PINu', style: SectionHeaderStyle.h3),
             Text(
               'Zadejte starý PIN, nový PIN a jeho potvrzení.',

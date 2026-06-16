@@ -1,4 +1,4 @@
-import { Prisma, UserRole } from '@prisma/client';
+import { Prisma, UserRole, WorkSheetStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest } from '../lib/errors.js';
 import {
@@ -13,6 +13,14 @@ import { bypassesJobParticipantCheck, getParticipantJobIds } from './authorizati
 const MIN_QUERY_LEN = 2;
 const DEFAULT_LIMIT = 25;
 const MAX_LIMIT = 50;
+
+const WORKSHEET_STATUS_RANK: Record<WorkSheetStatus, number> = {
+  [WorkSheetStatus.draft]: 0,
+  [WorkSheetStatus.submitted]: 1,
+  [WorkSheetStatus.reviewed]: 2,
+  [WorkSheetStatus.ready_for_invoice]: 3,
+  [WorkSheetStatus.invoiced]: 4,
+};
 
 export type SearchParams = {
   role: UserRole;
@@ -260,5 +268,25 @@ export async function listFloorSealsFiltered(options: {
     orderBy: { updatedAt: 'desc' },
   });
 
-  return applyPostSealFilters(rows, options.filters);
+  // Doplň „nejpokročilejší" stav soupisu, v němž ucpávka figuruje, pro badge v seznamu.
+  const sealIds = rows.map((r) => r.id);
+  const items = sealIds.length
+    ? await prisma.workSheetItem.findMany({
+        where: { sealId: { in: sealIds } },
+        select: { sealId: true, worksheet: { select: { status: true } } },
+      })
+    : [];
+  const worksheetStatusBySeal = new Map<string, WorkSheetStatus>();
+  for (const i of items) {
+    const prev = worksheetStatusBySeal.get(i.sealId);
+    if (prev === undefined || WORKSHEET_STATUS_RANK[i.worksheet.status] > WORKSHEET_STATUS_RANK[prev]) {
+      worksheetStatusBySeal.set(i.sealId, i.worksheet.status);
+    }
+  }
+  const rowsWithBadge = rows.map((r) => ({
+    ...r,
+    worksheetStatus: worksheetStatusBySeal.get(r.id) ?? null,
+  }));
+
+  return applyPostSealFilters(rowsWithBadge, options.filters);
 }

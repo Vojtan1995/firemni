@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
@@ -287,7 +288,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Upload selhal')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Upload selhal'))),
       );
     } finally {
       if (mounted) setState(() => _uploadingFloorId = null);
@@ -312,7 +313,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Smazání selhalo')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Smazání selhalo'))),
       );
     }
   }
@@ -330,7 +331,7 @@ class _FloorListScreenState extends ConsumerState<FloorListScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Export selhal')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Export selhal'))),
       );
     }
   }

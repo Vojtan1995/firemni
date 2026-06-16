@@ -294,14 +294,10 @@ router.get('/export/pdf', async (req, res, next) => {
         const unitPrice =
           row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
         const line = row.cenaCelkem != null ? `${Number(row.cenaCelkem).toFixed(2)} Kč` : '—';
-        const qtyUnit = `${row.kusy} ${row.jednotka ?? 'kus'}`;
-        const noteSuffix =
-          row.poznamka != null && String(row.poznamka).trim().length > 0
-            ? ` | Pozn.: ${String(row.poznamka).trim().slice(0, 80)}${String(row.poznamka).length > 80 ? '…' : ''}`
-            : '';
+        const qty = `${row.kusy} ks`;
         writePdfTextLine(
           doc,
-          `#${row.cisloUcpavky} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | Katalog: ${row.katalogId} | ${unitPrice} | ${line} | ${row.pracovnik}${noteSuffix}`,
+          `${row.stavba} | ${row.patro} | #${row.cisloUcpavky} | ${row.typProstupu} | ${qty} | ${row.materialy} | ${unitPrice} | ${line}`,
         );
       }
 

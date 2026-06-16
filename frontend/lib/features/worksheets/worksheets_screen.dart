@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../auth/auth_provider.dart';
 import 'worksheet_create_helpers.dart';
 
@@ -114,15 +115,29 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
 
                   final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
                   final ws = res.data as Map<String, dynamic>;
-                  await ref.read(dioProvider).post(
+                  final popRes = await ref.read(dioProvider).post(
                     '/api/worksheets/${ws['id']}/populate',
                     data: {},
                   );
                   await _load();
+                  if (!mounted) return;
+                  final pop = popRes.data as Map<String, dynamic>?;
+                  final requested = (pop?['requestedCount'] as num?)?.toInt();
+                  final added = (pop?['addedCount'] as num?)?.toInt();
+                  if (requested != null && added != null && requested > added) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Do soupisu bylo přidáno $added z $requested položek. '
+                          '${requested - added} je již součástí jiného soupisu.',
+                        ),
+                      ),
+                    );
+                  }
                 } on DioException catch (e) {
                   if (!mounted) return;
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.response?.data?['message'] ?? 'Chyba')),
+                    SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba'))),
                   );
                 }
               },

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
+import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
@@ -147,7 +148,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            e.response?.data?['message']?.toString() ?? 'Uložení selhalo',
+            apiErrorMessage(e, fallback: 'Uložení selhalo'),
           ),
         ),
       );
@@ -259,7 +260,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(e.response?.data?['message'] ?? 'Načtení verze selhalo')),
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Načtení verze selhalo'))),
       );
     }
   }

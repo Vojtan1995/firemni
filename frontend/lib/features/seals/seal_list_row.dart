@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../widgets/widgets.dart';
+import '../worksheets/worksheet_status_labels.dart';
 import 'seal_list_helpers.dart';
 
 /// Kompaktní řádek seznamu ucpávek (Task 3.1).
@@ -36,6 +37,7 @@ class SealListRow extends StatelessWidget {
     final placementPending = seal['markerPlacementPending'] == true;
     final unplaced = !placementPending && seal['hasMarker'] == false;
     final number = seal['sealNumber'] as String? ?? '?';
+    final worksheetStatus = seal['worksheetStatus'] as String?;
 
     return AppCard(
       borderColor: selected
@@ -84,6 +86,18 @@ class SealListRow extends StatelessWidget {
             ),
           if (unplaced)
             _iconBadge(Icons.place_outlined, AppColors.warning),
+          if (worksheetStatus != null)
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: Tooltip(
+                message: 'V soupisu: ${worksheetStatusLabel(worksheetStatus)}',
+                child: Icon(
+                  Icons.assignment_outlined,
+                  size: 16,
+                  color: worksheetStatusColor(worksheetStatus),
+                ),
+              ),
+            ),
           StatusBadge(
             status: status,
             conflict: hasConflict,
