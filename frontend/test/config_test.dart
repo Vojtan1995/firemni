@@ -16,7 +16,7 @@ void main() {
     test('uses LAN default in debug when env is empty', () {
       expect(
         AppConfig.resolveApiBaseUrl(envApiBaseUrl: '', debugMode: true),
-        'http://192.168.1.110:3000',
+        AppConfig.debugLanApiBaseUrl,
       );
     });
 

@@ -11,8 +11,30 @@ void main() {
     expect(vztLinearMeters(500, 300), closeTo(3.2, 0.001));
   });
 
-  test('elementAreaWithMargin adds 50mm', () {
-    expect(elementAreaWithMargin(500, 300), closeTo(0.1925, 0.001));
+  test('circleAreaFromDiameterMm uses πr²', () {
+    expect(circleAreaFromDiameterMm(100), closeTo(0.00785398, 0.0001));
+  });
+
+  test('net passage area: 2 m² minus 500×500 = 1.75 m² (spec example)', () {
+    final entries = [
+      SealEntryDraftData(entryType: 'PROSTUP'),
+      SealEntryDraftData(
+        entryType: 'VZT',
+        itemLengthMmText: '500',
+        itemWidthMmText: '500',
+      ),
+    ];
+    // opening ~2 m² (1414×1414 ≈ 2.0)
+    final result = computeSealEntryPreview(
+      entryType: 'PROSTUP',
+      quantityKus: 1,
+      openingLengthMm: 2000,
+      openingWidthMm: 1000,
+      allEntries: entries,
+      entryIndex: 0,
+    );
+    // 2.0 − 0.25 = 1.75
+    expect(result.billableQuantity, closeTo(1.75, 0.001));
   });
 
   test('net area is never negative', () {
@@ -54,6 +76,7 @@ void main() {
       entryIndex: 0,
     );
     expect(result.unit, 'm2');
-    expect(result.billableQuantity, closeTo(0.6075, 0.001));
+    // Task 5: exaktní odečet bez +50 mm → 0,80 − 0,15 = 0,65
+    expect(result.billableQuantity, closeTo(0.65, 0.001));
   });
 }

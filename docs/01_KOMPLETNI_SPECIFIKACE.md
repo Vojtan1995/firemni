@@ -30,7 +30,7 @@ Implementované role v systému (`UserRole`):
 
 Poznámka: v dokumentaci se dříve používal souhrnný termín „Management“ – v kódu je rozdělen na `vedeni` a `ucetni` s odlišnými oprávněními (viz `backend/src/lib/permissions.ts` a `frontend/lib/core/permissions.dart`).
 
-Testovací účty (seed): `worker1`, `worker2`, `vedeni`, `ucetni`, `admin` – PIN `1234`.
+Testovací účty (seed): `worker1`, `worker2`, `vedeni`, `ucetni`, `admin` – PIN `123456` (6 číslic; validace přijímá 6–8 číslic).
 
 ## 4. Workflow workerů
 1. Přihlášení jménem a PINem.

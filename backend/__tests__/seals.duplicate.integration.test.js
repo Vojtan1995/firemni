@@ -9,6 +9,7 @@ function sealPayload(jobId, floorId, userId, sealNumber = TEST_SEAL_NUMBER) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Zkušební',
     construction: 'Stěna',
     location: 'Chodba',

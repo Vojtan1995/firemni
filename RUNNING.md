@@ -128,10 +128,10 @@ Očekávaný výstup: `Seed OK` s testovací stavbou.
 Seed vytvoří:
 | Uživatel | PIN | Role |
 |----------|-----|------|
-| admin | 1234 | admin |
-| vedeni | 1234 | management |
-| worker1 | 1234 | worker |
-| worker2 | 1234 | worker |
+| admin | 123456 | admin |
+| vedeni | 123456 | management |
+| worker1 | 123456 | worker |
+| worker2 | 123456 | worker |
 
 Testovací stavba: **12345678** (2 patra).
 
@@ -157,7 +157,7 @@ Očekáváno: HTTP 200, tělo obsahuje `"status":"ok"`.
 Invoke-WebRequest -UseBasicParsing -Method POST `
   -Uri http://localhost:3000/api/auth/login `
   -ContentType "application/json" `
-  -Body '{"username":"worker1","pin":"1234"}'
+  -Body '{"username":"worker1","pin":"123456"}'
 ```
 
 Očekáváno: HTTP 200, JSON s `token` a `user.role = worker`.  
@@ -234,7 +234,7 @@ cd c:\Users\vojte\Desktop\unifast\frontend\build\windows\x64\runner\Release
 ```
 
 3. Ruční checklist UI:
-   - [ ] Login `worker1` / PIN `1234` → hlavní menu
+   - [ ] Login `worker1` / PIN `123456` → hlavní menu
    - [ ] **Stavba** → číslo `12345678` → patro → seznam ucpávek
    - [ ] (volitelně) Sync obrazovka – pending fronta
 

@@ -3,28 +3,28 @@ class AppPermissions {
   static const _matrix = <String, List<String>>{
     'seal.create': ['worker', 'vedeni', 'admin'],
     'seal.edit': ['worker', 'vedeni', 'admin'],
-    'seal.status': ['vedeni', 'ucetni', 'admin'],
+    'seal.status': ['vedeni', 'admin'],
     'seal.delete': ['vedeni', 'admin'],
     'seal.restore': ['admin'],
-    'seal.history': ['vedeni', 'ucetni', 'admin'],
-    'photo.upload': ['worker', 'vedeni', 'ucetni', 'admin'],
+    'seal.history': ['vedeni', 'admin'],
+    'photo.upload': ['worker', 'vedeni', 'admin'],
     'photo.delete': [],
     'job.manage': ['vedeni', 'admin'],
     'floor.manage': ['vedeni', 'admin'],
-    'floor.drawing.manage': ['vedeni', 'ucetni', 'admin'],
+    'floor.drawing.manage': ['vedeni', 'admin'],
     'user.manage': ['vedeni', 'admin'],
-    'reports.view': ['worker', 'vedeni', 'ucetni', 'admin'],
-    'reports.export': ['worker', 'vedeni', 'ucetni', 'admin'],
-    'priceList.view': ['worker', 'vedeni', 'ucetni', 'admin'],
+    'reports.view': ['worker', 'vedeni', 'admin'],
+    'reports.export': ['worker', 'vedeni', 'admin'],
+    'priceList.view': ['worker', 'vedeni', 'admin'],
     'priceList.manage': ['vedeni', 'admin'],
     'logs.view': ['vedeni', 'admin'],
     'admin.trash': ['admin'],
-    'worksheet.create': ['worker', 'ucetni', 'vedeni', 'admin'],
-    'worksheet.view': ['worker', 'ucetni', 'vedeni', 'admin'],
+    'worksheet.create': ['worker', 'vedeni', 'admin'],
+    'worksheet.view': ['worker', 'vedeni', 'admin'],
     'worksheet.submit': ['worker', 'admin'],
     'worksheet.review': ['vedeni', 'admin'],
-    'worksheet.invoice': ['ucetni', 'vedeni', 'admin'],
-    'stats.view': ['worker', 'ucetni', 'vedeni', 'admin'],
+    'worksheet.invoice': ['vedeni', 'admin'],
+    'stats.view': ['worker', 'vedeni', 'admin'],
   };
 
   static bool has(String? role, String permission) {
@@ -73,8 +73,6 @@ class AppPermissions {
         return 'Pracovník';
       case 'vedeni':
         return 'Vedení';
-      case 'ucetni':
-        return 'Administrativa';
       case 'admin':
         return 'Super Admin';
       default:

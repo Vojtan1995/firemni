@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { SealStatus, UserRole } from '@prisma/client';
+import { SealStatus, UserRole, SealTrade } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { prisma } from '../lib/prisma.js';
@@ -22,8 +22,12 @@ import {
   softDeleteSeal,
   statusAfterWorkerEdit,
 } from '../services/seal.service.js';
-import { entryCreateData, sealBodyBaseSchema, sealBodySchema, sealEntrySchema } from '../lib/seal-schemas.js';
-import { refineSealEntriesDimensions, refineSealOpeningDimensions } from '../lib/zod-helpers.js';
+import {
+  entryCreateData,
+  refineSealPatch,
+  sealBodySchema,
+  sealPatchObjectSchema,
+} from '../lib/seal-schemas.js';
 import {
   assertFloorBelongsToJob,
   assertFloorReadable,
@@ -43,7 +47,7 @@ const router = Router();
 router.use(authMiddleware);
 
 const showWorkerInList = (role: UserRole) =>
-  role === UserRole.ucetni || role === UserRole.vedeni || role === UserRole.admin;
+  role === UserRole.vedeni || role === UserRole.admin;
 
 router.get('/trash', requirePermission('admin.trash'), async (_req, res, next) => {
   try {
@@ -97,17 +101,24 @@ router.get('/floors/:floorId/seals', async (req, res, next) => {
     await assertFloorReadable(floorId, role, userId);
     const showWorker = showWorkerInList(role);
     const filters = parseSealFilters(req.query.filters as string | string[] | undefined);
+    const tradeRaw = req.query.trade as string | undefined;
+    const trade =
+      tradeRaw && (Object.values(SealTrade) as string[]).includes(tradeRaw)
+        ? (tradeRaw as SealTrade)
+        : undefined;
     const seals = await listFloorSealsFiltered({
       floorId,
       role,
       showWorker,
       filters,
+      trade,
     });
 
     res.json(
       seals.map((s) => ({
         id: s.id,
         sealNumber: s.sealNumber,
+        trade: s.trade,
         status: s.status,
         version: s.version,
         updatedAt: s.updatedAt,
@@ -270,6 +281,7 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
             jobId: body.jobId,
             floorId: body.floorId,
             sealNumber: body.sealNumber,
+            trade: body.trade,
             system: body.system,
             construction: body.construction,
             location: body.location,
@@ -310,27 +322,12 @@ router.post('/', requirePermission('seal.create'), async (req, res, next) => {
 
 router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
   try {
-    const body = sealBodyBaseSchema
-      .partial()
+    const body = sealPatchObjectSchema
       .extend({
-        entries: z.array(sealEntrySchema).optional(),
         baseVersion: z.number().int(),
         overrideReason: z.string().max(2000).optional(),
       })
-      .superRefine((data, ctx) => {
-        if (data.openingLengthMm != null || data.openingWidthMm != null) {
-          refineSealOpeningDimensions(
-            {
-              openingLengthMm: data.openingLengthMm,
-              openingWidthMm: data.openingWidthMm,
-            },
-            ctx,
-          );
-        }
-        if (data.entries?.length) {
-          refineSealEntriesDimensions(data.entries, ctx);
-        }
-      })
+      .superRefine(refineSealPatch)
       .parse(req.body);
 
     const existing = await assertSealEditable(
@@ -398,6 +395,7 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
 
     const fields = [
       'sealNumber',
+      'trade',
       'system',
       'construction',
       'location',
@@ -435,6 +433,8 @@ router.patch('/:id', requirePermission('seal.edit'), async (req, res, next) => {
               insulation: e.insulation,
               itemLengthMm: e.itemLengthMm ?? null,
               itemWidthMm: e.itemWidthMm ?? null,
+              steelInsulated: e.steelInsulated ?? null,
+              electroInstallationType: e.electroInstallationType ?? null,
               sortOrder: i,
             },
           });
@@ -530,7 +530,7 @@ router.delete('/:id', requirePermission('seal.delete'), async (req, res, next) =
   try {
     const reason =
       typeof req.body?.reason === 'string' ? req.body.reason.slice(0, 2000) : undefined;
-    const seal = await softDeleteSeal(paramId(req.params.id), req.user!.id, reason);
+    const seal = await softDeleteSeal(paramId(req.params.id), req.user!.id, req.user!.role, reason);
     res.json(seal);
   } catch (e) {
     next(e);
@@ -539,7 +539,7 @@ router.delete('/:id', requirePermission('seal.delete'), async (req, res, next) =
 
 router.patch('/:id/restore', requirePermission('seal.restore'), async (req, res, next) => {
   try {
-    const seal = await restoreSeal(paramId(req.params.id), req.user!.id);
+    const seal = await restoreSeal(paramId(req.params.id), req.user!.id, req.user!.role);
     res.json(seal);
   } catch (e) {
     next(e);

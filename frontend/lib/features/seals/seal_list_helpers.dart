@@ -40,6 +40,7 @@ Map<String, dynamic> mapLocalSealListRow(
   return {
     'id': row.id,
     'sealNumber': row.sealNumber,
+    'trade': row.trade,
     'status': row.status,
     'version': row.version,
     'photoCount': photoCount,

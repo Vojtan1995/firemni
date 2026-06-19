@@ -3,7 +3,7 @@ import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 
-/// Stavově podmíněné akce pro detail ucpávky (vedení / účetní / admin).
+/// Stavově podmíněné akce pro detail ucpávky (vedení / admin).
 class SealStatusActions extends StatelessWidget {
   const SealStatusActions({
     super.key,

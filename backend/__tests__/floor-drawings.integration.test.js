@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { describe, it, expect, beforeAll, afterAll, jest } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
 import { prisma } from '../dist/lib/prisma.js';
@@ -18,6 +18,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Plan',
     construction: 'Stěna',
     location: 'Chodba',
@@ -25,6 +26,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 1,
         insulation: 'žádná',
@@ -38,7 +40,6 @@ describe('Floor drawings and markers (task 5.3)', () => {
   const app = createApp();
   let workerToken;
   let managementToken;
-  let ucetniToken;
   let jobId;
   let floor1Id;
   let floor2Id;
@@ -55,7 +56,6 @@ describe('Floor drawings and markers (task 5.3)', () => {
   beforeAll(async () => {
     workerToken = await login('worker1');
     managementToken = await login('vedeni');
-    ucetniToken = await login('ucetni');
 
     const jobRes = await request(app)
       .get('/api/jobs/by-number/12345678')
@@ -130,20 +130,55 @@ describe('Floor drawings and markers (task 5.3)', () => {
     expect(res.status).toBe(403);
   });
 
-  it('ucetni can upload and delete floor drawing', async () => {
+  it('vedeni can upload and delete floor drawing', async () => {
     const upload = await request(app)
       .post(`/api/jobs/${jobId}/floors/${floor2Id}/drawing`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${managementToken}`)
       .attach('drawing', tinyPng, { filename: 'plan.png', contentType: 'image/png' });
 
     expect(upload.status).toBe(201);
 
     const del = await request(app)
       .delete(`/api/jobs/${jobId}/floors/${floor2Id}/drawing`)
-      .set('Authorization', `Bearer ${ucetniToken}`);
+      .set('Authorization', `Bearer ${managementToken}`);
 
     expect(del.status).toBe(200);
     expect(del.body.ok).toBe(true);
+  });
+
+  it('rolls back new file and keeps previous drawing when DB write fails', async () => {
+    // Nahraj výchozí výkres (JPEG) na floor2.
+    const first = await request(app)
+      .post(`/api/jobs/${jobId}/floors/${floor2Id}/drawing`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .attach('drawing', tinyJpeg, { filename: 'orig.jpg', contentType: 'image/jpeg' });
+    expect(first.status).toBe(201);
+
+    // Vynuť selhání DB zápisu při dalším uploadu.
+    const spy = jest
+      .spyOn(prisma.floorDrawing, 'upsert')
+      .mockRejectedValueOnce(new Error('simulované selhání DB'));
+
+    const failed = await request(app)
+      .post(`/api/jobs/${jobId}/floors/${floor2Id}/drawing`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .attach('drawing', tinyPng, { filename: 'novy.png', contentType: 'image/png' });
+    expect(failed.status).toBeGreaterThanOrEqual(500);
+
+    spy.mockRestore();
+
+    // Předchozí výkres (JPEG) musí být stále dostupný — starý soubor se nesmazal.
+    const file = await request(app)
+      .get(`/api/jobs/${jobId}/floors/${floor2Id}/drawing/file`)
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toMatch(/image\/jpeg/);
+    expect(Buffer.compare(file.body, tinyJpeg)).toBe(0);
+
+    // Úklid.
+    await request(app)
+      .delete(`/api/jobs/${jobId}/floors/${floor2Id}/drawing`)
+      .set('Authorization', `Bearer ${managementToken}`);
   });
 
   it('floors list includes hasDrawing flag', async () => {

@@ -14,6 +14,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Test',
     construction: 'Stěna',
     location: 'Chodba',
@@ -21,6 +22,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 1,
         insulation: 'žádná',

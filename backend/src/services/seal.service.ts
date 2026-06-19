@@ -17,6 +17,7 @@ import { csvWithBom } from '../lib/csv-export.js';
 import { createNotification } from './notification.service.js';
 import { anonymizeUserForViewer } from '../lib/user-privacy.js';
 import { isSealLockedByWorksheet, STATUS_LABELS as WORKSHEET_STATUS_LABELS } from './worksheet.service.js';
+import { sealTradeLabel } from '../lib/seal-trade.js';
 
 export type BulkItemError = { id: string; message: string };
 
@@ -150,6 +151,7 @@ export async function changeSealStatus(
 
   const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
   if (!seal) throw notFound('Ucpávka nenalezena');
+  await assertJobWritable(seal.jobId, userRole, userId);
 
   const allowed: Record<SealStatus, SealStatus[]> = {
     [SealStatus.draft]: [SealStatus.checked],
@@ -159,15 +161,6 @@ export async function changeSealStatus(
 
   if (!allowed[seal.status].includes(newStatus)) {
     throw badRequest(`Přechod ${seal.status} -> ${newStatus} není povolen`);
-  }
-
-  if (userRole === UserRole.ucetni) {
-    if (newStatus === SealStatus.draft) {
-      throw forbidden('Administrativa nemůže vracet ucpávku na rozpracováno');
-    }
-    if (seal.status === SealStatus.draft && newStatus === SealStatus.checked) {
-      throw forbidden('Administrativa nemůže kontrolovat ucpávky');
-    }
   }
 
   if (newStatus === SealStatus.draft && seal.status === SealStatus.checked && !comment?.trim()) {
@@ -288,7 +281,7 @@ export async function buildBulkSealsCsv(
 ) {
   const rows: string[] = [];
   const header =
-    'Stavba;Název stavby;Patro;Číslo ucpávky;Stav;Systém;Pracovník;Poznámka';
+    'Stavba;Název stavby;Patro;Číslo ucpávky;Řemeslo;Stav;Systém;Pracovník;Poznámka';
 
   for (const sealId of sealIds) {
     try {
@@ -315,6 +308,7 @@ export async function buildBulkSealsCsv(
         full.job.name,
         full.floor.name,
         full.sealNumber,
+        sealTradeLabel(full.trade),
         full.status,
         full.system,
         worker,
@@ -329,9 +323,15 @@ export async function buildBulkSealsCsv(
   return csvWithBom([header, ...rows].join('\n'));
 }
 
-export async function softDeleteSeal(sealId: string, userId: string, reason?: string) {
+export async function softDeleteSeal(
+  sealId: string,
+  userId: string,
+  userRole: UserRole,
+  reason?: string,
+) {
   const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
   if (!seal) throw notFound('Ucpávka nenalezena');
+  await assertJobWritable(seal.jobId, userRole, userId);
   if (isSealLocked(seal.status)) throw forbidden('Fakturovanou ucpávku nelze smazat');
 
   const updated = await prisma.seal.update({
@@ -348,9 +348,10 @@ export async function softDeleteSeal(sealId: string, userId: string, reason?: st
   return updated;
 }
 
-export async function restoreSeal(sealId: string, userId: string) {
+export async function restoreSeal(sealId: string, userId: string, userRole: UserRole) {
   const seal = await prisma.seal.findUnique({ where: { id: sealId } });
   if (!seal || !seal.deletedAt) throw notFound('Smazaná ucpávka nenalezena');
+  await assertJobWritable(seal.jobId, userRole, userId);
 
   await checkDuplicateSealNumber(seal.jobId, seal.floorId, seal.sealNumber);
 
@@ -385,6 +386,7 @@ export async function reviewSeal(
 
   const seal = await prisma.seal.findFirst({ where: { id: sealId, deletedAt: null } });
   if (!seal) throw notFound('Ucpávka nenalezena');
+  await assertJobWritable(seal.jobId, userRole, userId);
 
   const reviewStatus = action === 'approved' ? 'approved' : 'returned';
   const data: Record<string, unknown> = {

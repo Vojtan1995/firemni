@@ -6,7 +6,7 @@ import '../../core/design_tokens.dart';
 String worksheetStatusLabel(String? status) => switch (status) {
       'draft' => 'Rozpracovaný',
       'submitted' => 'Odevzdaný',
-      'reviewed' => 'Zkontrolovaný',
+      'reviewed' => 'Schválený',
       'ready_for_invoice' => 'Připravený k fakturaci',
       'invoiced' => 'Vyfakturovaný',
       _ => status ?? '',

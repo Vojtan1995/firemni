@@ -13,7 +13,7 @@ function resolveSeedPin(): string {
   return '123456';
 }
 
-const DEMO_USERNAMES = ['admin', 'vedeni', 'ucetni', 'worker1', 'worker2'];
+const DEMO_USERNAMES = ['admin', 'vedeni', 'worker1', 'worker2'];
 
 async function main() {
   const pinHash = await bcrypt.hash(resolveSeedPin(), 10);
@@ -43,18 +43,6 @@ async function main() {
       displayName: 'Vedení',
       pinHash,
       role: UserRole.vedeni,
-      mustChangePin: true,
-    },
-  });
-
-  await prisma.user.upsert({
-    where: { username: 'ucetni' },
-    update: { role: UserRole.ucetni, displayName: 'Administrativa', pinHash, mustChangePin: true },
-    create: {
-      username: 'ucetni',
-      displayName: 'Administrativa',
-      pinHash,
-      role: UserRole.ucetni,
       mustChangePin: true,
     },
   });

@@ -11,6 +11,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'WS',
     construction: 'Stěna',
     location: 'Test',
@@ -18,6 +19,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: '50',
         quantity: 1,
         insulation: 'žádná',
@@ -31,7 +33,6 @@ describe('Worksheets module integration', () => {
   const app = createApp();
   let workerToken;
   let worker2Token;
-  let ucetniToken;
   let vedeniToken;
   let adminToken;
   let jobId;
@@ -47,7 +48,6 @@ describe('Worksheets module integration', () => {
   beforeAll(async () => {
     workerToken = await login('worker1');
     worker2Token = await login('worker2');
-    ucetniToken = await login('ucetni');
     vedeniToken = await login('vedeni');
     adminToken = await login('admin');
 
@@ -133,10 +133,10 @@ describe('Worksheets module integration', () => {
     expect(csv.status).toBe(200);
   });
 
-  it('ucetni downloads allowed worksheet', async () => {
+  it('vedeni downloads allowed worksheet', async () => {
     const res = await request(app)
       .get(`/api/worksheets/${workerWorksheetId}/export/csv`)
-      .set('Authorization', `Bearer ${ucetniToken}`);
+      .set('Authorization', `Bearer ${vedeniToken}`);
     expect(res.status).toBe(200);
   });
 
@@ -163,13 +163,13 @@ describe('Worksheets module integration', () => {
 
     const ready = await request(app)
       .patch(`/api/worksheets/${workerWorksheetId}/status`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${vedeniToken}`)
       .send({ status: 'ready_for_invoice' });
     expect(ready.status).toBe(200);
 
     const invoiced = await request(app)
       .patch(`/api/worksheets/${workerWorksheetId}/status`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${vedeniToken}`)
       .send({ status: 'invoiced' });
     expect(invoiced.status).toBe(200);
 
@@ -222,7 +222,7 @@ describe('Worksheets module integration', () => {
     expect(resubmit.status).toBe(200);
   });
 
-  it('ucetni cannot change non-invoice statuses (403)', async () => {
+  it('worker cannot change worksheet status once it left draft (403)', async () => {
     const review = await request(app)
       .patch(`/api/worksheets/${workerWorksheetId}/status`)
       .set('Authorization', `Bearer ${vedeniToken}`)
@@ -231,7 +231,7 @@ describe('Worksheets module integration', () => {
 
     const denied = await request(app)
       .patch(`/api/worksheets/${workerWorksheetId}/status`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${workerToken}`)
       .send({ status: 'submitted' });
     expect(denied.status).toBe(403);
   });

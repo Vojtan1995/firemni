@@ -79,25 +79,6 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
       ].where((i) => i.count > 0).toList();
     }
 
-    if (role == 'ucetni') {
-      return [
-        _ActionItem(
-          label: 'Připraveno k fakturaci',
-          count: _n('readyForInvoice'),
-          icon: Icons.request_quote_outlined,
-          color: AppColors.accent,
-          onTap: () => goToSoupisy(context, status: 'ready_for_invoice'),
-        ),
-        _ActionItem(
-          label: 'Čeká na fakturaci',
-          count: _n('pendingInvoice'),
-          icon: Icons.hourglass_bottom,
-          color: AppColors.info,
-          onTap: () => goToSoupisy(context, status: 'reviewed'),
-        ),
-      ].where((i) => i.count > 0).toList();
-    }
-
     // vedeni / admin
     final jobsWithoutActivity = s['jobsWithoutActivity'];
     final jobsWithoutActivityCount =

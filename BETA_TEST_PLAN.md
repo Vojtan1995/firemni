@@ -36,7 +36,7 @@ Ověření: `Invoke-WebRequest http://localhost:3000/health` → 200.
 **Poznámka:** Pro Android telefon na stejné Wi‑Fi zjistěte IP PC (`ipconfig`) a při buildu APK použijte  
 `--dart-define=API_BASE_URL=http://192.168.x.x:3000`, nebo na emulátoru `adb reverse tcp:3000 tcp:3000`.
 
-### Seed účty (PIN všude `1234`)
+### Seed účty (PIN všude `123456`, 6 číslic)
 
 | Uživatel | Role | Použití v betě |
 |----------|------|----------------|
@@ -74,8 +74,8 @@ Označte: ✅ prošlo · ❌ selhalo · ⏭ přeskočeno · poznámka
 
 | ID | Kroky | Očekávání |
 |----|--------|-----------|
-| T1 | Spustit app, přihlásit `worker1` / `1234` | Hlavní menu, položka **Stavba** |
-| T2 | Odhlásit, přihlásit `vedeni` / `1234` | Menu management (soupis, stavby…) |
+| T1 | Spustit app, přihlásit `worker1` / `123456` | Hlavní menu, položka **Stavba** |
+| T2 | Odhlásit, přihlásit `vedeni` / `123456` | Menu management (soupis, stavby…) |
 | T3 | Špatný PIN | Chybová hláška, žádný token |
 
 ### 4.2 Worker – základní flow (`worker1`)

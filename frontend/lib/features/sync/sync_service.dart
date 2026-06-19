@@ -255,8 +255,12 @@ class SyncService {
       });
       final data = res.data as Map<String, dynamic>;
       hasMore = data['hasMore'] as bool? ?? false;
-      final serverTime =
-          DateTime.tryParse(data['serverTime'] as String? ?? '') ?? DateTime.now();
+      // Kurzor posouváme na nextSince = nejvyšší updatedAt ve stažené dávce,
+      // ne na serverTime (čas requestu). Jinak by se přeskočily změny s
+      // updatedAt mezi dávkami. Fallback na serverTime kvůli starším serverům.
+      final nextSince = DateTime.tryParse(data['nextSince'] as String? ?? '') ??
+          DateTime.tryParse(data['serverTime'] as String? ?? '') ??
+          since;
 
       for (final j in (data['jobs'] as List? ?? [])) {
         final m = j as Map<String, dynamic>;
@@ -313,6 +317,7 @@ class SyncService {
               jobId: m['jobId'] as String,
               floorId: m['floorId'] as String,
               sealNumber: m['sealNumber'] as String,
+              trade: Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
               system: m['system'] as String,
               construction: m['construction'] as String,
               location: m['location'] as String,
@@ -453,7 +458,7 @@ class SyncService {
       }
 
       await _db.into(_db.syncCursor).insertOnConflictUpdate(
-            SyncCursorCompanion.insert(key: cursorKey, lastPull: serverTime),
+            SyncCursorCompanion.insert(key: cursorKey, lastPull: nextSince),
           );
     }
   }

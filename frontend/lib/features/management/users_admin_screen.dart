@@ -12,8 +12,6 @@ String roleLabel(String role) {
       return 'Pracovník';
     case 'vedeni':
       return 'Vedení';
-    case 'ucetni':
-      return 'Administrativa';
     case 'admin':
       return 'Super Admin';
     default:
@@ -42,8 +40,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
   String? get _currentUserId => ref.read(authUserProvider)?['id'] as String?;
 
   List<String> get _assignableRoles => _isAdmin
-      ? ['worker', 'vedeni', 'ucetni', 'admin']
-      : ['worker', 'vedeni', 'ucetni'];
+      ? ['worker', 'vedeni', 'admin']
+      : ['worker', 'vedeni'];
 
   void _showError(Object e) {
     String msg = e.toString();

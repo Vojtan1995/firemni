@@ -9,6 +9,11 @@ const ENV_KEYS = [
   'APP_RELEASE_MIN_BUILD',
   'APP_RELEASE_APK_URL',
   'APP_RELEASE_NOTES',
+  'APP_RELEASE_WIN_VERSION_NAME',
+  'APP_RELEASE_WIN_BUILD',
+  'APP_RELEASE_WIN_MIN_BUILD',
+  'APP_RELEASE_WIN_URL',
+  'APP_RELEASE_WIN_NOTES',
 ];
 
 function saveEnv() {
@@ -98,8 +103,52 @@ describe('GET /api/app/release', () => {
     expect(res.body.minBuild).toBe(4);
   });
 
-  it('rejects unsupported platform', async () => {
+  it('returns updateAvailable false for windows when win release env is not configured', async () => {
+    for (const k of ENV_KEYS) delete process.env[k];
+
     const res = await request(app).get('/api/app/release').query({ platform: 'windows' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      platform: 'windows',
+      updateAvailable: false,
+    });
+  });
+
+  it('returns full windows release info from APP_RELEASE_WIN_* env', async () => {
+    process.env.APP_RELEASE_WIN_VERSION_NAME = '1.1.0';
+    process.env.APP_RELEASE_WIN_BUILD = '4';
+    process.env.APP_RELEASE_WIN_MIN_BUILD = '2';
+    process.env.APP_RELEASE_WIN_URL = 'https://releases.example.com/ucpavky-setup-1.1.0.exe';
+    process.env.APP_RELEASE_WIN_NOTES = 'Windows release notes';
+
+    const res = await request(app).get('/api/app/release').query({ platform: 'windows' });
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      platform: 'windows',
+      updateAvailable: true,
+      versionName: '1.1.0',
+      latestBuild: 4,
+      minBuild: 2,
+      apkUrl: 'https://releases.example.com/ucpavky-setup-1.1.0.exe',
+      releaseNotes: 'Windows release notes',
+    });
+  });
+
+  it('android and windows release env are independent', async () => {
+    for (const k of ENV_KEYS) delete process.env[k];
+    process.env.APP_RELEASE_BUILD = '3';
+    process.env.APP_RELEASE_APK_URL = 'https://releases.example.com/app.apk';
+
+    const android = await request(app).get('/api/app/release').query({ platform: 'android' });
+    expect(android.body.updateAvailable).toBe(true);
+
+    // Windows nemá vlastní env → žádná aktualizace, nepřebírá android hodnoty.
+    const windows = await request(app).get('/api/app/release').query({ platform: 'windows' });
+    expect(windows.body).toEqual({ platform: 'windows', updateAvailable: false });
+  });
+
+  it('rejects unsupported platform', async () => {
+    const res = await request(app).get('/api/app/release').query({ platform: 'ios' });
     expect(res.status).toBe(400);
   });
 

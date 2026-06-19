@@ -148,6 +148,7 @@ describe('Jobs and floors admin (management)', () => {
         jobId,
         floorId: floor.body.id,
         sealNumber: '999',
+        trade: 'elektrikari',
         system: 'Hilti',
         construction: 'Beton/Cihla',
         location: 'Stěna',
@@ -155,6 +156,7 @@ describe('Jobs and floors admin (management)', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: 'Ø50',
             quantity: 1,
             insulation: 'žádná',

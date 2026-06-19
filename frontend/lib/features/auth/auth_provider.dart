@@ -139,7 +139,6 @@ class AuthService {
   String? get role => _ref.read(authUserProvider)?['role'] as String?;
   bool get isWorker => role == 'worker';
   bool get isVedeni => role == 'vedeni';
-  bool get isUcetni => role == 'ucetni';
   bool get isAdmin => role == 'admin';
   bool get isSuperAdmin => isAdmin;
   bool get isManagement => isVedeni || isAdmin;

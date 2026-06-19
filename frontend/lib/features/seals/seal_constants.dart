@@ -1,5 +1,29 @@
 const sealSystems = ['Intuseal', 'Dunamenti', 'Fischer', 'Hilti', 'Protecta'];
 
+/// Řemeslo – interní hodnoty (musí odpovídat backend enumu SealTrade).
+const sealTrades = [
+  'elektrikari',
+  'vzduchari',
+  'vodari',
+  'topenari',
+  'plynari',
+  'ostatni',
+  'neurceno',
+];
+
+const sealTradeLabels = <String, String>{
+  'elektrikari': 'Elektrikáři',
+  'vzduchari': 'Vzduchaři',
+  'vodari': 'Vodaři',
+  'topenari': 'Topenáři',
+  'plynari': 'Plynaři',
+  'ostatni': 'Ostatní',
+  'neurceno': 'Neurčeno',
+};
+
+String sealTradeLabel(String? trade) =>
+    sealTradeLabels[trade] ?? sealTradeLabels['neurceno']!;
+
 const systemMaterials = <String, List<String>>{
   'Intuseal': [
     'INTU FR',
@@ -61,8 +85,11 @@ const systemMaterials = <String, List<String>>{
 const constructions = ['Beton/Cihla', 'SDK/PUR'];
 const locations = ['Stěna', 'Strop', 'Podlaha', 'Šachta'];
 const fireRatings = ['60 min', '90 min', '120 min'];
-const entryTypes = ['EL.V.', 'PVC', 'VZT', 'PROSTUP', 'OCEL'];
+const entryTypes = ['EL.V.', 'PVC', 'VZT', 'PROSTUP', 'OCEL', 'Měď'];
 const insulations = ['žádná', 'hořlavá', 'nehořlavá'];
+
+/// Podtyp elektro instalace – pouze pro typ EL.V. (Elektro).
+const electroInstallationTypes = ['Svazek', 'Husí krk', 'Žlab'];
 
 const dimensionPresetsElV = [
   'Ø20',
@@ -105,6 +132,18 @@ const dimensionPresetsOcNonFlammable = [
   'Ø210-250',
 ];
 
+/// Měď – běžné průměry měděného potrubí.
+const dimensionPresetsCopper = [
+  'Ø12',
+  'Ø15',
+  'Ø18',
+  'Ø22',
+  'Ø28',
+  'Ø35',
+  'Ø42',
+  'Ø54',
+];
+
 /// OC, hořlavá izolace (PROSTUP + hořlavá).
 const dimensionPresetsOcFlammable = [
   'Ø40',
@@ -125,6 +164,8 @@ List<String> dimensionPresetsForEntry(String entryType, String insulation) {
       return dimensionPresetsPvc;
     case 'VZT':
       return dimensionPresetsVzt;
+    case 'Měď':
+      return dimensionPresetsCopper;
     case 'PROSTUP':
       if (insulation == 'hořlavá') return dimensionPresetsOcFlammable;
       if (insulation == 'nehořlavá') return dimensionPresetsOcNonFlammable;

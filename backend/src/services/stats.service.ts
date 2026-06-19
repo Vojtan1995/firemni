@@ -338,66 +338,6 @@ export async function getStatsOverview(
     };
   }
 
-  if (role === UserRole.ucetni) {
-    const worksheetWhere = parsedFilters?.jobId ? { jobId: parsedFilters.jobId } : {};
-    const [total, ready, invoiced, pending, byJob, byWorker] = await Promise.all([
-      prisma.workSheet.count({ where: worksheetWhere }),
-      prisma.workSheet.count({
-        where: { ...worksheetWhere, status: WorkSheetStatus.ready_for_invoice },
-      }),
-      prisma.workSheet.count({ where: { ...worksheetWhere, status: WorkSheetStatus.invoiced } }),
-      prisma.workSheet.count({
-        where: {
-          ...worksheetWhere,
-          status: { in: [WorkSheetStatus.reviewed, WorkSheetStatus.submitted] },
-        },
-      }),
-      prisma.workSheet.groupBy({
-        by: ['jobId'],
-        where: worksheetWhere,
-        _count: { id: true },
-      }).then(async (groups) => {
-        const jobs = await prisma.job.findMany({
-          where: { id: { in: groups.map((g) => g.jobId) } },
-          select: { id: true, projectNumber: true, name: true },
-        });
-        const jobMap = new Map(jobs.map((j) => [j.id, j]));
-        return groups.map((g) => ({
-          jobId: g.jobId,
-          projectNumber: jobMap.get(g.jobId)?.projectNumber ?? '',
-          name: jobMap.get(g.jobId)?.name ?? '',
-          count: g._count.id,
-        }));
-      }),
-      prisma.workSheetWorker.groupBy({
-        by: ['userId'],
-        _count: { id: true },
-      }).then(async (groups) => {
-        const users = await prisma.user.findMany({
-          where: { id: { in: groups.map((g) => g.userId) } },
-          select: { displayName: true, id: true },
-        });
-        const userMap = new Map(users.map((u) => [u.id, u]));
-        return groups.map((g) => ({
-          userId: g.userId,
-          displayName: userMap.get(g.userId)?.displayName ?? '',
-          count: g._count.id,
-        }));
-      }),
-    ]);
-
-    return {
-      role: 'ucetni',
-      filters: parsedFilters ?? null,
-      worksheetCount: total,
-      readyForInvoice: ready,
-      invoiced,
-      pendingInvoice: pending,
-      byJob,
-      byWorker,
-    };
-  }
-
   const inactiveJobsWhere = parsedFilters?.jobId
     ? { id: parsedFilters.jobId, deletedAt: null, status: JobStatus.active }
     : { deletedAt: null, status: JobStatus.active, seals: { none: { deletedAt: null } } };

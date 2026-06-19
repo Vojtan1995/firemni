@@ -7,6 +7,7 @@ import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { hasPermission } from '../lib/permissions.js';
 import {
   assertFloorReadable,
+  assertJobWritable,
   assertSealReadable,
 } from './authorization.service.js';
 import { assertSealEditable } from './seal.service.js';
@@ -14,6 +15,20 @@ import { getObjectStorage, sanitizeObjectKey } from './storage.service.js';
 import { logActivity } from './audit.service.js';
 
 const maxDrawingBytes = 25 * 1024 * 1024;
+
+/** Max. doba na render/parsování PDF stránky — chrání před zaseknutím requestu
+ *  (a vyčerpáním connection poolu) na poškozeném/obřím PDF. */
+const pdfParseTimeoutMs = 20_000;
+
+/** Obalí promise timeoutem; po vypršení rejectuje `badRequest(message)`.
+ *  Timer se vždy uklidí, aby nedržel event loop. */
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(badRequest(message)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
 
 function clamp01(value: number) {
   if (!Number.isFinite(value)) throw badRequest('Souřadnice musí být číslo');
@@ -48,9 +63,17 @@ function resolveDrawingMimeAndExt(
 }
 
 async function getPdfPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
-  const doc = await pdfToImg(buffer, { scale: 1 });
+  const doc = await withTimeout(
+    pdfToImg(buffer, { scale: 1 }),
+    pdfParseTimeoutMs,
+    'Zpracování PDF výkresu trvalo příliš dlouho',
+  );
   try {
-    const pageBuffer = await doc.getPage(1);
+    const pageBuffer = await withTimeout(
+      doc.getPage(1),
+      pdfParseTimeoutMs,
+      'Zpracování PDF výkresu trvalo příliš dlouho',
+    );
     const meta = await sharp(pageBuffer).metadata();
     if (!meta.width || !meta.height) {
       throw badRequest('Nelze určit rozměry PDF výkresu');
@@ -162,9 +185,10 @@ export async function uploadFloorDrawing(
     !hasPermission(role, 'floor.manage') &&
     !hasPermission(role, 'job.manage')
   ) {
-    throw forbidden('Nahrát výkres může pouze vedení, administrativa nebo admin');
+    throw forbidden('Nahrát výkres může pouze vedení nebo admin');
   }
-  await assertFloorReadable(floorId, role, userId);
+  const floor = await assertFloorReadable(floorId, role, userId);
+  await assertJobWritable(floor.jobId, role, userId);
   if (file.size > maxDrawingBytes) {
     throw badRequest(`Výkres nesmí být větší než ${maxDrawingBytes} B`);
   }
@@ -183,36 +207,50 @@ export async function uploadFloorDrawing(
   );
 
   const existing = await prisma.floorDrawing.findUnique({ where: { floorId } });
-  if (existing) {
+
+  // Nahraj nový soubor PŘED zápisem do DB. Starý soubor smažeme až po úspěšném
+  // upsertu — kdyby DB selhala, zůstane funkční předchozí výkres a nezůstane
+  // osiřelý nový soubor (rollback). Vzor dle photos.routes.ts.
+  await storage.put(filePath, output, mimeType);
+
+  let drawing;
+  try {
+    drawing = await prisma.floorDrawing.upsert({
+      where: { floorId },
+      create: {
+        floorId,
+        filePath,
+        mimeType,
+        width: dimensions.width,
+        height: dimensions.height,
+        fileSize: output.length,
+        uploadedById: userId,
+      },
+      update: {
+        filePath,
+        mimeType,
+        width: dimensions.width,
+        height: dimensions.height,
+        fileSize: output.length,
+        uploadedById: userId,
+      },
+    });
+  } catch (e) {
+    try {
+      await storage.delete(filePath);
+    } catch {
+      // best-effort rollback nově nahraného souboru
+    }
+    throw e;
+  }
+
+  if (existing && existing.filePath !== filePath) {
     try {
       await storage.delete(existing.filePath);
     } catch {
-      // best effort
+      // best effort — starý soubor už není referencovaný
     }
   }
-
-  await storage.put(filePath, output, mimeType);
-
-  const drawing = await prisma.floorDrawing.upsert({
-    where: { floorId },
-    create: {
-      floorId,
-      filePath,
-      mimeType,
-      width: dimensions.width,
-      height: dimensions.height,
-      fileSize: output.length,
-      uploadedById: userId,
-    },
-    update: {
-      filePath,
-      mimeType,
-      width: dimensions.width,
-      height: dimensions.height,
-      fileSize: output.length,
-      uploadedById: userId,
-    },
-  });
 
   await logActivity(userId, 'floor_drawing_upload', 'job_floor', floorId, {
     drawingId: drawing.id,
@@ -304,9 +342,10 @@ export async function deleteFloorDrawing(
     !hasPermission(role, 'floor.manage') &&
     !hasPermission(role, 'job.manage')
   ) {
-    throw forbidden('Smazat výkres může pouze vedení, administrativa nebo admin');
+    throw forbidden('Smazat výkres může pouze vedení nebo admin');
   }
-  await assertFloorReadable(floorId, role, userId);
+  const floor = await assertFloorReadable(floorId, role, userId);
+  await assertJobWritable(floor.jobId, role, userId);
 
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
   if (!drawing) throw notFound('Výkres patra nenalezen');

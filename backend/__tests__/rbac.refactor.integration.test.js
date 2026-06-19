@@ -7,7 +7,6 @@ describe('RBAC refactor integration', () => {
   const app = createApp();
   let workerToken;
   let worker2Token;
-  let ucetniToken;
   let vedeniToken;
   let adminToken;
   let jobId;
@@ -26,7 +25,6 @@ describe('RBAC refactor integration', () => {
   beforeAll(async () => {
     workerToken = await login('worker1');
     worker2Token = await login('worker2');
-    ucetniToken = await login('ucetni');
     vedeniToken = await login('vedeni');
     adminToken = await login('admin');
 
@@ -37,10 +35,10 @@ describe('RBAC refactor integration', () => {
     floorId = jobRes.body.floors[0].id;
   });
 
-  it('ucetni cannot create users (403)', async () => {
+  it('worker cannot create users (403)', async () => {
     const res = await request(app)
       .post('/api/users')
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${workerToken}`)
       .send({
         username: 'blocked_user',
         displayName: 'Blocked',
@@ -93,6 +91,7 @@ describe('RBAC refactor integration', () => {
         jobId,
         floorId,
         sealNumber: uniqueSeal,
+        trade: 'elektrikari',
         system: 'RBAC',
         construction: 'Stena',
         location: 'Test',
@@ -100,6 +99,7 @@ describe('RBAC refactor integration', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'zadna',
@@ -180,6 +180,7 @@ describe('RBAC refactor integration', () => {
         jobId: otherJob.body.id,
         floorId: otherFloor.body.id,
         sealNumber: `${uniqueSeal}2`,
+        trade: 'elektrikari',
         system: 'X',
         construction: 'Stena',
         location: 'X',
@@ -187,6 +188,7 @@ describe('RBAC refactor integration', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'zadna',
@@ -225,18 +227,18 @@ describe('RBAC refactor integration', () => {
 
     const ready = await request(app)
       .patch(`/api/worksheets/${worksheetId}/status`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${vedeniToken}`)
       .send({ status: 'ready_for_invoice' });
     expect(ready.status).toBe(200);
 
     const invoiced = await request(app)
       .patch(`/api/worksheets/${worksheetId}/status`)
-      .set('Authorization', `Bearer ${ucetniToken}`)
+      .set('Authorization', `Bearer ${vedeniToken}`)
       .send({ status: 'invoiced' });
     expect(invoiced.status).toBe(200);
   });
 
-  it('seal history endpoint is denied to worker and available to vedeni and ucetni', async () => {
+  it('seal history endpoint is denied to worker and available to vedeni', async () => {
     const workerHistory = await request(app)
       .get(`/api/seals/${sealId}/history`)
       .set('Authorization', `Bearer ${workerToken}`);
@@ -247,11 +249,5 @@ describe('RBAC refactor integration', () => {
       .set('Authorization', `Bearer ${vedeniToken}`);
     expect(vedeniHistory.status).toBe(200);
     expect(Array.isArray(vedeniHistory.body)).toBe(true);
-
-    const ucetniHistory = await request(app)
-      .get(`/api/seals/${sealId}/history`)
-      .set('Authorization', `Bearer ${ucetniToken}`);
-    expect(ucetniHistory.status).toBe(200);
-    expect(Array.isArray(ucetniHistory.body)).toBe(true);
   });
 });

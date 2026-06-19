@@ -1137,6 +1137,13 @@ class $LocalSealsTable extends LocalSeals
   late final GeneratedColumn<String> sealNumber = GeneratedColumn<String>(
       'seal_number', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _tradeMeta = const VerificationMeta('trade');
+  @override
+  late final GeneratedColumn<String> trade = GeneratedColumn<String>(
+      'trade', aliasedName, false,
+      type: DriftSqlType.string,
+      requiredDuringInsert: false,
+      defaultValue: const Constant('neurceno'));
   static const VerificationMeta _systemMeta = const VerificationMeta('system');
   @override
   late final GeneratedColumn<String> system = GeneratedColumn<String>(
@@ -1240,6 +1247,7 @@ class $LocalSealsTable extends LocalSeals
         jobId,
         floorId,
         sealNumber,
+        trade,
         system,
         construction,
         location,
@@ -1289,6 +1297,10 @@ class $LocalSealsTable extends LocalSeals
               data['seal_number']!, _sealNumberMeta));
     } else if (isInserting) {
       context.missing(_sealNumberMeta);
+    }
+    if (data.containsKey('trade')) {
+      context.handle(
+          _tradeMeta, trade.isAcceptableOrUnknown(data['trade']!, _tradeMeta));
     }
     if (data.containsKey('system')) {
       context.handle(_systemMeta,
@@ -1385,6 +1397,8 @@ class $LocalSealsTable extends LocalSeals
           .read(DriftSqlType.string, data['${effectivePrefix}floor_id'])!,
       sealNumber: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}seal_number'])!,
+      trade: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}trade'])!,
       system: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}system'])!,
       construction: attachedDatabase.typeMapping
@@ -1428,6 +1442,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
   final String jobId;
   final String floorId;
   final String sealNumber;
+  final String trade;
   final String system;
   final String construction;
   final String location;
@@ -1447,6 +1462,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       required this.jobId,
       required this.floorId,
       required this.sealNumber,
+      required this.trade,
       required this.system,
       required this.construction,
       required this.location,
@@ -1468,6 +1484,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
     map['job_id'] = Variable<String>(jobId);
     map['floor_id'] = Variable<String>(floorId);
     map['seal_number'] = Variable<String>(sealNumber);
+    map['trade'] = Variable<String>(trade);
     map['system'] = Variable<String>(system);
     map['construction'] = Variable<String>(construction);
     map['location'] = Variable<String>(location);
@@ -1499,6 +1516,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       jobId: Value(jobId),
       floorId: Value(floorId),
       sealNumber: Value(sealNumber),
+      trade: Value(trade),
       system: Value(system),
       construction: Value(construction),
       location: Value(location),
@@ -1530,6 +1548,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       jobId: serializer.fromJson<String>(json['jobId']),
       floorId: serializer.fromJson<String>(json['floorId']),
       sealNumber: serializer.fromJson<String>(json['sealNumber']),
+      trade: serializer.fromJson<String>(json['trade']),
       system: serializer.fromJson<String>(json['system']),
       construction: serializer.fromJson<String>(json['construction']),
       location: serializer.fromJson<String>(json['location']),
@@ -1555,6 +1574,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       'jobId': serializer.toJson<String>(jobId),
       'floorId': serializer.toJson<String>(floorId),
       'sealNumber': serializer.toJson<String>(sealNumber),
+      'trade': serializer.toJson<String>(trade),
       'system': serializer.toJson<String>(system),
       'construction': serializer.toJson<String>(construction),
       'location': serializer.toJson<String>(location),
@@ -1577,6 +1597,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           String? jobId,
           String? floorId,
           String? sealNumber,
+          String? trade,
           String? system,
           String? construction,
           String? location,
@@ -1596,6 +1617,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
         jobId: jobId ?? this.jobId,
         floorId: floorId ?? this.floorId,
         sealNumber: sealNumber ?? this.sealNumber,
+        trade: trade ?? this.trade,
         system: system ?? this.system,
         construction: construction ?? this.construction,
         location: location ?? this.location,
@@ -1620,6 +1642,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       floorId: data.floorId.present ? data.floorId.value : this.floorId,
       sealNumber:
           data.sealNumber.present ? data.sealNumber.value : this.sealNumber,
+      trade: data.trade.present ? data.trade.value : this.trade,
       system: data.system.present ? data.system.value : this.system,
       construction: data.construction.present
           ? data.construction.value
@@ -1654,6 +1677,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           ..write('jobId: $jobId, ')
           ..write('floorId: $floorId, ')
           ..write('sealNumber: $sealNumber, ')
+          ..write('trade: $trade, ')
           ..write('system: $system, ')
           ..write('construction: $construction, ')
           ..write('location: $location, ')
@@ -1678,6 +1702,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
       jobId,
       floorId,
       sealNumber,
+      trade,
       system,
       construction,
       location,
@@ -1700,6 +1725,7 @@ class LocalSeal extends DataClass implements Insertable<LocalSeal> {
           other.jobId == this.jobId &&
           other.floorId == this.floorId &&
           other.sealNumber == this.sealNumber &&
+          other.trade == this.trade &&
           other.system == this.system &&
           other.construction == this.construction &&
           other.location == this.location &&
@@ -1721,6 +1747,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
   final Value<String> jobId;
   final Value<String> floorId;
   final Value<String> sealNumber;
+  final Value<String> trade;
   final Value<String> system;
   final Value<String> construction;
   final Value<String> location;
@@ -1741,6 +1768,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     this.jobId = const Value.absent(),
     this.floorId = const Value.absent(),
     this.sealNumber = const Value.absent(),
+    this.trade = const Value.absent(),
     this.system = const Value.absent(),
     this.construction = const Value.absent(),
     this.location = const Value.absent(),
@@ -1762,6 +1790,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     required String jobId,
     required String floorId,
     required String sealNumber,
+    this.trade = const Value.absent(),
     required String system,
     required String construction,
     required String location,
@@ -1791,6 +1820,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     Expression<String>? jobId,
     Expression<String>? floorId,
     Expression<String>? sealNumber,
+    Expression<String>? trade,
     Expression<String>? system,
     Expression<String>? construction,
     Expression<String>? location,
@@ -1812,6 +1842,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       if (jobId != null) 'job_id': jobId,
       if (floorId != null) 'floor_id': floorId,
       if (sealNumber != null) 'seal_number': sealNumber,
+      if (trade != null) 'trade': trade,
       if (system != null) 'system': system,
       if (construction != null) 'construction': construction,
       if (location != null) 'location': location,
@@ -1836,6 +1867,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       Value<String>? jobId,
       Value<String>? floorId,
       Value<String>? sealNumber,
+      Value<String>? trade,
       Value<String>? system,
       Value<String>? construction,
       Value<String>? location,
@@ -1856,6 +1888,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
       jobId: jobId ?? this.jobId,
       floorId: floorId ?? this.floorId,
       sealNumber: sealNumber ?? this.sealNumber,
+      trade: trade ?? this.trade,
       system: system ?? this.system,
       construction: construction ?? this.construction,
       location: location ?? this.location,
@@ -1889,6 +1922,9 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
     }
     if (sealNumber.present) {
       map['seal_number'] = Variable<String>(sealNumber.value);
+    }
+    if (trade.present) {
+      map['trade'] = Variable<String>(trade.value);
     }
     if (system.present) {
       map['system'] = Variable<String>(system.value);
@@ -1946,6 +1982,7 @@ class LocalSealsCompanion extends UpdateCompanion<LocalSeal> {
           ..write('jobId: $jobId, ')
           ..write('floorId: $floorId, ')
           ..write('sealNumber: $sealNumber, ')
+          ..write('trade: $trade, ')
           ..write('system: $system, ')
           ..write('construction: $construction, ')
           ..write('location: $location, ')
@@ -5122,6 +5159,7 @@ typedef $$LocalSealsTableCreateCompanionBuilder = LocalSealsCompanion Function({
   required String jobId,
   required String floorId,
   required String sealNumber,
+  Value<String> trade,
   required String system,
   required String construction,
   required String location,
@@ -5143,6 +5181,7 @@ typedef $$LocalSealsTableUpdateCompanionBuilder = LocalSealsCompanion Function({
   Value<String> jobId,
   Value<String> floorId,
   Value<String> sealNumber,
+  Value<String> trade,
   Value<String> system,
   Value<String> construction,
   Value<String> location,
@@ -5180,6 +5219,9 @@ class $$LocalSealsTableFilterComposer
 
   ColumnFilters<String> get sealNumber => $composableBuilder(
       column: $table.sealNumber, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get trade => $composableBuilder(
+      column: $table.trade, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get system => $composableBuilder(
       column: $table.system, builder: (column) => ColumnFilters(column));
@@ -5245,6 +5287,9 @@ class $$LocalSealsTableOrderingComposer
 
   ColumnOrderings<String> get sealNumber => $composableBuilder(
       column: $table.sealNumber, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get trade => $composableBuilder(
+      column: $table.trade, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<String> get system => $composableBuilder(
       column: $table.system, builder: (column) => ColumnOrderings(column));
@@ -5313,6 +5358,9 @@ class $$LocalSealsTableAnnotationComposer
 
   GeneratedColumn<String> get sealNumber => $composableBuilder(
       column: $table.sealNumber, builder: (column) => column);
+
+  GeneratedColumn<String> get trade =>
+      $composableBuilder(column: $table.trade, builder: (column) => column);
 
   GeneratedColumn<String> get system =>
       $composableBuilder(column: $table.system, builder: (column) => column);
@@ -5384,6 +5432,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             Value<String> jobId = const Value.absent(),
             Value<String> floorId = const Value.absent(),
             Value<String> sealNumber = const Value.absent(),
+            Value<String> trade = const Value.absent(),
             Value<String> system = const Value.absent(),
             Value<String> construction = const Value.absent(),
             Value<String> location = const Value.absent(),
@@ -5405,6 +5454,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             jobId: jobId,
             floorId: floorId,
             sealNumber: sealNumber,
+            trade: trade,
             system: system,
             construction: construction,
             location: location,
@@ -5426,6 +5476,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             required String jobId,
             required String floorId,
             required String sealNumber,
+            Value<String> trade = const Value.absent(),
             required String system,
             required String construction,
             required String location,
@@ -5447,6 +5498,7 @@ class $$LocalSealsTableTableManager extends RootTableManager<
             jobId: jobId,
             floorId: floorId,
             sealNumber: sealNumber,
+            trade: trade,
             system: system,
             construction: construction,
             location: location,

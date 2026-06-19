@@ -6,7 +6,7 @@ import { VEDENI_ROLES } from '../lib/permissions.js';
 
 export const MANAGEMENT_ROLES = VEDENI_ROLES;
 
-const ASSIGNABLE_BY_VEDENI: UserRole[] = [UserRole.worker, UserRole.vedeni, UserRole.ucetni];
+const ASSIGNABLE_BY_VEDENI: UserRole[] = [UserRole.worker, UserRole.vedeni];
 
 export type PublicUser = {
   id: string;

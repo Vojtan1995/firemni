@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ucpavky/features/jobs/floor_plan/seal_marker_widget.dart';
 
@@ -26,5 +27,19 @@ void main() {
     expect(dims.size, 18.0);
     expect(dims.borderWidth, 1.5);
     expect(dims.fontSize, 7.0);
+  });
+
+  test('sealMarkerTopLeft centers marker using clamped dimensions', () {
+    final scale = markerScaleForViewer(12.0);
+    final dims = sealMarkerDimensions(scale);
+    final topLeft = sealMarkerTopLeft(
+      x: 0.5,
+      y: 0.5,
+      canvasSize: const Size(800, 600),
+      scale: scale,
+    );
+
+    expect(topLeft.dx, closeTo(400 - dims.size / 2, 0.001));
+    expect(topLeft.dy, closeTo(300 - dims.size / 2, 0.001));
   });
 }

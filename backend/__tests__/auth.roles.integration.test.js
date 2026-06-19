@@ -46,6 +46,7 @@ describe('Auth and role authorization (BE-02)', () => {
         jobId,
         floorId,
         sealNumber: '99001',
+        trade: 'elektrikari',
         system: 'Test',
         construction: 'Stěna',
         location: 'Chodba',

@@ -11,6 +11,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Test',
     construction: 'Stěna',
     location: 'Chodba',
@@ -18,6 +19,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 1,
         insulation: 'žádná',
@@ -150,23 +152,16 @@ describe('Seals HTTP integration (BE-03)', () => {
       expect(res.body.status).toBe('invoiced');
     });
 
-    it('ucetni can invoice checked seal but not review draft', async () => {
+    it('vedeni can review a draft seal and then invoice it', async () => {
       const created = await createSeal(workerToken, jobId, floor1Id, `${SEAL_PREFIX}21`);
       expect(created.status).toBe(201);
-      const ucetniSealId = created.body.id;
-      const ucetniToken = await login('ucetni');
+      const sealId = created.body.id;
 
-      const review = await request(app)
-        .patch(`/api/seals/${ucetniSealId}/status`)
-        .set('Authorization', `Bearer ${ucetniToken}`)
-        .send({ status: 'checked' });
-      expect(review.status).toBe(403);
-
-      await markSealChecked(app, managementToken, workerToken, ucetniSealId);
+      await markSealChecked(app, managementToken, workerToken, sealId);
 
       const invoice = await request(app)
-        .patch(`/api/seals/${ucetniSealId}/status`)
-        .set('Authorization', `Bearer ${ucetniToken}`)
+        .patch(`/api/seals/${sealId}/status`)
+        .set('Authorization', `Bearer ${managementToken}`)
         .send({ status: 'invoiced' });
       expect(invoice.status).toBe(200);
       expect(invoice.body.status).toBe('invoiced');
@@ -196,6 +191,29 @@ describe('Seals HTTP integration (BE-03)', () => {
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('draft');
       expect(res.body.location).toBe('Změna workerem');
+    });
+
+    it('rejects PATCH with empty entries array (would wipe all prostupy)', async () => {
+      const created = await createSeal(workerToken, jobId, floor1Id, `${SEAL_PREFIX}32`);
+      expect(created.status).toBe(201);
+      const sealId = created.body.id;
+
+      const detail = await request(app)
+        .get(`/api/seals/${sealId}`)
+        .set('Authorization', `Bearer ${workerToken}`);
+
+      const res = await request(app)
+        .patch(`/api/seals/${sealId}`)
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ baseVersion: detail.body.version, entries: [] });
+
+      expect(res.status).toBe(400);
+
+      // Aktivní prostup musí zůstat zachovaný.
+      const after = await request(app)
+        .get(`/api/seals/${sealId}`)
+        .set('Authorization', `Bearer ${workerToken}`);
+      expect(after.body.entries.length).toBeGreaterThan(0);
     });
 
     it('worker cannot PATCH an invoiced seal', async () => {

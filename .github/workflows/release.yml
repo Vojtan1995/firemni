@@ -1,0 +1,146 @@
+# Release pipeline — staví podepsané APK + Windows balík a publikuje je jako
+# assety GitHub Release. Spouští se na push tagu `vX.Y.Z`.
+#
+# Postup vydání:
+#   1) zvýšit `version: X.Y.Z+B` v frontend/pubspec.yaml (B = build number)
+#   2) git tag vX.Y.Z && git push origin vX.Y.Z
+#   3) po doběhnutí workflow nastavit APP_RELEASE_* / APP_RELEASE_WIN_* na Railway
+#      (hodnoty workflow vypíše v jobu `summary`)
+#
+# Potřebné GitHub Secrets (Settings → Secrets and variables → Actions):
+#   ANDROID_KEYSTORE_BASE64   – release keystore (.jks) zakódovaný base64
+#   ANDROID_KEYSTORE_PASSWORD – storePassword
+#   ANDROID_KEY_PASSWORD      – keyPassword
+#   ANDROID_KEY_ALIAS         – keyAlias (např. ucpavky)
+# Volitelně Variables:
+#   PROD_API_BASE_URL         – produkční backend (default fallback níže)
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  PROD_API_BASE_URL: ${{ vars.PROD_API_BASE_URL || 'https://firemni-production.up.railway.app' }}
+
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Restore signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 secret chybí — nelze podepsat release APK."
+            exit 1
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > android/release-keystore.jks
+          cat > android/key.properties <<EOF
+          storePassword=$STORE_PASS
+          keyPassword=$KEY_PASS
+          keyAlias=$KEY_ALIAS
+          storeFile=../release-keystore.jks
+          EOF
+
+      - run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release --dart-define=API_BASE_URL=${{ env.PROD_API_BASE_URL }}
+
+      - name: Rename artifact
+        run: cp build/app/outputs/flutter-apk/app-release.apk "ucpavky-${{ github.ref_name }}.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: frontend/ucpavky-${{ github.ref_name }}.apk
+          if-no-files-found: error
+
+  build-windows:
+    name: Build Windows installer
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - run: flutter pub get
+
+      - name: Build release (Windows)
+        run: flutter build windows --release --dart-define=API_BASE_URL=${{ env.PROD_API_BASE_URL }}
+
+      - name: Package installer (Inno Setup)
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" `
+            "/DAppVersion=${{ github.ref_name }}" windows\installer.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: frontend/build/installer/ucpavky-setup-*.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: [build-android, build-windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/android-apk/*.apk
+            dist/windows-installer/*.exe
+          generate_release_notes: true
+
+      - name: Env hint summary
+        run: |
+          V="${{ github.ref_name }}"; NUM="${V#v}"
+          BASE="${{ github.server_url }}/${{ github.repository }}/releases/download/$V"
+          {
+            echo "## Nastav na Railway (a restartuj službu)"
+            echo '```'
+            echo "APP_RELEASE_VERSION_NAME=$NUM"
+            echo "APP_RELEASE_APK_URL=$BASE/ucpavky-$V.apk"
+            echo "APP_RELEASE_WIN_VERSION_NAME=$NUM"
+            echo "APP_RELEASE_WIN_URL=$BASE/ucpavky-setup-$NUM.exe"
+            echo "# + APP_RELEASE_BUILD / APP_RELEASE_WIN_BUILD = build number (+N z pubspec.yaml)"
+            echo "# + *_MIN_BUILD = nejnižší podporovaný build (= BUILD pro vynucený update)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

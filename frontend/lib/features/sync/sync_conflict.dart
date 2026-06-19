@@ -306,6 +306,7 @@ Future<void> remapLocalSealIdAfterPush(
             jobId: row.jobId,
             floorId: row.floorId,
             sealNumber: row.sealNumber,
+            trade: Value(row.trade),
             system: row.system,
             construction: row.construction,
             location: row.location,

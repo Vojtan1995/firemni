@@ -10,7 +10,6 @@ datasource db {
 enum UserRole {
   worker
   vedeni
-  ucetni
   admin
 }
 
@@ -18,6 +17,16 @@ enum SealStatus {
   draft
   checked
   invoiced
+}
+
+enum SealTrade {
+  elektrikari
+  vzduchari
+  vodari
+  topenari
+  plynari
+  ostatni
+  neurceno
 }
 
 enum WorkSheetStatus {
@@ -129,6 +138,7 @@ model Seal {
   jobId         String     @map("job_id")
   floorId       String     @map("floor_id")
   sealNumber    String     @map("seal_number")
+  trade         SealTrade  @default(neurceno)
   system        String
   construction  String
   location      String
@@ -176,6 +186,8 @@ model SealEntry {
   dimension  String
   quantity   Decimal   @default(1) @db.Decimal(12, 3)
   insulation String
+  steelInsulated          Boolean?  @map("steel_insulated")
+  electroInstallationType String?   @map("electro_installation_type")
   sortOrder  Int       @default(0) @map("sort_order")
   itemLengthMm           Int?      @map("item_length_mm")
   itemWidthMm            Int?      @map("item_width_mm")
@@ -366,12 +378,19 @@ model WorkSheetItem {
   floorId      String   @map("floor_id")
   workerId     String   @map("worker_id")
   sealNumber   String   @map("seal_number")
+  trade        SealTrade @default(neurceno)
   entryType    String   @map("entry_type")
   dimension    String
   quantity     Decimal  @default(1) @db.Decimal(12, 3)
   unit         String?  @default("kus")
+  // Snapshot technických/popisných údajů ucpávky v okamžiku vytvoření soupisu (Task 7/9).
+  system       String?
+  insulation   String?
+  location     String?
+  catalogId    String?  @map("catalog_id")
   unitPrice    Decimal? @map("unit_price") @db.Decimal(10, 2)
   totalPrice   Decimal? @map("total_price") @db.Decimal(10, 2)
+  priceListVersion String? @map("price_list_version")
   sortOrder    Int      @default(0) @map("sort_order")
   createdAt    DateTime @default(now()) @map("created_at")
 
@@ -382,6 +401,7 @@ model WorkSheetItem {
   worker    User      @relation("WorkSheetItemWorker", fields: [workerId], references: [id])
 
   @@unique([worksheetId, sealEntryId])
+  @@unique([sealEntryId])
   @@index([worksheetId])
   @@map("worksheet_items")
 }

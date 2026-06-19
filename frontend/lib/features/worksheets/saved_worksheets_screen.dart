@@ -125,7 +125,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
       );
     }
 
-    // Vedení/účetní: seznam pracovníků, po rozkliknutí jeho soupisy.
+    // Vedení: seznam pracovníků, po rozkliknutí jeho soupisy.
     // Soupis s více pracovníky se objeví u každého z nich.
     final byWorker = <String, _WorkerGroup>{};
     for (final ws in _worksheets) {
@@ -267,7 +267,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
   }
 }
 
-/// Soupisy jednoho pracovníka + rozpad podle stavu pro přehled vedení/účetní.
+/// Soupisy jednoho pracovníka + rozpad podle stavu pro přehled vedení.
 class _WorkerGroup {
   _WorkerGroup(this.name);
 

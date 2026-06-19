@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { Prisma, SealStatus, UserRole, JobStatus } from '@prisma/client';
+import { Prisma, SealStatus, UserRole, JobStatus, SealTrade } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError, conflict, forbidden } from '../lib/errors.js';
@@ -22,7 +22,12 @@ import { checkDuplicateSealNumber,
 } from '../services/seal.service.js';
 import { touchJobParticipant } from '../services/job-participant.service.js';
 import { priceSealEntries } from '../services/pricing.service.js';
-import { entryCreateData, sealEntrySchema } from '../lib/seal-schemas.js';
+import {
+  entryCreateData,
+  refineSealPatch,
+  sealEntrySchema,
+  sealPatchObjectSchema,
+} from '../lib/seal-schemas.js';
 import {
   applySealNotePatchByRole,
   resolveSealNotesForCreate,
@@ -63,6 +68,7 @@ const sealCreatePayloadSchema = z
     jobId: z.string().uuid(),
     floorId: z.string().uuid(),
     sealNumber: z.string().regex(/^\d+$/),
+    trade: z.nativeEnum(SealTrade).optional(),
     system: z.string().min(1),
     construction: z.string().min(1),
     location: z.string().min(1),
@@ -240,6 +246,7 @@ async function processMutation(
           jobId: createPayload.jobId,
           floorId: createPayload.floorId,
           sealNumber: createPayload.sealNumber,
+          trade: createPayload.trade ?? SealTrade.neurceno,
           system: createPayload.system,
           construction: createPayload.construction,
           location: createPayload.location,
@@ -268,14 +275,21 @@ async function processMutation(
   if (!sealId) throw conflict('Chybí ID ucpávky');
 
   if (mut.operation === 'update') {
+    // Stejná validace jako HTTP PATCH (regex čísla, enum trade, .min(1) na
+    // textových polích, entries.min(1)). note/internalNote řeší níže
+    // applySealNotePatchByRole, proto je ze schématu vynecháme.
+    const patch = sealPatchObjectSchema
+      .omit({ note: true, internalNote: true })
+      .superRefine(refineSealPatch)
+      .parse(mut.payload);
     const seal = await assertSealEditable(sealId, userRole, userId);
     if (mut.baseVersion !== undefined && mut.baseVersion !== seal.version) {
       throw conflict('Verze entity se neshoduje');
     }
-    if (p.sealNumber && p.sealNumber !== seal.sealNumber) {
-      await checkDuplicateSealNumber(seal.jobId, seal.floorId, p.sealNumber as string, seal.id);
+    if (patch.sealNumber && patch.sealNumber !== seal.sealNumber) {
+      await checkDuplicateSealNumber(seal.jobId, seal.floorId, patch.sealNumber, seal.id);
     }
-    const entries = p.entries as z.infer<typeof sealEntrySchema>[] | undefined;
+    const entries = patch.entries;
     const nextStatus = statusAfterWorkerEdit(seal.status, userRole);
     const resolvedNotes = applySealNotePatchByRole(
       userRole,
@@ -306,6 +320,8 @@ async function processMutation(
               insulation: e.insulation,
               itemLengthMm: e.itemLengthMm ?? null,
               itemWidthMm: e.itemWidthMm ?? null,
+              steelInsulated: e.steelInsulated ?? null,
+              electroInstallationType: e.electroInstallationType ?? null,
               sortOrder: i,
             },
           });
@@ -321,11 +337,12 @@ async function processMutation(
       await tx.seal.update({
         where: { id: sealId },
         data: {
-          sealNumber: (p.sealNumber as string) ?? seal.sealNumber,
-          system: (p.system as string) ?? seal.system,
-          construction: (p.construction as string) ?? seal.construction,
-          location: (p.location as string) ?? seal.location,
-          fireRating: (p.fireRating as string) ?? seal.fireRating,
+          sealNumber: patch.sealNumber ?? seal.sealNumber,
+          trade: patch.trade ?? seal.trade,
+          system: patch.system ?? seal.system,
+          construction: patch.construction ?? seal.construction,
+          location: patch.location ?? seal.location,
+          fireRating: patch.fireRating ?? seal.fireRating,
           note: resolvedNotes.note,
           internalNote: resolvedNotes.internalNote,
           openingLengthMm: patchPayloadField(p, 'openingLengthMm', seal.openingLengthMm),
@@ -441,9 +458,6 @@ router.get('/pull', async (req, res, next) => {
       seals,
       floorDrawings,
       sealMarkers,
-      jobCount,
-      floorCount,
-      sealCount,
     ] = await Promise.all([
       prisma.job.findMany({
         where: jobWhere,
@@ -475,9 +489,6 @@ router.get('/pull', async (req, res, next) => {
         orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
-      prisma.job.count({ where: jobWhere }),
-      prisma.jobFloor.count({ where: floorWhere }),
-      prisma.seal.count({ where: sealWhere }),
     ]);
 
     const deletedJobWhere = {
@@ -515,32 +526,58 @@ router.get('/pull', async (req, res, next) => {
       prisma.job.findMany({
         where: deletedJobWhere,
         select: { id: true, deletedAt: true, updatedAt: true },
+        orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
       prisma.jobFloor.findMany({
         where: deletedFloorWhere,
         select: { id: true, jobId: true, deletedAt: true, updatedAt: true },
+        orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
       prisma.seal.findMany({
         where: deletedSealWhere,
         select: { id: true, jobId: true, floorId: true, deletedAt: true, updatedAt: true },
+        orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
       prisma.job.findMany({
         where: archivedJobWhere,
         select: { id: true, updatedAt: true, status: true, isArchived: true },
+        orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
     ]);
 
-    const hasMore =
-      jobCount > SYNC_PULL_BATCH_LIMIT ||
-      floorCount > SYNC_PULL_BATCH_LIMIT ||
-      sealCount > SYNC_PULL_BATCH_LIMIT;
+    // hasMore = některá kolekce vrátila plnou dávku, takže existují další starší
+    // změny. Pokrýt VŠECHNY paginované entity (vč. drawings/markers/deleted/
+    // archived) – jinak by se zbytek nedotáhl, pokud "došly" jen jobs/floors/seals.
+    const batches = [
+      jobs,
+      floors,
+      seals,
+      floorDrawings,
+      sealMarkers,
+      deletedJobs,
+      deletedFloors,
+      deletedSeals,
+      archivedJobs,
+    ];
+    const hasMore = batches.some((b) => b.length >= SYNC_PULL_BATCH_LIMIT);
+
+    // Kurzor pro další dávku = nejvyšší updatedAt napříč vrácenými záznamy.
+    // Klient ho použije jako `since`, takže navazuje přesně tam, kde tato dávka
+    // skončila (filtr je `updatedAt > since`). Prázdná dávka → kurzor beze změny.
+    let maxUpdatedAt = since;
+    for (const batch of batches) {
+      for (const row of batch as Array<{ updatedAt: Date }>) {
+        if (row.updatedAt > maxUpdatedAt) maxUpdatedAt = row.updatedAt;
+      }
+    }
 
     res.json({
       serverTime: new Date().toISOString(),
+      nextSince: maxUpdatedAt.toISOString(),
       hasMore,
       jobs,
       floors,

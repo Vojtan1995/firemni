@@ -45,6 +45,7 @@ class LocalSeals extends Table {
   TextColumn get jobId => text()();
   TextColumn get floorId => text()();
   TextColumn get sealNumber => text()();
+  TextColumn get trade => text().withDefault(const Constant('neurceno'))();
   TextColumn get system => text()();
   TextColumn get construction => text()();
   TextColumn get location => text()();
@@ -161,7 +162,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -209,6 +210,9 @@ class AppDatabase extends _$AppDatabase {
                 localFloorDrawings, localFloorDrawings.lastError);
             await migrator.addColumn(
                 localSeals, localSeals.markerPlacementPending);
+          }
+          if (from < 10) {
+            await migrator.addColumn(localSeals, localSeals.trade);
           }
         },
       );

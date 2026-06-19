@@ -51,6 +51,7 @@ describe('Worksheet access (wave 2)', () => {
         jobId,
         floorId,
         sealNumber: `${Date.now()}`.slice(-4),
+        trade: 'elektrikari',
         system: 'WS',
         construction: 'Stěna',
         location: 'Test',
@@ -58,6 +59,7 @@ describe('Worksheet access (wave 2)', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'žádná',

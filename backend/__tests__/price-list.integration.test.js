@@ -7,7 +7,6 @@ describe('Price list (read-only for workers)', () => {
   const app = createApp();
   let workerToken;
   let managementToken;
-  let ucetniToken;
 
   async function login(username) {
     const res = await request(app)
@@ -20,7 +19,6 @@ describe('Price list (read-only for workers)', () => {
   beforeAll(async () => {
     workerToken = await login('worker1');
     managementToken = await login('vedeni');
-    ucetniToken = await login('ucetni');
   });
 
   afterAll(async () => {
@@ -110,7 +108,7 @@ describe('Price list (read-only for workers)', () => {
     expect(versions.body.some((v) => v.version === publish.body.version)).toBe(true);
   });
 
-  it('ucetni and worker cannot publish price list', async () => {
+  it('worker cannot publish price list', async () => {
     const active = await request(app)
       .get('/api/price-list')
       .set('Authorization', `Bearer ${managementToken}`);
@@ -123,12 +121,6 @@ describe('Price list (read-only for workers)', () => {
         active: true,
       })),
     };
-
-    const ucetniRes = await request(app)
-      .post('/api/price-list/publish')
-      .set('Authorization', `Bearer ${ucetniToken}`)
-      .send(payload);
-    expect(ucetniRes.status).toBe(403);
 
     const workerRes = await request(app)
       .post('/api/price-list/publish')

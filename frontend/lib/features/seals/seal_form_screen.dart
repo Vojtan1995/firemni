@@ -53,6 +53,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   final _numberCtrl = TextEditingController();
   final _noteCtrl = TextEditingController();
   final _internalNoteCtrl = TextEditingController();
+  String? _trade;
   String? _system;
   String? _construction;
   String? _location;
@@ -158,6 +159,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
 
     _numberCtrl.text = seal['sealNumber'] as String? ?? '';
+    _trade = seal['trade'] as String?;
     _system = seal['system'] as String?;
     _construction = seal['construction'] as String?;
     _location = seal['location'] as String?;
@@ -243,6 +245,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           ..limit(1))
         .getSingleOrNull();
     if (lastSeal != null) {
+      _trade ??= lastSeal.trade;
       _system ??= lastSeal.system;
       _construction ??= lastSeal.construction;
       _location ??= lastSeal.location;
@@ -431,6 +434,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   Future<void> _save() async {
     final sealNumber = _numberCtrl.text.trim();
     if (sealNumber.isEmpty ||
+        _trade == null ||
         _system == null ||
         _construction == null ||
         _location == null ||
@@ -466,6 +470,35 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     })) {
       ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
+      return;
+    }
+    if (_entries.any((e) => e.entryType == 'OCEL' && e.steelInsulated == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('U typu Ocel vyberte Doizolováno (Ano/Ne)')));
+      return;
+    }
+    if (_entries.any(
+        (e) => e.entryType == 'EL.V.' && e.electroInstallationType == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('U typu Elektro vyberte typ instalace (Svazek/Husí krk/Žlab)')));
+      return;
+    }
+    final overDeducted = _entries.asMap().entries.any((i) {
+      final e = i.value;
+      if (e.entryType != 'PROSTUP') return false;
+      return computeSealEntryPreview(
+        entryType: e.entryType,
+        quantityKus: e.quantity,
+        itemLengthMm: parseMmText(e.itemLengthMmText),
+        itemWidthMm: parseMmText(e.itemWidthMmText),
+        allEntries: _entries,
+        entryIndex: i.key,
+      ).netAreaWasNegative;
+    });
+    if (overDeducted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Odečtená plocha je větší než celková plocha prostupu.')));
       return;
     }
     if (!widget.isEdit && _photoPaths.isEmpty) {
@@ -523,6 +556,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           'materials': e.materials,
           if (itemL != null) 'itemLengthMm': itemL,
           if (itemW != null) 'itemWidthMm': itemW,
+          if (e.entryType == 'OCEL') 'steelInsulated': e.steelInsulated,
+          if (e.entryType == 'EL.V.')
+            'electroInstallationType': e.electroInstallationType,
         };
       }).toList(),
     );
@@ -562,6 +598,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'jobId': widget.jobId,
       'floorId': widget.floorId,
       'sealNumber': sealNumber,
+      'trade': _trade,
       'system': _system,
       'construction': _construction,
       'location': _location,
@@ -587,6 +624,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             jobId: widget.jobId,
             floorId: widget.floorId,
             sealNumber: sealNumber,
+            trade: Value(_trade!),
             system: _system!,
             construction: _construction!,
             location: _location!,
@@ -716,6 +754,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'jobId': widget.jobId,
       'floorId': widget.floorId,
       'sealNumber': sealNumber,
+      'trade': _trade,
       'system': _system,
       'construction': _construction,
       'location': _location,
@@ -741,6 +780,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
         LocalSealsCompanion(
           sealNumber: Value(sealNumber),
+          trade: Value(_trade!),
           system: Value(_system!),
           construction: Value(_construction!),
           location: Value(_location!),
@@ -837,7 +877,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const SectionHeader(
-              title: 'Identifikace',
+              title: 'Základ',
               style: SectionHeaderStyle.h3,
             ),
             if (_floorName != null) ...[
@@ -859,6 +899,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 errorText: _duplicateNumberError,
               ),
               keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8),
+            ChipSelector(
+              label: 'Řemeslo *',
+              options: sealTrades,
+              selected: _trade,
+              labelFor: sealTradeLabel,
+              onSelected: (v) {
+                setState(() => _trade = v);
+                _markDirty();
+              },
             ),
             const SizedBox(height: 8),
             ChipSelector(
@@ -952,15 +1003,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               },
             ),
             const SizedBox(height: 14),
-            const SectionHeader(title: 'Výkres', style: SectionHeaderStyle.h3),
+            const SectionHeader(
+                title: 'Značka ve výkresu', style: SectionHeaderStyle.h3),
             _drawingSection(),
-            if (!widget.isEdit) ...[
-              const SizedBox(height: 14),
-              const SectionHeader(title: 'Fotky', style: SectionHeaderStyle.h3),
-              _photosSection(),
-            ],
             const SizedBox(height: 14),
-            const SectionHeader(title: 'Poznámky', style: SectionHeaderStyle.h3),
+            const SectionHeader(
+                title: 'Foto a poznámka', style: SectionHeaderStyle.h3),
+            if (!widget.isEdit) ...[
+              _photosSection(),
+              const SizedBox(height: 12),
+            ],
             ..._noteFields(ref.read(authServiceProvider).role),
             const SizedBox(height: 16),
             ElevatedButton(
@@ -1102,10 +1154,10 @@ class _EntryEditorState extends State<_EntryEditor> {
     }
     if (calc.deductionAreaM2 != null && calc.deductionAreaM2! > 0) {
       lines.add(
-          'Odečet prvku + 50 mm: ${formatArea(calc.deductionAreaM2!)} m²');
+          'Odečtená plocha instalací: ${formatArea(calc.deductionAreaM2!)} m²');
     }
     if (calc.netAreaM2 != null) {
-      lines.add('Čistá plocha: ${formatArea(calc.netAreaM2!)} m²');
+      lines.add('Čistá účtovaná plocha: ${formatArea(calc.netAreaM2!)} m²');
     }
     if (calc.linearMeters != null) {
       lines.add('Běžné metry: ${formatMb(calc.linearMeters!)} mb');
@@ -1126,7 +1178,7 @@ class _EntryEditorState extends State<_EntryEditor> {
           ...lines.map((l) => Text(l, style: Theme.of(context).textTheme.bodySmall)),
           if (calc.netAreaWasNegative)
             Text(
-              'Upozornění: čistá plocha by byla záporná — použito 0',
+              'Odečtená plocha je větší než celková plocha prostupu.',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.error,
                 fontSize: 12,
@@ -1179,6 +1231,8 @@ class _EntryEditorState extends State<_EntryEditor> {
   void _applyEntryType(String v) {
     entry.entryType = v;
     entry.dimension = defaultDimensionForEntry(v, entry.insulation);
+    if (v != 'OCEL') entry.steelInsulated = null;
+    if (v != 'EL.V.') entry.electroInstallationType = null;
     widget.onChanged();
   }
 
@@ -1336,13 +1390,48 @@ class _EntryEditorState extends State<_EntryEditor> {
                 ),
               ),
             const SizedBox(height: 8),
+            _subLabel('Typ / instalace'),
             ChipSelector(
               label: 'Typ',
               options: entryTypes,
               selected: entry.entryType,
               onSelected: _applyEntryType,
             ),
+            if (entry.entryType == 'OCEL') ...[
+              const SizedBox(height: 8),
+              ChipSelector(
+                label: 'Doizolováno *',
+                options: const ['Ano', 'Ne'],
+                selected: entry.steelInsulated == null
+                    ? null
+                    : (entry.steelInsulated! ? 'Ano' : 'Ne'),
+                onSelected: (v) {
+                  entry.steelInsulated = v == 'Ano';
+                  widget.onChanged();
+                },
+              ),
+            ],
+            if (entry.entryType == 'EL.V.') ...[
+              const SizedBox(height: 8),
+              ChipSelector(
+                label: 'Typ elektro instalace *',
+                options: electroInstallationTypes,
+                selected: entry.electroInstallationType,
+                onSelected: (v) {
+                  entry.electroInstallationType = v;
+                  widget.onChanged();
+                },
+              ),
+            ],
             const SizedBox(height: 8),
+            ChipSelector(
+              label: 'Izolace',
+              options: insulations,
+              selected: entry.insulation,
+              onSelected: _applyInsulation,
+            ),
+            const SizedBox(height: 8),
+            _subLabel('Rozměry'),
             _dimensionSection(),
             if (_calc.unit == 'kus')
               Row(
@@ -1375,14 +1464,21 @@ class _EntryEditorState extends State<_EntryEditor> {
                 ),
                 subtitle: const Text('Vypočteno automaticky z rozměrů'),
               ),
-            ChipSelector(
-              label: 'Izolace',
-              options: insulations,
-              selected: entry.insulation,
-              onSelected: _applyInsulation,
-            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _subLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 6),
+      child: Text(
+        text,
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: Theme.of(context).colorScheme.primary,
+            ),
       ),
     );
   }

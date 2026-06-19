@@ -33,14 +33,14 @@ describe('seal-notes RBAC', () => {
     expect(result.internalNote).toBe('new internal');
   });
 
-  it('ucetni update ignores internalNote patch', () => {
+  it('vedeni update sets both note and internalNote', () => {
     const result = applySealNotePatchByRole(
-      UserRole.ucetni,
-      { note: 'old', internalNote: 'keep internal' },
-      { note: 'new public', internalNote: 'hacked' },
+      UserRole.vedeni,
+      { note: 'old', internalNote: 'old internal' },
+      { note: 'new public', internalNote: 'new internal' },
     );
     expect(result.note).toBe('new public');
-    expect(result.internalNote).toBe('keep internal');
+    expect(result.internalNote).toBe('new internal');
   });
 
   it('worker viewer strips public note but keeps internal', () => {

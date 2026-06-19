@@ -3,6 +3,7 @@ import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../widgets/widgets.dart';
 import '../worksheets/worksheet_status_labels.dart';
+import 'seal_constants.dart';
 import 'seal_list_helpers.dart';
 
 /// Kompaktní řádek seznamu ucpávek (Task 3.1).
@@ -37,6 +38,7 @@ class SealListRow extends StatelessWidget {
     final placementPending = seal['markerPlacementPending'] == true;
     final unplaced = !placementPending && seal['hasMarker'] == false;
     final number = seal['sealNumber'] as String? ?? '?';
+    final trade = sealTradeLabel(seal['trade'] as String?);
     final worksheetStatus = seal['worksheetStatus'] as String?;
 
     return AppCard(
@@ -61,11 +63,23 @@ class SealListRow extends StatelessWidget {
             ),
           const SizedBox(width: AppSpacing.md),
           Expanded(
-            child: Text(
-              '#$number',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w700,
-                  ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '#$number',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                ),
+                Text(
+                  trade,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: AppColors.textMuted,
+                      ),
+                ),
+              ],
             ),
           ),
           if (photoCount > 0)

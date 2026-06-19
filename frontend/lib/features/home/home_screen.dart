@@ -83,11 +83,7 @@ class HomeScreen extends ConsumerWidget {
             if (auth.canViewStats)
               _MenuTile(
                 icon: Icons.analytics_outlined,
-                title: auth.isWorker
-                    ? 'Moje statistiky'
-                    : auth.isUcetni
-                        ? 'Statistiky fakturace'
-                        : 'Dashboard',
+                title: auth.isWorker ? 'Moje statistiky' : 'Dashboard',
                 onTap: () => context.push('/stats'),
               ),
             if (auth.canViewPriceList)
@@ -102,7 +98,6 @@ class HomeScreen extends ConsumerWidget {
           if (auth.canManageJobs ||
               auth.canManageUsers ||
               auth.canViewLogs ||
-              auth.isUcetni ||
               auth.canAccessTrash) ...[
             const SectionHeader(title: 'Správa', style: SectionHeaderStyle.h3),
             if (auth.canManageJobs)
@@ -117,7 +112,7 @@ class HomeScreen extends ConsumerWidget {
                 title: 'Uživatelé',
                 onTap: () => context.push('/users-admin'),
               ),
-            if (auth.canViewLogs || auth.isUcetni)
+            if (auth.canViewLogs)
               _MenuTile(
                 icon: Icons.history,
                 title: 'Logy',

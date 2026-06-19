@@ -111,7 +111,6 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                         documentRef: _pdfDocumentRef,
                         width: w,
                         height: h,
-                        viewerScale: widget.viewerScale,
                       )
                     else
                       Image.memory(
@@ -128,17 +127,26 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                       final x = (m['x'] as num).toDouble();
                       final y = (m['y'] as num).toDouble();
                       final sealId = m['sealId'] as String;
-                      final size = kSealMarkerBaseSize * markerScale;
+                      final pending = m['pending'] == true;
+                      final highlighted =
+                          pending || widget.highlightSealId == sealId;
+                      final topLeft = sealMarkerTopLeft(
+                        x: x,
+                        y: y,
+                        canvasSize: canvasSize,
+                        scale: markerScale,
+                        highlighted: highlighted,
+                      );
                       return Positioned(
-                        left: x * w - size / 2,
-                        top: y * h - size / 2,
+                        left: topLeft.dx,
+                        top: topLeft.dy,
                         child: SealMarkerWidget(
                           sealNumber: m['sealNumber'] as String? ?? '',
                           status: m['status'] as String? ?? 'draft',
                           reviewStatus: m['reviewStatus'] as String?,
                           scale: markerScale,
-                          highlighted: widget.highlightSealId == sealId,
-                          onTap: widget.onMarkerTap != null
+                          highlighted: highlighted,
+                          onTap: widget.onMarkerTap != null && !pending
                               ? () => widget.onMarkerTap!(m)
                               : null,
                         ),
@@ -160,29 +168,20 @@ class _PdfCanvas extends StatelessWidget {
     required this.documentRef,
     required this.width,
     required this.height,
-    required this.viewerScale,
   });
 
   final PdfDocumentRef documentRef;
   final double width;
   final double height;
-  final double viewerScale;
 
   @override
   Widget build(BuildContext context) {
-    // Adaptivní render kvality: cílové rozlišení bitmapy roste se zoomem,
-    // takže přiblížený výkres zůstává ostrý. Zoom kvantujeme do celých
-    // stupňů, aby se PDF nererenderovalo při každém drobném pohybu, a delší
-    // stranu stropujeme (kPdfMaxRenderDim) kvůli paměti na mobilu.
-    //
-    // Omezení knihovny pdfrx: PdfPageView renderuje celou stránku do jedné
-    // bitmapy (žádné pravé tile-rendering). Strop + kvantizace to drží
-    // bezpečné; pro extrémně velké výkresy by do budoucna dávalo smysl
-    // přejít na PdfViewer s nativním dlaždicovým renderem.
+    // Keep PDF rendering independent from the current InteractiveViewer zoom.
+    // Zooming scales this page image instead of triggering a full-page rerender
+    // for every zoom bucket.
     final dpr = MediaQuery.of(context).devicePixelRatio;
-    final zoomBucket = viewerScale.clamp(1.0, 6.0).ceilToDouble();
-    double renderW = width * dpr * zoomBucket;
-    double renderH = height * dpr * zoomBucket;
+    double renderW = width * dpr;
+    double renderH = height * dpr;
     final longest = math.max(renderW, renderH);
     if (longest > kPdfMaxRenderDim) {
       final k = kPdfMaxRenderDim / longest;

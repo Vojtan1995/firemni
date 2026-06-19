@@ -21,9 +21,6 @@ class SealNoteHelpers {
     if (role == 'worker') {
       return (note: existingNote, internalNote: internal);
     }
-    if (role == 'ucetni') {
-      return (note: note, internalNote: existingInternalNote);
-    }
     if (role == 'vedeni' || role == 'admin') {
       return (note: note, internalNote: internal);
     }
@@ -47,12 +44,6 @@ class SealNoteHelpers {
       return;
     }
 
-    if (role == 'ucetni') {
-      payload.remove('internalNote');
-      payload['note'] = note;
-      return;
-    }
-
     if (role == 'vedeni' || role == 'admin') {
       payload['note'] = note;
       payload['internalNote'] = internal;
@@ -60,7 +51,7 @@ class SealNoteHelpers {
   }
 
   static bool canEditPublicNote(String? role) =>
-      role == 'vedeni' || role == 'admin' || role == 'ucetni';
+      role == 'vedeni' || role == 'admin';
 
   static bool canEditInternalNote(String? role) =>
       role == 'worker' || role == 'vedeni' || role == 'admin';
@@ -68,7 +59,7 @@ class SealNoteHelpers {
   static bool canViewPublicNote(String? role) => role != 'worker';
 
   static bool canViewInternalNote(String? role) =>
-      role == 'vedeni' || role == 'admin' || role == 'ucetni';
+      role == 'vedeni' || role == 'admin';
 
   static bool showInternalNoteInDetail(String? role) =>
       role == 'worker' || canViewInternalNote(role);

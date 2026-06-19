@@ -1,34 +1,43 @@
-import { WorkSheetStatus, UserRole, SealStatus } from '@prisma/client';
+import { WorkSheetStatus, UserRole, SealStatus, Prisma, JobStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { hasPermission } from '../lib/permissions.js';
 import { logActivity, logChange } from './audit.service.js';
 import { notifyUsersByRoles, createNotification } from './notification.service.js';
 import { csvWithBom } from '../lib/csv-export.js';
-import { createCzechPdfDocument, writePdfTextLine } from '../lib/pdf-pagination.js';
+import { createCzechPdfDocument } from '../lib/pdf-pagination.js';
+import { setCzechPdfBold, setCzechPdfRegular } from '../lib/pdf-fonts.js';
+import { sealTradeLabel } from '../lib/seal-trade.js';
+import { jobAccessDeniedMessage, jobAllowsWrites } from '../lib/job-status.js';
+import { getActivePriceList, lookupPriceItem } from './pricing.service.js';
+
+/** Vynutí, že se zakázka smí editovat (jen aktivní). Soupisy jdou zakládat,
+ *  plnit a měnit jejich stav pouze na aktivní zakázce. */
+function assertJobWritableStatus(status: JobStatus) {
+  if (!jobAllowsWrites(status)) {
+    throw forbidden(jobAccessDeniedMessage(status));
+  }
+}
 
 const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
   [WorkSheetStatus.draft]: [WorkSheetStatus.submitted],
   [WorkSheetStatus.submitted]: [WorkSheetStatus.reviewed, WorkSheetStatus.draft],
+  // Schválený (reviewed) → lze přímo Fakturovat (invoiced) dle 4-stavového modelu.
+  // ready_for_invoice ponechán jako volitelný mezistav kvůli zpětné kompatibilitě.
   [WorkSheetStatus.reviewed]: [
+    WorkSheetStatus.invoiced,
     WorkSheetStatus.ready_for_invoice,
     WorkSheetStatus.submitted,
     WorkSheetStatus.draft,
   ],
   [WorkSheetStatus.ready_for_invoice]: [WorkSheetStatus.invoiced, WorkSheetStatus.reviewed],
-  [WorkSheetStatus.invoiced]: [WorkSheetStatus.ready_for_invoice],
+  [WorkSheetStatus.invoiced]: [WorkSheetStatus.reviewed, WorkSheetStatus.ready_for_invoice],
 };
-
-const UCETNI_TRANSITIONS: Array<[WorkSheetStatus, WorkSheetStatus]> = [
-  [WorkSheetStatus.reviewed, WorkSheetStatus.ready_for_invoice],
-  [WorkSheetStatus.ready_for_invoice, WorkSheetStatus.invoiced],
-  [WorkSheetStatus.invoiced, WorkSheetStatus.ready_for_invoice],
-];
 
 const STATUS_LABELS: Record<WorkSheetStatus, string> = {
   [WorkSheetStatus.draft]: 'Rozpracovaný',
   [WorkSheetStatus.submitted]: 'Odevzdaný',
-  [WorkSheetStatus.reviewed]: 'Zkontrolovaný',
+  [WorkSheetStatus.reviewed]: 'Schválený',
   [WorkSheetStatus.ready_for_invoice]: 'Připravený k fakturaci',
   [WorkSheetStatus.invoiced]: 'Vyfakturovaný',
 };
@@ -50,17 +59,6 @@ function assertCanTransition(
     }
     if (!hasPermission(role, 'worksheet.submit')) {
       throw forbidden('Nemáte oprávnění odevzdat soupis');
-    }
-    return;
-  }
-
-  if (role === UserRole.ucetni) {
-    const allowed = UCETNI_TRANSITIONS.some(([from, to]) => from === current && to === next);
-    if (!allowed) {
-      throw forbidden('Administrativa může měnit pouze fakturační stavy soupisu');
-    }
-    if (!hasPermission(role, 'worksheet.invoice')) {
-      throw forbidden('Nemáte oprávnění měnit fakturační stav soupisu');
     }
     return;
   }
@@ -87,7 +85,7 @@ function assertCanTransition(
 async function assertWorksheetAccess(worksheetId: string, role: UserRole, userId: string) {
   const ws = await prisma.workSheet.findUnique({
     where: { id: worksheetId },
-    include: { workers: { select: { userId: true } } },
+    include: { workers: { select: { userId: true } }, job: { select: { status: true } } },
   });
   if (!ws) throw notFound('Soupis nenalezen');
   if (role === UserRole.worker && !ws.workers.some((w) => w.userId === userId)) {
@@ -223,7 +221,11 @@ export async function listWorksheets(
       _count: { select: { items: true } },
       items: { select: { floor: { select: { name: true } } } },
     },
-    orderBy: { updatedAt: 'desc' },
+    // Nejnovější nahoře: dle data odevzdání (submittedAt), jinak dle data vytvoření.
+    orderBy: [
+      { submittedAt: { sort: 'desc', nulls: 'last' } },
+      { createdAt: 'desc' },
+    ],
   }).then((worksheets) =>
     worksheets.map(({ items, ...ws }) => ({
       ...ws,
@@ -245,6 +247,7 @@ export async function createWorksheet(
 ) {
   const job = await prisma.job.findFirst({ where: { id: data.jobId, deletedAt: null } });
   if (!job) throw notFound('Zakázka nenalezena');
+  assertJobWritableStatus(job.status);
 
   let workerIds = data.workerIds ?? [];
   if (role === UserRole.worker) {
@@ -319,10 +322,12 @@ export async function addWorksheetItems(
   sealEntryIds: string[],
 ) {
   const ws = await assertWorksheetEditable(worksheetId, role, userId);
+  assertJobWritableStatus(ws.job.status);
 
   const entries = await prisma.sealEntry.findMany({
     where: { id: { in: sealEntryIds }, deletedAt: null },
     include: {
+      materials: { orderBy: { sortOrder: 'asc' } },
       seal: {
         include: {
           floor: { select: { id: true, name: true } },
@@ -362,32 +367,65 @@ export async function addWorksheetItems(
   }
 
   const existingCount = await prisma.workSheetItem.count({ where: { worksheetId } });
-  const created = await prisma.$transaction(
-    entries.map((entry, i) => {
-      const unitPrice = entry.unitPrice;
+
+  // Cena se počítá až při vytvoření soupisu – z AKTUÁLNÍHO ceníku – a uloží se
+  // jako snapshot do položky soupisu (Task 7). Pozdější změna ceníku už soupis nemění.
+  const activePriceList = await getActivePriceList();
+  const itemData = await Promise.all(
+    entries.map(async (entry, i) => {
       const quantity = entry.quantity;
-      const totalPrice =
-        entry.totalPrice ??
-        (unitPrice != null ? Number(unitPrice) * Number(quantity) : null);
-      return prisma.workSheetItem.create({
-        data: {
-          worksheetId,
-          sealId: entry.sealId,
-          sealEntryId: entry.id,
-          floorId: entry.seal.floorId,
-          workerId: entry.seal.createdById,
-          sealNumber: entry.seal.sealNumber,
-          entryType: entry.entryType,
-          dimension: entry.dimension,
-          quantity,
-          unit: entry.unit ?? 'kus',
-          unitPrice,
-          totalPrice,
-          sortOrder: existingCount + i,
-        },
-      });
+      const unit = entry.unit ?? 'kus';
+      const preferredUnit = unit !== 'kus' ? (unit as 'm2' | 'mb') : undefined;
+      const match = activePriceList
+        ? await lookupPriceItem(
+            {
+              entryType: entry.entryType,
+              dimension: entry.dimension,
+              insulation: entry.insulation,
+              quantity: Number(quantity),
+              preferredUnit,
+            },
+            activePriceList,
+          )
+        : null;
+      const unitPrice = match ? Number(match.item.priceWithMaterial) : null;
+      const totalPrice = unitPrice != null ? unitPrice * Number(quantity) : null;
+      const catalogId = entry.materials.map((m) => m.material).join(', ');
+      return {
+        worksheetId,
+        sealId: entry.sealId,
+        sealEntryId: entry.id,
+        floorId: entry.seal.floorId,
+        workerId: entry.seal.createdById,
+        sealNumber: entry.seal.sealNumber,
+        trade: entry.seal.trade,
+        entryType: entry.entryType,
+        dimension: entry.dimension,
+        quantity,
+        unit,
+        system: entry.seal.system,
+        insulation: entry.insulation,
+        location: entry.seal.location,
+        catalogId: catalogId.length > 0 ? catalogId : null,
+        unitPrice,
+        totalPrice,
+        priceListVersion: match ? match.priceList.version : null,
+        sortOrder: existingCount + i,
+      };
     }),
   );
+
+  // Aplikační kontrola výše (existingItems) běží read-then-write a neochrání
+  // proti souběhu requestů. Tvrdou pojistku dává unique index na sealEntryId –
+  // při závodu Prisma vyhodí P2002, který přemapujeme na čistou hlášku.
+  const created = await prisma
+    .$transaction(itemData.map((data) => prisma.workSheetItem.create({ data })))
+    .catch((e) => {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
+        throw badRequest('Některé položky jsou již v jiném soupisu');
+      }
+      throw e;
+    });
 
   await logActivity(userId, 'worksheet_add_items', 'worksheet', worksheetId, {
     count: created.length,
@@ -403,6 +441,7 @@ export async function changeWorksheetStatus(
   comment?: string,
 ) {
   const ws = await assertWorksheetAccess(worksheetId, role, userId);
+  assertJobWritableStatus(ws.job.status);
 
   assertTransition(ws.status, nextStatus);
   assertCanTransition(role, ws.status, nextStatus);
@@ -457,7 +496,7 @@ export async function changeWorksheetStatus(
   });
 
   if (nextStatus === WorkSheetStatus.submitted) {
-    await notifyUsersByRoles([UserRole.vedeni, UserRole.ucetni, UserRole.admin], {
+    await notifyUsersByRoles([UserRole.vedeni, UserRole.admin], {
       type: 'worksheet_submitted',
       title: 'Nový soupis k odsouhlasení',
       body: `Soupis byl odevzdán (${updated.job.projectNumber})`,
@@ -538,8 +577,6 @@ export async function populateWorksheetFromFilters(
   return { items: created, requestedCount: entries.length, addedCount: created.length };
 }
 
-type WorksheetExportRow = Record<string, string | number | null>;
-
 async function loadWorksheetExportData(id: string, role: UserRole, userId: string) {
   await assertWorksheetAccess(id, role, userId);
 
@@ -572,48 +609,117 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
     : [];
   const workerMap = new Map(workers.map((w) => [w.id, w.displayName]));
 
-  const rows: WorksheetExportRow[] = worksheet.items.map((item) => ({
-    stavba: worksheet.job.projectNumber,
-    nazevStavby: worksheet.job.name,
+  type ExportItemRow = {
+    patro: string;
+    prostup: string;
+    remeslo: string;
+    system: string;
+    katalogId: string;
+    typ: string;
+    rozmer: string;
+    pocet: number;
+    izolace: string;
+    umisteni: string;
+    provedl: string;
+    jednotkovaCena: number | null;
+    cenaCelkem: number | null;
+  };
+
+  const rows: ExportItemRow[] = worksheet.items.map((item) => ({
     patro: String(floorMap.get(item.floorId) ?? item.floorId),
-    cisloUcpavky: item.sealNumber,
-    typProstupu: item.entryType,
-    rozmery: item.dimension,
-    jednotka: item.unit ?? 'kus',
-    mnozstvi: Number(item.quantity),
-    kusy: Number(item.quantity),
-    pracovnik: workerMap.get(item.workerId) ?? '',
+    prostup: item.sealNumber,
+    remeslo: sealTradeLabel(item.trade),
+    system: item.system ?? '',
+    katalogId: item.catalogId ?? '',
+    typ: item.entryType,
+    rozmer: item.dimension,
+    pocet: Number(item.quantity),
+    izolace: item.insulation ?? '',
+    umisteni: item.location ?? '',
+    provedl: workerMap.get(item.workerId) ?? '',
     jednotkovaCena: item.unitPrice != null ? Number(item.unitPrice) : null,
     cenaCelkem: item.totalPrice != null ? Number(item.totalPrice) : null,
   }));
 
-  return { worksheet, rows, total: sumItemTotals(worksheet.items) };
+  // Řazení uvnitř exportu: Podlaží → Prostup → Typ položky.
+  rows.sort((a, b) => {
+    if (a.patro !== b.patro) return a.patro.localeCompare(b.patro, 'cs');
+    const pa = parseInt(a.prostup, 10);
+    const pb = parseInt(b.prostup, 10);
+    if (Number.isFinite(pa) && Number.isFinite(pb) && pa !== pb) return pa - pb;
+    if (a.prostup !== b.prostup) return a.prostup.localeCompare(b.prostup, 'cs');
+    return a.typ.localeCompare(b.typ, 'cs');
+  });
+
+  // Seskupení podle podlaží (v pořadí dle seřazených řádků) + součet za podlaží.
+  const floorGroups: { floorName: string; rows: ExportItemRow[]; floorTotal: number }[] = [];
+  for (const row of rows) {
+    let group = floorGroups.find((g) => g.floorName === row.patro);
+    if (!group) {
+      group = { floorName: row.patro, rows: [], floorTotal: 0 };
+      floorGroups.push(group);
+    }
+    group.rows.push(row);
+    group.floorTotal += row.cenaCelkem ?? 0;
+  }
+
+  return { worksheet, rows, floorGroups, total: sumItemTotals(worksheet.items) };
 }
 
-const CSV_COLUMNS: Record<string, string> = {
-  stavba: 'Stavba',
-  nazevStavby: 'Název stavby',
-  patro: 'Podlaží',
-  cisloUcpavky: 'Prostup',
-  typProstupu: 'Typ',
-  rozmery: 'Rozměr',
-  jednotka: 'Jednotka',
-  mnozstvi: 'Množství',
-  kusy: 'Počet',
-  pracovnik: 'Provedl',
-  jednotkovaCena: 'Jednotková cena',
-  cenaCelkem: 'Cena celkem',
-};
+// Pořadí sloupců dle PDF vzoru (Task 9). Řemeslo je nový sloupec.
+const EXPORT_COLUMNS = [
+  { key: 'patro', label: 'Podlaží', width: 46, align: 'center' as const },
+  { key: 'prostup', label: 'Prostup', width: 46, align: 'center' as const },
+  { key: 'remeslo', label: 'Řemeslo', width: 68, align: 'left' as const },
+  { key: 'system', label: 'Systém', width: 60, align: 'left' as const },
+  { key: 'katalogId', label: 'Katalog ID', width: 92, align: 'left' as const, wrap: true },
+  { key: 'typ', label: 'Typ', width: 52, align: 'left' as const, wrap: true },
+  { key: 'rozmer', label: 'Rozměr', width: 66, align: 'left' as const },
+  { key: 'pocet', label: 'Počet', width: 40, align: 'center' as const },
+  { key: 'izolace', label: 'Izolace', width: 58, align: 'left' as const },
+  { key: 'umisteni', label: 'Umístění v PÚ', width: 66, align: 'left' as const },
+  { key: 'provedl', label: 'Provedl', width: 70, align: 'left' as const },
+  { key: 'jednotkovaCena', label: 'Jednotková cena', width: 60, align: 'right' as const, money: true },
+  { key: 'cenaCelkem', label: 'Cena celkem', width: 60, align: 'right' as const, money: true },
+];
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+}
+
+function money(value: number | null | undefined): string {
+  return value != null ? `${Number(value).toFixed(2)} Kč` : '';
+}
 
 export async function exportWorksheetCsv(id: string, role: UserRole, userId: string) {
-  const { worksheet, rows, total } = await loadWorksheetExportData(id, role, userId);
-  const cols = Object.keys(CSV_COLUMNS);
-  const header = cols.map((c) => CSV_COLUMNS[c]).join(';');
-  const lines = rows.map((row) =>
-    cols.map((c) => `"${String(row[c] ?? '').replace(/"/g, '""')}"`).join(';'),
-  );
-  const footer = `"Součet bez DPH";"";"";"";"";"";"";"";"${total.toFixed(2)}"`;
-  const csv = csvWithBom([header, ...lines, footer].join('\n'));
+  const { worksheet, floorGroups, total } = await loadWorksheetExportData(id, role, userId);
+  const colCount = EXPORT_COLUMNS.length;
+  const header = EXPORT_COLUMNS.map((c) => csvCell(c.label)).join(';');
+  const lines: string[] = [header];
+
+  for (const group of floorGroups) {
+    for (const row of group.rows) {
+      lines.push(
+        EXPORT_COLUMNS.map((c) => {
+          const v = (row as Record<string, unknown>)[c.key];
+          return csvCell(c.money ? money(v as number | null) : v);
+        }).join(';'),
+      );
+    }
+    // Řádek "Cena za podlaží" – součet v posledním sloupci.
+    const floorTotalCells = new Array(colCount).fill('""');
+    floorTotalCells[0] = csvCell(`Cena za podlaží – ${group.floorName}`);
+    floorTotalCells[colCount - 1] = csvCell(money(group.floorTotal));
+    lines.push(floorTotalCells.join(';'));
+  }
+
+  const totalCells = new Array(colCount).fill('""');
+  totalCells[0] = csvCell('Cena celkem bez DPH');
+  totalCells[colCount - 1] = csvCell(money(total));
+  lines.push(totalCells.join(';'));
+  lines.push(`${csvCell('Datum')};${csvCell(new Date().toISOString().split('T')[0])}`);
+
+  const csv = csvWithBom(lines.join('\n'));
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.csv`;
   return { csv, filename };
 }
@@ -624,45 +730,119 @@ export async function exportWorksheetPdf(
   userId: string,
   res: import('express').Response,
 ) {
-  const { worksheet, rows, total } = await loadWorksheetExportData(id, role, userId);
+  const { worksheet, floorGroups, total } = await loadWorksheetExportData(id, role, userId);
 
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
-  const doc = createCzechPdfDocument({ margin: 40, size: 'A4' });
+  // PDF vždy na šířku (landscape).
+  const margin = 28;
+  const doc = createCzechPdfDocument({ margin, size: 'A4', layout: 'landscape' });
   doc.pipe(res);
+
+  const pageRight = doc.page.width - margin;
+  const tableWidth = EXPORT_COLUMNS.reduce((s, c) => s + c.width, 0);
+  const scale = (pageRight - margin) / tableWidth;
+  const colWidths = EXPORT_COLUMNS.map((c) => c.width * scale);
+  const bottomY = doc.page.height - margin - 60;
 
   const periodFrom = worksheet.periodFrom?.toISOString().split('T')[0] ?? '—';
   const periodTo = worksheet.periodTo?.toISOString().split('T')[0] ?? '—';
   const workerNames = worksheet.workers.map((w) => w.user.displayName).join(', ');
+  const itemCount = floorGroups.reduce((s, g) => s + g.rows.length, 0);
 
-  doc.fontSize(16).text('Soupis práce', { underline: true });
-  doc.moveDown(0.5);
-  doc.fontSize(10);
+  // Hlavička soupisu.
+  doc.fontSize(15).text('Soupis práce', { underline: true });
+  doc.moveDown(0.3);
+  doc.fontSize(9);
   doc.text(`Zakázka: ${worksheet.job.projectNumber} – ${worksheet.job.name}`);
-  doc.text(`Stav: ${STATUS_LABELS[worksheet.status]}`);
-  doc.text(`Období: ${periodFrom} – ${periodTo}`);
-  doc.text(`Pracovníci: ${workerNames || '—'}`);
-  doc.text(`Počet položek: ${rows.length}`);
-  doc.text(`Vytvořeno: ${worksheet.createdAt.toISOString().split('T')[0]}`);
-  doc.moveDown();
+  doc.text(`Stav: ${STATUS_LABELS[worksheet.status]}    Období: ${periodFrom} – ${periodTo}`);
+  doc.text(`Pracovníci: ${workerNames || '—'}    Počet položek: ${itemCount}`);
+  // Horní souhrnná fakturační tabulka + odsouhlasovací text.
+  doc.text(`Celková cena bez DPH: ${money(total)}`);
+  doc.moveDown(0.3);
+  doc
+    .fontSize(8)
+    .text(
+      'Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu a cenách.',
+    );
+  doc.moveDown(0.5);
 
-  doc.fontSize(8);
-  for (const row of rows) {
-    const unitPrice =
-      row.jednotkovaCena != null ? `${Number(row.jednotkovaCena).toFixed(2)} Kč` : '—';
-    const line = row.cenaCelkem != null ? `${Number(row.cenaCelkem).toFixed(2)} Kč` : '—';
-    const qtyUnit = `${row.mnozstvi} ${row.jednotka ?? 'kus'}`;
-    writePdfTextLine(
-      doc,
-      `#${row.cisloUcpavky} | ${row.patro} | ${row.typProstupu} | ${row.rozmery} | ${qtyUnit} | ${unitPrice} | ${line} | ${row.pracovnik}`,
+  const rowPadX = 3;
+  const headerFontSize = 8;
+  const bodyFontSize = 7.5;
+
+  function cellText(col: (typeof EXPORT_COLUMNS)[number], row: ExportRowLike): string {
+    const v = (row as Record<string, unknown>)[col.key];
+    if (col.money) return money(v as number | null);
+    return String(v ?? '');
+  }
+
+  function rowHeight(cells: string[]): number {
+    let max = 14;
+    EXPORT_COLUMNS.forEach((col, i) => {
+      const h =
+        doc.heightOfString(cells[i] ?? '', { width: colWidths[i] - rowPadX * 2 }) + 6;
+      if (h > max) max = h;
+    });
+    return max;
+  }
+
+  function drawRow(cells: string[], opts: { header?: boolean; bold?: boolean }) {
+    const h = rowHeight(cells);
+    if (doc.y + h > bottomY) {
+      doc.addPage();
+      drawHeaderRow();
+    }
+    const y = doc.y;
+    let x = margin;
+    if (opts.header || opts.bold) setCzechPdfBold(doc);
+    else setCzechPdfRegular(doc);
+    EXPORT_COLUMNS.forEach((col, i) => {
+      const w = colWidths[i];
+      doc.rect(x, y, w, h).stroke();
+      doc.fontSize(opts.header ? headerFontSize : bodyFontSize);
+      doc.text(cells[i] ?? '', x + rowPadX, y + 3, {
+        width: w - rowPadX * 2,
+        align: col.align,
+      });
+      x += w;
+    });
+    setCzechPdfRegular(doc);
+    doc.y = y + h;
+  }
+
+  function drawHeaderRow() {
+    drawRow(
+      EXPORT_COLUMNS.map((c) => c.label),
+      { header: true },
     );
   }
 
-  doc.moveDown();
-  doc.fontSize(12).text(`Cena celkem bez DPH: ${total.toFixed(2)} Kč`, { underline: true });
+  drawHeaderRow();
+  for (const group of floorGroups) {
+    for (const row of group.rows) {
+      drawRow(
+        EXPORT_COLUMNS.map((c) => cellText(c, row)),
+        {},
+      );
+    }
+    // Součet za podlaží (tučně, cena vpravo).
+    const floorTotalCells = EXPORT_COLUMNS.map(() => '');
+    floorTotalCells[0] = `Cena za podlaží – ${group.floorName}`;
+    floorTotalCells[EXPORT_COLUMNS.length - 1] = money(group.floorTotal);
+    drawRow(floorTotalCells, { bold: true });
+  }
+
+  doc.moveDown(0.6);
+  setCzechPdfBold(doc);
+  doc.fontSize(11).text(`Cena celkem bez DPH: ${money(total)}`);
+  setCzechPdfRegular(doc);
+  doc.fontSize(9).text(`Datum: ${new Date().toISOString().split('T')[0]}`);
   doc.end();
 }
+
+type ExportRowLike = Record<string, unknown>;
 
 export { STATUS_LABELS };

@@ -46,7 +46,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
   void _init() {
     final auth = ref.read(authServiceProvider);
     final sections = <_LogSection>[
-      if (auth.canViewLogs || auth.isUcetni)
+      if (auth.canViewLogs)
         const _LogSection(label: 'Historie změn', endpoint: '/api/logs/history'),
       if (auth.canViewLogs)
         const _LogSection(

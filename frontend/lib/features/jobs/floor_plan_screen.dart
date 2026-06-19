@@ -35,6 +35,73 @@ class SealPlacementResult {
   final double y;
 }
 
+List<Map<String, dynamic>> floorPlanDisplayMarkers({
+  required List<Map<String, dynamic>> visibleMarkers,
+  required List<Map<String, dynamic>> floorSeals,
+  String? placingSealId,
+  String? movingSealId,
+  double? pendingX,
+  double? pendingY,
+  bool draftMode = false,
+  double? draftX,
+  double? draftY,
+  String? draftSealNumber,
+}) {
+  final markers = visibleMarkers.map((m) => {...m}).toList();
+
+  if (draftMode && draftX != null && draftY != null) {
+    return [
+      ...markers,
+      {
+        'sealId': '__draft__',
+        'sealNumber': draftSealNumber ?? '?',
+        'x': draftX,
+        'y': draftY,
+        'status': 'draft',
+        'pending': true,
+      },
+    ];
+  }
+
+  final pendingSealId = placingSealId ?? movingSealId;
+  if (pendingSealId == null || pendingX == null || pendingY == null) {
+    return markers;
+  }
+
+  Map<String, dynamic>? existing;
+  for (final marker in visibleMarkers) {
+    if (marker['sealId'] == pendingSealId) {
+      existing = marker;
+      break;
+    }
+  }
+  Map<String, dynamic>? seal;
+  for (final item in floorSeals) {
+    if (item['id'] == pendingSealId) {
+      seal = item;
+      break;
+    }
+  }
+
+  final pendingMarker = {
+    ...?existing,
+    'sealId': pendingSealId,
+    'sealNumber': existing?['sealNumber'] ?? seal?['sealNumber'] ?? '',
+    'x': pendingX,
+    'y': pendingY,
+    'status': existing?['status'] ?? seal?['status'] ?? 'draft',
+    'reviewStatus': existing?['reviewStatus'] ?? seal?['reviewStatus'],
+    'createdById': existing?['createdById'] ?? seal?['createdById'],
+    'createdByName': existing?['createdByName'] ?? seal?['createdByName'],
+    'pending': true,
+  };
+
+  return [
+    ...markers.where((m) => m['sealId'] != pendingSealId),
+    pendingMarker,
+  ];
+}
+
 class FloorPlanScreen extends ConsumerStatefulWidget {
   const FloorPlanScreen({
     super.key,
@@ -120,19 +187,18 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   }
 
   List<Map<String, dynamic>> get _displayMarkers {
-    if (!_isDraftMode || _draftX == null || _draftY == null) {
-      return _visibleMarkers;
-    }
-    return [
-      ..._visibleMarkers,
-      {
-        'sealId': '__draft__',
-        'sealNumber': widget.draftSealNumber ?? '?',
-        'x': _draftX,
-        'y': _draftY,
-        'status': 'draft',
-      },
-    ];
+    return floorPlanDisplayMarkers(
+      visibleMarkers: _visibleMarkers,
+      floorSeals: _floorSeals,
+      placingSealId: _placingSealId,
+      movingSealId: _movingSealId,
+      pendingX: _pendingX,
+      pendingY: _pendingY,
+      draftMode: _isDraftMode,
+      draftX: _draftX,
+      draftY: _draftY,
+      draftSealNumber: widget.draftSealNumber,
+    );
   }
 
   Future<void> _load() async {
@@ -153,8 +219,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     }
     try {
       final res = await ref.read(dioProvider).get(
-        '/api/jobs/${widget.jobId}/floors/${widget.floorId}/drawing',
-      );
+            '/api/jobs/${widget.jobId}/floors/${widget.floorId}/drawing',
+          );
       final data = res.data as Map<String, dynamic>;
       final drawing = data['drawing'] as Map<String, dynamic>?;
       final markers =
@@ -218,8 +284,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
 
   Future<void> _loadFloorSeals(AppDatabase db) async {
     final rows = await (db.select(db.localSeals)
-          ..where((s) =>
-              s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
+          ..where(
+              (s) => s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
         .get();
     _floorSeals = rows.map((r) {
       String? createdById;
@@ -260,16 +326,16 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   Future<void> _loadFloorSealsFromApi() async {
     try {
       final res = await ref.read(dioProvider).get(
-        '/api/seals/floors/${widget.floorId}/seals',
-      );
+            '/api/seals/floors/${widget.floorId}/seals',
+          );
       final apiList = (res.data as List).cast<Map<String, dynamic>>();
       final byId = {for (final s in _floorSeals) s['id'] as String: s};
       _floorSeals = apiList.map((m) {
         final id = m['id'] as String;
         final existing = byId[id];
         final worker = m['worker'] as Map<String, dynamic>?;
-        final createdById = worker?['id'] as String? ??
-            existing?['createdById'] as String?;
+        final createdById =
+            worker?['id'] as String? ?? existing?['createdById'] as String?;
         final createdByName = worker?['displayName'] as String? ??
             worker?['username'] as String? ??
             existing?['createdByName'] as String?;
@@ -290,8 +356,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     if (!offline) {
       try {
         final res = await ref.read(dioProvider).get(
-          '/api/jobs/${widget.jobId}/floors/${widget.floorId}/placement-stats',
-        );
+              '/api/jobs/${widget.jobId}/floors/${widget.floorId}/placement-stats',
+            );
         final data = res.data as Map<String, dynamic>;
         _total = data['total'] as int? ?? 0;
         _placed = data['placed'] as int? ?? 0;
@@ -332,19 +398,18 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     });
   }
 
-  List<Map<String, dynamic>> _enrichMarkers(List<Map<String, dynamic>> markers) {
+  List<Map<String, dynamic>> _enrichMarkers(
+      List<Map<String, dynamic>> markers) {
     final sealMeta = {for (final s in _floorSeals) s['id'] as String: s};
-    return markers
-        .map((m) {
-          final sealId = m['sealId'] as String;
-          final meta = sealMeta[sealId];
-          return {
-            ...m,
-            'createdById': m['createdById'] ?? meta?['createdById'],
-            'createdByName': m['createdByName'] ?? meta?['createdByName'],
-          };
-        })
-        .toList();
+    return markers.map((m) {
+      final sealId = m['sealId'] as String;
+      final meta = sealMeta[sealId];
+      return {
+        ...m,
+        'createdById': m['createdById'] ?? meta?['createdById'],
+        'createdByName': m['createdByName'] ?? meta?['createdByName'],
+      };
+    }).toList();
   }
 
   Future<void> _cacheBundle(
@@ -417,26 +482,23 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           // na výkrese nezůstala fantomová značka.
           .where((m) => sealById.containsKey(m.sealId))
           .map((m) {
-            final seal = sealById[m.sealId];
-            return {
-              'sealId': m.sealId,
-              'sealNumber': m.sealNumber,
-              'x': m.x,
-              'y': m.y,
-              'status': seal?['status'] ?? 'draft',
-              'reviewStatus': seal?['reviewStatus'],
-            };
-          })
-          .toList();
+        final seal = sealById[m.sealId];
+        return {
+          'sealId': m.sealId,
+          'sealNumber': m.sealNumber,
+          'x': m.x,
+          'y': m.y,
+          'status': seal?['status'] ?? 'draft',
+          'reviewStatus': seal?['reviewStatus'],
+        };
+      }).toList();
       _imageBytes = bytes;
       if (!keepLoading) _loading = false;
       _fromCache = hasCache;
       _offlinePendingMessage = hasMetadata && !hasCache
           ? 'Výkres existuje, soubor není stažen. Připojte síť nebo počkejte na stažení.'
           : null;
-      _error = !hasCache && !hasMetadata
-          ? 'Výkres není v offline cache'
-          : null;
+      _error = !hasCache && !hasMetadata ? 'Výkres není v offline cache' : null;
     });
     _focusSealIfNeeded();
     return hasCache;
@@ -483,7 +545,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Smazání selhalo'))),
+        SnackBar(
+            content: Text(apiErrorMessage(e, fallback: 'Smazání selhalo'))),
       );
     }
   }
@@ -511,22 +574,22 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         );
 
     await (db.update(db.localSeals)..where((s) => s.id.equals(sealId))).write(
-          const LocalSealsCompanion(
-            markerPlacementPending: Value(false),
-          ),
-        );
+      const LocalSealsCompanion(
+        markerPlacementPending: Value(false),
+      ),
+    );
 
     await ref.read(syncServiceProvider).enqueueMutation(
-          db: db,
-          entityType: 'seal_marker',
-          operation: 'update',
-          payload: {
-            'sealId': sealId,
-            'floorId': widget.floorId,
-            'x': x,
-            'y': y,
-          },
-        );
+      db: db,
+      entityType: 'seal_marker',
+      operation: 'update',
+      payload: {
+        'sealId': sealId,
+        'floorId': widget.floorId,
+        'x': x,
+        'y': y,
+      },
+    );
 
     try {
       await ref.read(dioProvider).put(
@@ -569,7 +632,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Značka uložena lokálně — synchronizuje se po připojení'),
+          content:
+              Text('Značka uložena lokálně — synchronizuje se po připojení'),
         ),
       );
     }
@@ -662,12 +726,11 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
 
   bool _canMoveMarker(Map<String, dynamic> marker) {
     final auth = ref.read(authServiceProvider);
-    if (auth.isUcetni) return false;
     if (auth.isVedeni || auth.isAdmin) return true;
     final userId = ref.read(currentUserIdProvider);
     return marker['createdById'] == userId ||
-        _floorSeals.any((s) =>
-            s['id'] == marker['sealId'] && s['createdById'] == userId);
+        _floorSeals.any(
+            (s) => s['id'] == marker['sealId'] && s['createdById'] == userId);
   }
 
   Future<void> _onMarkerTap(Map<String, dynamic> marker) async {
@@ -706,7 +769,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     } else if (action == 'move') {
       setState(() => _movingSealId = marker['sealId'] as String);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Klepněte na nové místo a potvrďte uložení')),
+        const SnackBar(
+            content: Text('Klepněte na nové místo a potvrďte uložení')),
       );
     }
   }
@@ -728,7 +792,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              decoration: const InputDecoration(labelText: 'Nebo vyberte ze seznamu'),
+              decoration:
+                  const InputDecoration(labelText: 'Nebo vyberte ze seznamu'),
               items: _floorSeals
                   .map((s) => DropdownMenuItem(
                         value: s['id'] as String,
@@ -740,7 +805,8 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
           FilledButton(
             onPressed: () {
               final num = ctrl.text.trim();
@@ -880,169 +946,172 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         }
       },
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(_isDraftMode ? 'Umístit značku' : 'Výkres patra'),
-        actions: [
-          if (_imageBytes != null) ...[
-            if (auth.canAccessReports)
+        appBar: AppBar(
+          title: Text(_isDraftMode ? 'Umístit značku' : 'Výkres patra'),
+          actions: [
+            if (_imageBytes != null) ...[
+              if (auth.canAccessReports)
+                IconButton(
+                  icon: const Icon(Icons.picture_as_pdf_outlined),
+                  tooltip: 'Export PDF',
+                  onPressed: _exportPdf,
+                ),
               IconButton(
-                icon: const Icon(Icons.picture_as_pdf_outlined),
-                tooltip: 'Export PDF',
-                onPressed: _exportPdf,
+                icon: const Icon(Icons.search),
+                tooltip: 'Najít ucpávku',
+                onPressed: _showFindSeal,
               ),
-            IconButton(
-              icon: const Icon(Icons.search),
-              tooltip: 'Najít ucpávku',
-              onPressed: _showFindSeal,
-            ),
-            IconButton(
-              icon: const Icon(Icons.filter_list),
-              tooltip: 'Filtry',
-              onPressed: _showFilters,
-            ),
-          ],
-          if (auth.canManageFloorDrawings) ...[
-            IconButton(
-              icon: _uploading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.upload_file),
-              onPressed: _uploading ? null : _uploadDrawing,
-              tooltip: _drawing != null ? 'Nahradit výkres' : 'Nahrát výkres',
-            ),
-            if (_drawing != null)
               IconButton(
-                icon: const Icon(Icons.delete_outline),
-                onPressed: _deleteDrawing,
-                tooltip: 'Smazat výkres',
+                icon: const Icon(Icons.filter_list),
+                tooltip: 'Filtry',
+                onPressed: _showFilters,
               ),
+            ],
+            if (auth.canManageFloorDrawings) ...[
+              IconButton(
+                icon: _uploading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.upload_file),
+                onPressed: _uploading ? null : _uploadDrawing,
+                tooltip: _drawing != null ? 'Nahradit výkres' : 'Nahrát výkres',
+              ),
+              if (_drawing != null)
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: _deleteDrawing,
+                  tooltip: 'Smazat výkres',
+                ),
+            ],
+            IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           ],
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
-        ],
+        ),
+        body: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  JobContextBar(jobId: widget.jobId),
+                  PlacementStatsBanner(
+                    total: _total,
+                    placed: _placed,
+                    unplaced: _unplaced,
+                    onShowUnplaced: _unplaced > 0 ? _showUnplaced : null,
+                  ),
+                  if (_filter.isActive)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.lg,
+                        vertical: AppSpacing.sm,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Filtr: ${_filter.description}',
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            tooltip: 'Zrušit filtr',
+                            onPressed: () => setState(
+                              () => _filter = FloorPlanFilterState.allFilters,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_fromCache && !_loading)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      child: Text(
+                        'Offline — zobrazena uložená cache výkresu',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  if (_isLowResRaster)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.sm),
+                      color: AppColors.warning.withValues(alpha: 0.12),
+                      child: Text(
+                        'Výkres má nízké rozlišení a při přiblížení může být rozmazaný.',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  if (_isDraftMode ||
+                      _placingSealId != null ||
+                      _movingSealId != null)
+                    Container(
+                      padding: const EdgeInsets.all(AppSpacing.md),
+                      color: AppColors.info.withValues(alpha: 0.15),
+                      child: Text(
+                        _isDraftMode
+                            ? 'Klepněte na výkres a potvrďte umístění tlačítkem dole'
+                            : _placingSealId != null
+                                ? 'Klepněte na výkres a uložte značku tlačítkem dole'
+                                : 'Klepněte na nové místo a uložte přesun tlačítkem dole',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    ),
+                  if (_error != null)
+                    Padding(
+                      padding: const EdgeInsets.all(AppSpacing.lg),
+                      child: Text(_error!,
+                          style: const TextStyle(color: AppColors.error)),
+                    ),
+                  Expanded(
+                    child: _imageBytes == null
+                        ? EmptyState(
+                            message: _offlinePendingMessage ??
+                                (auth.canManageFloorDrawings
+                                    ? 'Patro nemá výkres — nahrajte obrázek nebo PDF'
+                                    : 'Výkres zatím není nahrán'),
+                            icon: _offlinePendingMessage != null
+                                ? Icons.cloud_download_outlined
+                                : Icons.map_outlined,
+                            action: _offlinePendingMessage != null
+                                ? null
+                                : auth.canManageFloorDrawings
+                                    ? AppPrimaryButton(
+                                        label: 'Nahrát výkres',
+                                        fullWidth: false,
+                                        onPressed:
+                                            _uploading ? null : _uploadDrawing,
+                                      )
+                                    : null,
+                          )
+                        : FloorPlanViewer(
+                            bytes: _imageBytes!,
+                            mimeType: _drawing?['mimeType'] as String? ??
+                                'image/webp',
+                            intrinsicWidth: width,
+                            intrinsicHeight: height,
+                            transformationController: _transformController,
+                            viewerScale: _viewerScale,
+                            markers: _displayMarkers,
+                            highlightSealId: _highlightSealId,
+                            onCanvasSizeChanged: (size) {
+                              if (_canvasSize != size) {
+                                setState(() => _canvasSize = size);
+                              }
+                            },
+                            onTapPlan: (_isDraftMode ||
+                                    _placingSealId != null ||
+                                    _movingSealId != null)
+                                ? _onTapPlan
+                                : null,
+                            onMarkerTap: _onMarkerTap,
+                          ),
+                  ),
+                ],
+              ),
+        bottomNavigationBar: _buildBottomBar(),
       ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                JobContextBar(jobId: widget.jobId),
-                PlacementStatsBanner(
-                  total: _total,
-                  placed: _placed,
-                  unplaced: _unplaced,
-                  onShowUnplaced: _unplaced > 0 ? _showUnplaced : null,
-                ),
-                if (_filter.isActive)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppSpacing.lg,
-                      vertical: AppSpacing.sm,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Filtr: ${_filter.description}',
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          tooltip: 'Zrušit filtr',
-                          onPressed: () => setState(
-                            () => _filter = FloorPlanFilterState.allFilters,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_fromCache && !_loading)
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    color: AppColors.warning.withValues(alpha: 0.12),
-                    child: Text(
-                      'Offline — zobrazena uložená cache výkresu',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                if (_isLowResRaster)
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.sm),
-                    color: AppColors.warning.withValues(alpha: 0.12),
-                    child: Text(
-                      'Výkres má nízké rozlišení a při přiblížení může být rozmazaný.',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
-                if (_isDraftMode || _placingSealId != null || _movingSealId != null)
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.md),
-                    color: AppColors.info.withValues(alpha: 0.15),
-                    child: Text(
-                      _isDraftMode
-                          ? 'Klepněte na výkres a potvrďte umístění tlačítkem dole'
-                          : _placingSealId != null
-                              ? 'Klepněte na výkres a uložte značku tlačítkem dole'
-                              : 'Klepněte na nové místo a uložte přesun tlačítkem dole',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ),
-                if (_error != null)
-                  Padding(
-                    padding: const EdgeInsets.all(AppSpacing.lg),
-                    child: Text(_error!, style: const TextStyle(color: AppColors.error)),
-                  ),
-                Expanded(
-                  child: _imageBytes == null
-                      ? EmptyState(
-                          message: _offlinePendingMessage ??
-                              (auth.canManageFloorDrawings
-                                  ? 'Patro nemá výkres — nahrajte obrázek nebo PDF'
-                                  : 'Výkres zatím není nahrán'),
-                          icon: _offlinePendingMessage != null
-                              ? Icons.cloud_download_outlined
-                              : Icons.map_outlined,
-                          action: _offlinePendingMessage != null
-                              ? null
-                              : auth.canManageFloorDrawings
-                                  ? AppPrimaryButton(
-                                      label: 'Nahrát výkres',
-                                      fullWidth: false,
-                                      onPressed:
-                                          _uploading ? null : _uploadDrawing,
-                                    )
-                                  : null,
-                        )
-                      : FloorPlanViewer(
-                          bytes: _imageBytes!,
-                          mimeType:
-                              _drawing?['mimeType'] as String? ?? 'image/webp',
-                          intrinsicWidth: width,
-                          intrinsicHeight: height,
-                          transformationController: _transformController,
-                          viewerScale: _viewerScale,
-                          markers: _displayMarkers,
-                          highlightSealId: _highlightSealId,
-                          onCanvasSizeChanged: (size) {
-                            if (_canvasSize != size) {
-                              setState(() => _canvasSize = size);
-                            }
-                          },
-                          onTapPlan: (_isDraftMode ||
-                                  _placingSealId != null ||
-                                  _movingSealId != null)
-                              ? _onTapPlan
-                              : null,
-                          onMarkerTap: _onMarkerTap,
-                        ),
-                ),
-              ],
-            ),
-      bottomNavigationBar: _buildBottomBar(),
-    ),
     );
   }
 
@@ -1054,8 +1123,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         child: Padding(
           padding: const EdgeInsets.all(AppSpacing.lg),
           child: FilledButton(
-            onPressed:
-                _draftX != null && _draftY != null ? _confirmDraftPlacement : null,
+            onPressed: _draftX != null && _draftY != null
+                ? _confirmDraftPlacement
+                : null,
             child: const Text('Potvrdit umístění'),
           ),
         ),

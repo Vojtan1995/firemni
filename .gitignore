@@ -20,3 +20,8 @@ frontend/android/*.jks
 frontend/android/app/*.jks
 *.iml
 coverage/
+
+# Release artefakty — patří do GitHub Releases, ne do repa
+/ucpavky-*.apk
+/ucpavky-windows-release.zip
+/*.exe

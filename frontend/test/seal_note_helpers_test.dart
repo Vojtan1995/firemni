@@ -14,15 +14,15 @@ void main() {
     expect(payload['internalNote'], 'internal');
   });
 
-  test('ucetni payload omits internal note', () {
+  test('vedeni payload sets both note and internal note', () {
     final payload = <String, dynamic>{'sealNumber': '1'};
     SealNoteHelpers.applyNotesToPayload(
       payload,
-      role: 'ucetni',
+      role: 'vedeni',
       noteText: 'public',
       internalNoteText: 'internal',
     );
     expect(payload['note'], 'public');
-    expect(payload.containsKey('internalNote'), isFalse);
+    expect(payload['internalNote'], 'internal');
   });
 }

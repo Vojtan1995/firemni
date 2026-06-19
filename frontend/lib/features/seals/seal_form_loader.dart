@@ -22,6 +22,8 @@ List<SealEntryDraftData> entryDraftsFromSealMap(Map<String, dynamic> seal) {
       materials: materials,
       itemLengthMmText: m['itemLengthMm']?.toString() ?? '',
       itemWidthMmText: m['itemWidthMm']?.toString() ?? '',
+      steelInsulated: m['steelInsulated'] as bool?,
+      electroInstallationType: m['electroInstallationType'] as String?,
     ));
   }
   if (list.isEmpty) {
@@ -49,6 +51,8 @@ class SealEntryDraftData {
     List<String>? materials,
     this.itemLengthMmText = '',
     this.itemWidthMmText = '',
+    this.steelInsulated,
+    this.electroInstallationType,
   })  : dimension = dimension ?? defaultDimensionForEntry('EL.V.', 'žádná'),
         materials = materials ?? [];
 
@@ -59,4 +63,10 @@ class SealEntryDraftData {
   List<String> materials;
   String itemLengthMmText;
   String itemWidthMmText;
+
+  /// Doizolováno (Ano/Ne) – pouze pro typ OCEL.
+  bool? steelInsulated;
+
+  /// Typ elektro instalace (Svazek/Husí krk/Žlab) – pouze pro typ EL.V.
+  String? electroInstallationType;
 }

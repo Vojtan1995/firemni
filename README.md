@@ -4,8 +4,8 @@ Interní firemní aplikace pro evidenci požárních ucpávek a prostupů.
 
 ## Stack
 
-- **Backend:** Node.js, Express, Prisma, PostgreSQL
-- **Frontend:** Flutter, Riverpod, go_router, Drift, Dio
+- **Backend:** Node.js 20+, Express 4, Prisma 6, PostgreSQL 16
+- **Frontend:** Flutter 3.44+, Riverpod, go_router, Drift (SQLite), Dio
 
 ## Git workflow
 
@@ -88,16 +88,18 @@ Podrobnosti: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
 
 Lokální vývoj používá `STORAGE_DRIVER=local` (default) a `UPLOAD_PATH=./uploads`.
 
-## Seed účty (PIN: 1234 v dev)
+## Seed účty
 
-| Uživatel | Role |
-|----------|------|
-| admin | admin |
-| vedeni | vedení |
-| ucetni | administrativa |
-| worker1, worker2 | worker |
+PIN v dev prostředí je **`123456`** (6 číslic). Validace přijímá 6–8 číslic.
 
 V produkci nastavte `SEED_DEMO_PIN` před `npx prisma db seed`.
+
+| Uživatel | Role | Popis |
+|----------|------|-------|
+| admin | admin | Plný přístup, správa všech uživatelů, koš, zálohy |
+| vedeni | vedení | Správa staveb a pater, export, správa uživatelů (mimo admin) |
+| ucetni | účetní / administrativa | Ceník, pracovní listy, export sestav |
+| worker1, worker2 | worker | Tvorba ucpávek, offline sync, fotky |
 
 ## Testovací stavba
 
@@ -106,16 +108,74 @@ V produkci nastavte `SEED_DEMO_PIN` před `npx prisma db seed`.
 ## Testy
 
 ```bash
-cd backend && npm test
-cd frontend && flutter test
+cd backend && npm test          # 52 integračních testů (Jest + supertest)
+cd frontend && flutter test     # offline unit testy
 ```
+
+## API endpointy – přehled
+
+| Skupina | Endpointy |
+|---------|-----------|
+| Auth | `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `POST /api/auth/change-pin` |
+| Stavby | `GET|POST /api/jobs`, `GET /api/jobs/by-number/:number`, `PATCH /api/jobs/:id/archive\|complete\|activate` |
+| Patra | `GET|POST /api/jobs/:jobId/floors`, `GET|POST /api/jobs/:jobId/floors/:floorId/drawing` |
+| Ucpávky | `GET|POST /api/seals`, `PATCH /api/seals/:id/status\|review\|restore`, `DELETE /api/seals/:id` |
+| Bulk operace | `POST /api/seals/bulk-status`, `POST /api/seals/bulk-move`, `POST /api/seals/bulk-export/csv` |
+| Fotky | `POST /api/seals/:id/photos`, `GET /api/photos/:id/file` |
+| Sync | `POST /api/sync/push`, `GET /api/sync/pull` |
+| Sestavy | `GET /api/reports/work-summary`, `GET /api/reports/export/csv\|pdf` |
+| Pracovní listy | `GET|POST /api/worksheets`, `GET /api/worksheets/:id/export/csv\|pdf` |
+| Zprávy | `GET /api/messages`, `POST /api/messages`, `PATCH /api/messages/:id/read` |
+| Notifikace | `GET /api/notifications`, `PATCH /api/notifications/read-all` |
+| Statistiky | `GET /api/stats/overview` |
+| Vyhledávání | `GET /api/search?q=...` |
+| Ceník | `GET /api/price-list`, `POST /api/price-list/publish` |
+| Logy | `GET /api/activity`, `GET /api/changes` |
+| Admin | `GET /api/seals/trash`, `GET|POST /api/admin/backups` |
+| App update | `GET /api/app/release?platform=android` |
+
+Podrobné schéma DB: [docs/DATABASE.md](docs/DATABASE.md). Sync protokol: [docs/SYNC.md](docs/SYNC.md).
+
+## Funkce (od v1.0.0)
+
+### Pracovní listy (Worksheets)
+Workflow fakturace: `draft → submitted → reviewed → ready_for_invoice → invoiced`. Umožňují přiřadit ucpávky z různých pater do jednoho listu pro účetní zpracování. Export do CSV/PDF.
+
+### Zprávy a notifikace
+Interní přímé zprávy mezi uživateli (`/api/messages`). Systémové notifikace při stavových změnách ucpávek (`/api/notifications`).
+
+### Statistiky / Dashboard
+`GET /api/stats/overview` vrací přehled stavu ucpávek podle role. Management a admin vidí celkové statistiky, worker vidí jen vlastní.
+
+### Globální vyhledávání
+`GET /api/search?q=...` prohledává ucpávky, stavby a pracovníky najednou. Lze filtrovat `jobId`, `floorId`.
+
+### Ceník s verzováním
+Pricing modul s historií verzí. Vedení a admin mohou publikovat nové verze, reporty vždy počítají s verzí platnou v době vytvoření ucpávky.
+
+### Plány pater (Floor drawings)
+Upload PNG/JPG plánu ke každému patru. Ucpávky lze umístit jako markery na plán (normalizované souřadnice x/y).
+
+### Bulk operace
+Hromadná změna statusu, přesun ucpávek mezi patry, hromadný CSV export – vše přes `/api/seals/bulk-*` endpointy.
+
+### Správa účastníků stavby
+Vedení může přiřadit konkrétní pracovníky ke stavbě (`/api/jobs/:jobId/participants`). Pracovníci vidí jen stavby, na které jsou přiřazeni.
+
+### Změna PINu
+`POST /api/auth/change-pin` – ověří starý PIN a nastaví nový. Nový PIN musí mít 6–8 číslic.
 
 ## Dokumentace
 
 | Soubor | Obsah |
 |--------|--------|
-| [RUNNING.md](RUNNING.md) | Lokální spuštění |
-| [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md) | Deploy backendu |
+| [RUNNING.md](RUNNING.md) | Lokální spuštění (PostgreSQL, backend, Flutter) |
+| [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Známé problémy a obejití |
+| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Stav implementace, technický dluh |
+| [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Checklist pro beta a produkci |
+| [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md) | Deploy backendu na Railway |
+| [docs/DATABASE.md](docs/DATABASE.md) | Schéma DB, tabulky, enums, pravidla |
+| [docs/SYNC.md](docs/SYNC.md) | Offline-first sync protokol |
 | [docs/TESTING.md](docs/TESTING.md) | Testovací strategie |
-| [docs/CI.md](docs/CI.md) | GitHub Actions |
-| [docs/](docs/) | Specifikace, roadmapa |
+| [docs/CI.md](docs/CI.md) | GitHub Actions pipeline |
+| [docs/01_KOMPLETNI_SPECIFIKACE.md](docs/01_KOMPLETNI_SPECIFIKACE.md) | Plná specifikace (cs) |

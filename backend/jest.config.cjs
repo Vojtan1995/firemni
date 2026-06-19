@@ -6,5 +6,6 @@ module.exports = {
   globalTeardown: '<rootDir>/__tests__/setup/globalTeardown.cjs',
   testMatch: ['**/__tests__/**/*.test.js'],
   testPathIgnorePatterns: ['/node_modules/', '/setup/'],
+  testTimeout: 30000,
   verbose: true,
 };

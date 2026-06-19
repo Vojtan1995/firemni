@@ -147,9 +147,7 @@ router.get('/admin', requireLogsView, async (req, res, next) => {
 
 // --- Nové agregované, předformátované endpointy ---
 
-const HISTORY_ROLES: UserRole[] = [UserRole.vedeni, UserRole.ucetni, UserRole.admin];
-// Pro účetní omez historii na fakturačně relevantní entity.
-const UCETNI_HISTORY_ENTITY_TYPES = ['worksheet', 'price_list'];
+const HISTORY_ROLES: UserRole[] = [UserRole.vedeni, UserRole.admin];
 
 /**
  * „Historie změn" – audit datových změn (ChangeLog + mutační ActivityLog),
@@ -163,12 +161,7 @@ router.get('/history', async (req, res, next) => {
     const entityTypeFilter = req.query.entityType as string | undefined;
     const userId = req.query.userId as string | undefined;
 
-    const isUcetni = role === UserRole.ucetni;
-    const entityTypeWhere = isUcetni
-      ? { entityType: entityTypeFilter ?? { in: UCETNI_HISTORY_ENTITY_TYPES } }
-      : entityTypeFilter
-        ? { entityType: entityTypeFilter }
-        : {};
+    const entityTypeWhere = entityTypeFilter ? { entityType: entityTypeFilter } : {};
 
     const [changes, activities] = await Promise.all([
       prisma.changeLog.findMany({

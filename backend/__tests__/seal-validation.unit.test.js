@@ -11,6 +11,7 @@ describe('validateSealForChecked', () => {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: '20',
         quantity: 1,
         materials: [{ material: 'Pena' }],

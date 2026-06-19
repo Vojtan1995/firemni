@@ -11,6 +11,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Report test',
     construction: 'Stěna',
     location: 'Chodba',
@@ -18,6 +19,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 2,
         insulation: 'žádná',
@@ -58,6 +60,10 @@ describe('Reports and exports (BE-05)', () => {
   }
 
   beforeAll(async () => {
+    await prisma.seal.deleteMany({
+      where: { sealNumber: { startsWith: SEAL_PREFIX } },
+    });
+
     const w1 = await login('worker1');
     worker1Token = w1.token;
     worker1Id = w1.user.id;
@@ -177,16 +183,15 @@ describe('Reports and exports (BE-05)', () => {
       expect(res.body.count).toBeGreaterThanOrEqual(3);
     });
 
-    it('ucetni can access work-summary and export', async () => {
-      const ucetniToken = (await login('ucetni')).token;
+    it('vedeni can access work-summary and export', async () => {
       const summary = await request(app)
         .get('/api/reports/work-summary')
-        .set('Authorization', `Bearer ${ucetniToken}`)
+        .set('Authorization', `Bearer ${managementToken}`)
         .query(reportQuery());
       expect(summary.status).toBe(200);
       const csv = await request(app)
         .get('/api/reports/export/csv')
-        .set('Authorization', `Bearer ${ucetniToken}`)
+        .set('Authorization', `Bearer ${managementToken}`)
         .query(reportQuery());
       expect(csv.status).toBe(200);
     });
@@ -282,11 +287,10 @@ describe('Reports and exports (BE-05)', () => {
   });
 
   describe('GET /api/reports/filter-options', () => {
-    it('ucetni gets jobs and workers for filter dropdowns', async () => {
-      const ucetniToken = (await login('ucetni')).token;
+    it('vedeni gets jobs and workers for filter dropdowns', async () => {
       const res = await request(app)
         .get('/api/reports/filter-options')
-        .set('Authorization', `Bearer ${ucetniToken}`);
+        .set('Authorization', `Bearer ${managementToken}`);
       expect(res.status).toBe(200);
       expect(Array.isArray(res.body.jobs)).toBe(true);
       expect(Array.isArray(res.body.workers)).toBe(true);
@@ -316,11 +320,10 @@ describe('Reports and exports (BE-05)', () => {
       expect(res.body.workers).toEqual([]);
     });
 
-    it('ucetni still cannot access GET /api/jobs', async () => {
-      const ucetniToken = (await login('ucetni')).token;
+    it('worker cannot access GET /api/jobs', async () => {
       const res = await request(app)
         .get('/api/jobs')
-        .set('Authorization', `Bearer ${ucetniToken}`);
+        .set('Authorization', `Bearer ${worker1Token}`);
       expect(res.status).toBe(403);
     });
   });

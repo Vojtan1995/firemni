@@ -175,6 +175,41 @@ Ověření: `GET /api/app/release?platform=android` → JSON s `updateAvailable:
 
 ---
 
+## 8. Aktualizace klienta (in-app updater)
+
+Klient se distribuuje mimo store (sideload APK / Windows instalátor). Novou verzi
+oznámí **vestavěný updater**: při startu ([frontend/lib/main.dart](frontend/lib/main.dart)) a ručně přes nápovědu. Backend
+hlásí poslední verzi přes `GET /api/app/release?platform=android|windows`
+([backend/src/services/app-release.service.ts](backend/src/services/app-release.service.ts)) podle env proměnných.
+
+### Vydání nové verze
+
+1. **Bump verze:** ve [frontend/pubspec.yaml](frontend/pubspec.yaml) zvýšit `version: X.Y.Z+B`
+   (`B` = build number — to porovnává updater).
+2. **Tag:** `git tag vX.Y.Z && git push origin vX.Y.Z` → spustí
+   [.github/workflows/release.yml](.github/workflows/release.yml): postaví podepsané APK + Windows instalátor
+   (Inno Setup, [frontend/windows/installer.iss](frontend/windows/installer.iss)) a publikuje je jako assety GitHub Release.
+3. **Railway env:** podle výpisu v summary workflow nastavit a restartovat:
+   - Android: `APP_RELEASE_BUILD`, `APP_RELEASE_MIN_BUILD`, `APP_RELEASE_APK_URL`,
+     `APP_RELEASE_VERSION_NAME`, `APP_RELEASE_NOTES`
+   - Windows: `APP_RELEASE_WIN_BUILD`, `APP_RELEASE_WIN_MIN_BUILD`,
+     `APP_RELEASE_WIN_URL`, `APP_RELEASE_WIN_VERSION_NAME`, `APP_RELEASE_WIN_NOTES`
+4. **Ověření:** klient se starším buildem po startu nabídne dialog aktualizace.
+
+### Vynucená aktualizace
+
+Nastav `*_MIN_BUILD` = nový `*_BUILD`. Klient pod minimem dostane dialog, který
+nejde zavřít — použij u breaking change sync/API, ať v terénu neběží nekompatibilní klient.
+
+### GitHub Secrets pro podpis APK
+
+`ANDROID_KEYSTORE_BASE64` (release `.jks` v base64), `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_PASSWORD`, `ANDROID_KEY_ALIAS`. Keystore i `key.properties` jsou
+gitignorované — v CI se rekonstruují ze secrets. Podpis musí být stálý, jinak
+update nepřepíše dřívější instalaci.
+
+---
+
 ## Shrnutí jednou větou
 
 **Interní beta je připravená** s lokálním/LAN backendem a Windows/Android klientem; **ostré nasazení** vyžaduje HTTPS, hostovaný backend, podpis aplikací a provozní procesy mimo aktuální V1 scope.

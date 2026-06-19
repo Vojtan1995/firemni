@@ -7,7 +7,7 @@ import { prisma } from '../lib/prisma.js';
 import { badRequest, notFound } from '../lib/errors.js';
 import { toNumber, multiplyMoney } from '../lib/decimal.js';
 import { logActivity } from './audit.service.js';
-import { computeEntryValues } from './seal-calculations.js';
+import { computeEntryValues, OVER_DEDUCTION_MESSAGE } from './seal-calculations.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -230,6 +230,7 @@ export async function priceSealEntries(
     entryType: e.entryType,
     itemLengthMm: e.itemLengthMm,
     itemWidthMm: e.itemWidthMm,
+    dimension: e.dimension,
   }));
 
   for (let i = 0; i < entries.length; i++) {
@@ -245,6 +246,10 @@ export async function priceSealEntries(
       dimInputs,
       i,
     );
+
+    if (computed.netAreaWasNegative) {
+      throw badRequest(OVER_DEDUCTION_MESSAGE);
+    }
 
     const preferredUnit = computed.unit !== 'kus' ? computed.unit : undefined;
     const match = await lookupPriceItem(

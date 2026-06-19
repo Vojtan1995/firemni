@@ -106,6 +106,6 @@ flutter test test/integration/runtime_verification_test.dart test/login_home_smo
 | Backend job: DB connection refused | Postgres service ještě není healthy – zkontrolujte health-cmd v workflow |
 | `flutter-runtime`: Backend did not become ready | `npm start` selhal – v logu jobu hledejte chybu Prisma / port 3000 |
 | Drift / SQLite na Linuxu | Job instaluje `libsqlite3-dev` |
-| Login E2E fail | Seed musí obsahovat `worker1` / PIN `1234` – stejný seed jako lokálně |
+| Login E2E fail | Seed musí obsahovat `worker1` / PIN `123456` – stejný seed jako lokálně |
 
 Více o test DB: [TESTING.md](TESTING.md), [setup-local-postgres-test.sql](setup-local-postgres-test.sql).

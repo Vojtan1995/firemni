@@ -36,7 +36,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> {
 
   bool get _showsAllJobs {
     final role = ref.watch(authUserProvider)?['role'] as String?;
-    return role == 'vedeni' || role == 'ucetni' || role == 'admin';
+    return role == 'vedeni' || role == 'admin';
   }
 
   Future<void> _loadJobs() async {

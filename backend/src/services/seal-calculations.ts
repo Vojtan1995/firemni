@@ -1,6 +1,16 @@
-/** Plocha z rozměrů v mm → m² */
+/** Chybová hláška při přeodečtení (odečet > celková plocha prostupu). */
+export const OVER_DEDUCTION_MESSAGE =
+  'Odečtená plocha je větší než celková plocha prostupu.';
+
+/** Obdélník: plocha z rozměrů v mm → m² */
 export function areaFromMm(lengthMm: number, widthMm: number): number {
   return (lengthMm * widthMm) / 1_000_000;
+}
+
+/** Kruh: plocha z průměru v mm → m² */
+export function circleAreaFromDiameterMm(diameterMm: number): number {
+  const r = diameterMm / 2;
+  return (Math.PI * r * r) / 1_000_000;
 }
 
 /** VZT: běžné metry z D a Š v mm */
@@ -8,12 +18,32 @@ export function vztLinearMeters(lengthMm: number, widthMm: number): number {
   return ((2 * lengthMm + 2 * widthMm) * 2) / 1000;
 }
 
-/** Plocha prvku s příplatkem +50 mm na každou stranu */
-export function elementAreaWithMargin(lengthMm: number, widthMm: number): number {
-  return ((lengthMm + 50) * (widthMm + 50)) / 1_000_000;
+/**
+ * Plocha procházející instalace v m² podle tvaru (Task 5):
+ *  - obdélník: šířka × výška / 1e6
+ *  - kruh: π × (Ø/2)² / 1e6
+ *  - ruční: zadaná hodnota v m²
+ */
+export type Deduction =
+  | { kind: 'rect'; widthMm: number; heightMm: number }
+  | { kind: 'circle'; diameterMm: number }
+  | { kind: 'manual'; areaM2: number };
+
+export function deductionArea(d: Deduction): number {
+  switch (d.kind) {
+    case 'rect':
+      return areaFromMm(d.widthMm, d.heightMm);
+    case 'circle':
+      return circleAreaFromDiameterMm(d.diameterMm);
+    case 'manual':
+      return Math.max(0, d.areaM2);
+  }
 }
 
-/** Čistá plocha prostupu po odečtu prvků; nikdy záporná */
+/**
+ * Čistá účtovaná plocha prostupu = celková plocha otvoru − součet ploch instalací.
+ * Nikdy není záporná; pokud odečet přesáhne celkovou plochu, vrátí wasNegative=true.
+ */
 export function netOpeningArea(
   openingAreaM2: number,
   deductionAreasM2: number[],
@@ -35,7 +65,19 @@ export type EntryDimensions = {
   entryType: string;
   itemLengthMm: number | null;
   itemWidthMm: number | null;
+  dimension?: string | null;
 };
+
+/** Vytáhne průměr (Ø) z textového rozměru typu "Ø50" nebo "Ø20-100" (průměr = průměr středu). */
+function diameterFromDimension(dim: string | null | undefined): number | null {
+  if (!dim) return null;
+  const n = dim.replace(/\s+/g, '').toLowerCase();
+  const range = n.match(/ø(\d+)-(\d+)/);
+  if (range) return Math.round((parseInt(range[1], 10) + parseInt(range[2], 10)) / 2);
+  const single = n.match(/ø(\d+)/);
+  if (single) return parseInt(single[1], 10);
+  return null;
+}
 
 export type ComputedEntryValues = {
   calculatedAreaM2: number | null;
@@ -50,11 +92,25 @@ function hasMmPair(length: number | null, width: number | null): length is numbe
   return length != null && width != null && length > 0 && width > 0;
 }
 
-/** Součet ploch prvků s +50 mm (VZT a další s item rozměry). */
+/**
+ * Plochy procházejících instalací (exaktně, Task 5):
+ *  - má-li instalace obdélníkové rozměry (item D×Š) → obdélník
+ *  - jinak má-li v rozměru průměr Ø → kruh
+ *  - ostatní (bez rozměru) se neodečítají
+ */
 export function sumDeductionAreas(entries: EntryDimensions[]): number[] {
-  return entries
-    .filter((e) => hasMmPair(e.itemLengthMm, e.itemWidthMm))
-    .map((e) => elementAreaWithMargin(e.itemLengthMm!, e.itemWidthMm!));
+  const areas: number[] = [];
+  for (const e of entries) {
+    if (hasMmPair(e.itemLengthMm, e.itemWidthMm)) {
+      areas.push(areaFromMm(e.itemLengthMm!, e.itemWidthMm!));
+      continue;
+    }
+    const d = diameterFromDimension(e.dimension);
+    if (d != null && d > 0) {
+      areas.push(circleAreaFromDiameterMm(d));
+    }
+  }
+  return areas;
 }
 
 export function computeEntryValues(

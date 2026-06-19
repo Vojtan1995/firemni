@@ -1,4 +1,4 @@
-import { Prisma, UserRole, WorkSheetStatus } from '@prisma/client';
+import { Prisma, UserRole, WorkSheetStatus, SealTrade, JobStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest } from '../lib/errors.js';
 import {
@@ -41,7 +41,9 @@ function clampLimit(limit?: number) {
 async function jobScopeWhere(role: UserRole, userId: string): Promise<Prisma.SealWhereInput> {
   if (bypassesJobParticipantCheck(role)) return {};
   const jobIds = await getParticipantJobIds(userId);
-  return { jobId: { in: jobIds } };
+  // Worker nesmí vidět ucpávky z archivovaných/dokončených zakázek – sjednoceno
+  // s assertJobReadable, který workerovi neaktivní zakázky vrací jako notFound.
+  return { jobId: { in: jobIds }, job: { status: JobStatus.active } };
 }
 
 function textSearchWhere(q: string, role: UserRole): Prisma.SealWhereInput {
@@ -192,6 +194,7 @@ export async function searchApp(params: SearchParams) {
     if (params.role === UserRole.worker) {
       const jobIds = await getParticipantJobIds(params.userId);
       jobWhere.id = { in: jobIds };
+      jobWhere.status = JobStatus.active;
     }
     jobHits = await prisma.job.findMany({
       where: jobWhere,
@@ -227,15 +230,22 @@ export async function listFloorSealsFiltered(options: {
   role: UserRole;
   showWorker: boolean;
   filters: SealProblemFilter[];
+  trade?: SealTrade;
 }) {
   const includeEntries = needsEntryInclude(options.filters);
   const filterWhere = buildSealFilterWhere(options.filters, options.role);
 
   const rows = await prisma.seal.findMany({
-    where: { floorId: options.floorId, deletedAt: null, ...filterWhere },
+    where: {
+      floorId: options.floorId,
+      deletedAt: null,
+      ...filterWhere,
+      ...(options.trade ? { trade: options.trade } : {}),
+    },
     select: {
       id: true,
       sealNumber: true,
+      trade: true,
       system: true,
       status: true,
       version: true,

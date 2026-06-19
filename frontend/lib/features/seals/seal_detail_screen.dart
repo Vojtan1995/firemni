@@ -16,6 +16,7 @@ import '../../database/database_provider.dart';
 import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import 'seal_constants.dart';
 import '../jobs/work_context_service.dart';
 import '../worksheets/worksheet_status_labels.dart';
 import '../sync/sync_retry.dart';
@@ -91,6 +92,7 @@ Future<void> cacheSealDetailFromApi(
           jobId: seal['jobId'] as String,
           floorId: seal['floorId'] as String,
           sealNumber: seal['sealNumber'] as String,
+          trade: Value(seal['trade'] as String? ?? 'neurceno'),
           system: seal['system'] as String,
           construction: seal['construction'] as String,
           location: seal['location'] as String,
@@ -142,6 +144,7 @@ Map<String, dynamic>? sealDetailFromLocal(
   seal['jobId'] = row.jobId;
   seal['floorId'] = row.floorId;
   seal['sealNumber'] = row.sealNumber;
+  seal['trade'] = row.trade;
   seal['system'] = row.system;
   seal['construction'] = row.construction;
   seal['location'] = row.location;
@@ -778,21 +781,10 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         : materials
             .map((x) => x is Map ? x['material'] : x.toString())
             .join(', ');
-    final unitPrice = m['unitPrice'];
-    final totalPrice = m['totalPrice'];
-    final priceVersion = m['priceListVersion'] as String?;
     final unit = (m['unit'] as String?) ?? 'kus';
     final qty = m['quantity'];
     final qtyNum =
         qty is num ? qty.toDouble() : double.tryParse(qty?.toString() ?? '') ?? 1;
-    final hasPrice = unitPrice != null && totalPrice != null;
-    String formatCzk(dynamic value) {
-      if (value == null) return '—';
-      final n =
-          value is num ? value.toDouble() : double.tryParse(value.toString());
-      if (n == null) return '—';
-      return '${n.toStringAsFixed(0)} Kč';
-    }
 
     String qtyDisplay() {
       if (unit == 'm2') return '${formatArea(qtyNum)} ${unitLabel(unit)}';
@@ -820,6 +812,10 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               ],
             ),
             Text('${qtyDisplay()}, ${m['insulation']}'),
+            if (m['entryType'] == 'OCEL' && m['steelInsulated'] != null)
+              Text('Doizolováno: ${m['steelInsulated'] == true ? 'Ano' : 'Ne'}'),
+            if (m['entryType'] == 'EL.V.' && m['electroInstallationType'] != null)
+              Text('Elektro instalace: ${m['electroInstallationType']}'),
             if (matText.isNotEmpty) Text('Materiály: $matText'),
             if (m['calculatedAreaM2'] != null)
               Text(
@@ -836,26 +832,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 'Běžné metry: ${formatMb(_num(m['calculatedLinearMeters']))} mb',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-            const SizedBox(height: 8),
-            if (hasPrice) ...[
-              Text('Cena celkem: ${formatCzk(totalPrice)}'),
-              if (qtyNum > 1 || unit != 'kus')
-                Text(
-                  'Jednotková cena: ${formatCzk(unitPrice)} / ${unitLabel(unit)}',
-                )
-              else
-                Text('Jednotková cena: ${formatCzk(unitPrice)}'),
-              if (priceVersion != null && priceVersion.isNotEmpty)
-                Text(
-                  'Ceník: $priceVersion',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-            ] else
-              const Chip(
-                label: Text('Bez ceny'),
-                visualDensity: VisualDensity.compact,
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
+            // Cena se u ucpávky nezobrazuje – je pouze v soupisu a exportu (Task 6).
           ],
         ),
       ),
@@ -1104,6 +1081,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
+            _KvRow(label: 'Řemeslo', value: sealTradeLabel(seal['trade'] as String?)),
             _KvRow(label: 'Systém', value: _valueOr(seal['system'])),
             if (floorName != 'Neuvedeno')
               _KvRow(label: 'Patro', value: floorName),
@@ -1259,8 +1237,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         const SizedBox(height: AppSpacing.md),
       ],
 
-      // EVIDENCE (vedení / účetní / admin)
-      if (auth.isVedeni || auth.isAdmin || auth.isUcetni) ...[
+      // EVIDENCE (vedení / admin)
+      if (auth.isVedeni || auth.isAdmin) ...[
         _DetailSection(
           title: 'Evidence',
           children: [

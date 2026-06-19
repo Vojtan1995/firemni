@@ -9,6 +9,7 @@ class ChipSelector extends StatelessWidget {
     required this.selected,
     required this.onSelected,
     this.allowCustom = false,
+    this.labelFor,
   });
 
   final String label;
@@ -16,6 +17,9 @@ class ChipSelector extends StatelessWidget {
   final String? selected;
   final ValueChanged<String> onSelected;
   final bool allowCustom;
+
+  /// Optional mapping from internal option value to a display label.
+  final String Function(String)? labelFor;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +41,7 @@ class ChipSelector extends StatelessWidget {
             ...options.map((o) {
               final isSelected = selected == o;
               return ChoiceChip(
-                label: Text(o),
+                label: Text(labelFor != null ? labelFor!(o) : o),
                 selected: isSelected,
                 onSelected: (_) => onSelected(o),
                 // Kompaktnější chipy — nižší výška, menší tap padding.

@@ -40,6 +40,7 @@ describe('Seals trash and restore (admin)', () => {
         jobId,
         floorId,
         sealNumber: `${TRASH_PREFIX}1`,
+        trade: 'elektrikari',
         system: 'Trash test',
         construction: 'Stěna',
         location: 'Chodba',

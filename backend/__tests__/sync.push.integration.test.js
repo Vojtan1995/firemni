@@ -12,6 +12,7 @@ function sealCreatePayload(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'Sync test',
     construction: 'Stěna',
     location: 'Chodba',
@@ -19,6 +20,7 @@ function sealCreatePayload(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 2,
         insulation: 'žádná',
@@ -144,6 +146,7 @@ describe('POST /api/sync/push (BE-04)', () => {
     expect(Number(seal.entries[0].quantity)).toBe(2);
     expect(seal.entries[0]).toMatchObject({
       entryType: 'EL.V.',
+      electroInstallationType: 'Svazek',
       dimension: 'Ø20',
       insulation: 'žádná',
     });
@@ -238,6 +241,7 @@ describe('POST /api/sync/push (BE-04)', () => {
         jobId,
         floorId,
         sealNumber: `${SEAL_PREFIX}7`,
+        trade: 'elektrikari',
         system: 'Sync test',
         construction: 'Stena',
         location: 'Chodba',

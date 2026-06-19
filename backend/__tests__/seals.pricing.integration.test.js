@@ -60,6 +60,7 @@ describe('Seals pricing with dimensions', () => {
         jobId,
         floorId,
         sealNumber: `${SEAL_PREFIX}01`,
+        trade: 'elektrikari',
         system: 'Intuseal',
         construction: 'Stěna',
         location: 'Test',
@@ -94,6 +95,7 @@ describe('Seals pricing with dimensions', () => {
         jobId,
         floorId,
         sealNumber: `${SEAL_PREFIX}02`,
+        trade: 'elektrikari',
         system: 'Intuseal',
         construction: 'Stěna',
         location: 'Test',
@@ -123,8 +125,49 @@ describe('Seals pricing with dimensions', () => {
     expect(res.status).toBe(201);
     const prostup = res.body.entries.find((e) => e.entryType === 'PROSTUP');
     expect(prostup.unit).toBe('m2');
-    expect(Number(prostup.calculatedNetAreaM2)).toBeCloseTo(0.6075, 3);
-    expect(Number(prostup.quantity)).toBeCloseTo(0.6075, 3);
+    // Task 5: exaktní odečet bez +50 mm → 0,80 m² − 0,15 m² = 0,65 m²
+    expect(Number(prostup.calculatedNetAreaM2)).toBeCloseTo(0.65, 3);
+    expect(Number(prostup.quantity)).toBeCloseTo(0.65, 3);
     expect(prostup.unitPrice).not.toBeNull();
+  });
+
+  it('rejects a seal where deduction exceeds the opening area (Task 5)', async () => {
+    const res = await request(app)
+      .post('/api/seals')
+      .set('Authorization', `Bearer ${workerToken}`)
+      .send({
+        jobId,
+        floorId,
+        sealNumber: `${SEAL_PREFIX}03`,
+        trade: 'vzduchari',
+        system: 'Intuseal',
+        construction: 'Stěna',
+        location: 'Test',
+        fireRating: 'EI 60',
+        openingLengthMm: 500,
+        openingWidthMm: 500, // 0,25 m²
+        entries: [
+          {
+            entryType: 'PROSTUP',
+            dimension: '500x500 mm',
+            quantity: 1,
+            insulation: 'nehořlavá',
+            materials: ['Pěna'],
+          },
+          {
+            entryType: 'VZT',
+            dimension: '1000x1000 mm',
+            quantity: 1,
+            insulation: 'žádná',
+            materials: ['Pěna'],
+            itemLengthMm: 1000,
+            itemWidthMm: 1000, // 1,0 m² > 0,25 m²
+          },
+        ],
+      });
+    expect(res.status).toBe(400);
+    expect(String(res.body.error ?? '')).toContain(
+      'Odečtená plocha je větší než celková plocha prostupu',
+    );
   });
 });

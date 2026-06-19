@@ -86,7 +86,7 @@ flutter test test/integration/runtime_verification_test.dart test/login_home_smo
 ## Manuální scénáře (po spuštění DB + backend + frontend)
 
 ### Auth
-- [ ] Login worker1 / PIN 1234
+- [ ] Login worker1 / PIN 123456
 - [ ] Špatný PIN → chyba
 - [ ] Worker nemá položky Správa / Export v menu
 

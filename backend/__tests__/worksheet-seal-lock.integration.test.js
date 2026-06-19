@@ -10,6 +10,7 @@ function sealBody(jobId, floorId, sealNumber) {
     jobId,
     floorId,
     sealNumber,
+    trade: 'elektrikari',
     system: 'WSL',
     construction: 'Stěna',
     location: 'Test',
@@ -17,6 +18,7 @@ function sealBody(jobId, floorId, sealNumber) {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: '50',
         quantity: 1,
         insulation: 'žádná',
@@ -145,6 +147,7 @@ describe('Worksheet membership + seal lock', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '70',
             quantity: 1,
             insulation: 'žádná',
@@ -175,6 +178,7 @@ describe('Worksheet membership + seal lock', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '80',
             quantity: 1,
             insulation: 'žádná',
@@ -189,7 +193,6 @@ describe('Worksheet membership + seal lock', () => {
 describe('Restructured log endpoints', () => {
   const app = createApp();
   let workerToken;
-  let ucetniToken;
   let vedeniToken;
   let adminToken;
 
@@ -201,7 +204,6 @@ describe('Restructured log endpoints', () => {
 
   beforeAll(async () => {
     workerToken = await login('worker1');
-    ucetniToken = await login('ucetni');
     vedeniToken = await login('vedeni');
     adminToken = await login('admin');
   });
@@ -211,7 +213,7 @@ describe('Restructured log endpoints', () => {
   });
 
   it('my-activity is available to every authenticated role', async () => {
-    for (const token of [workerToken, ucetniToken, vedeniToken, adminToken]) {
+    for (const token of [workerToken, vedeniToken, adminToken]) {
       const res = await request(app)
         .get('/api/logs/my-activity')
         .set('Authorization', `Bearer ${token}`);
@@ -220,13 +222,13 @@ describe('Restructured log endpoints', () => {
     }
   });
 
-  it('history is available to ucetni/vedeni/admin but not worker', async () => {
+  it('history is available to vedeni/admin but not worker', async () => {
     const worker = await request(app)
       .get('/api/logs/history')
       .set('Authorization', `Bearer ${workerToken}`);
     expect(worker.status).toBe(403);
 
-    for (const token of [ucetniToken, vedeniToken, adminToken]) {
+    for (const token of [vedeniToken, adminToken]) {
       const res = await request(app)
         .get('/api/logs/history')
         .set('Authorization', `Bearer ${token}`);
@@ -236,10 +238,10 @@ describe('Restructured log endpoints', () => {
   });
 
   it('user-activity requires logs.view (vedeni/admin)', async () => {
-    const ucetni = await request(app)
+    const worker = await request(app)
       .get('/api/logs/user-activity')
-      .set('Authorization', `Bearer ${ucetniToken}`);
-    expect(ucetni.status).toBe(403);
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(worker.status).toBe(403);
 
     const vedeni = await request(app)
       .get('/api/logs/user-activity')

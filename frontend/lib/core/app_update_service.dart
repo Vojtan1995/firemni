@@ -34,12 +34,28 @@ class ManualAppUpdateCheckResult {
   final AppUpdateCheckResult? update;
 }
 
-/// Načte informace o release z backendu.
-Future<AppReleaseInfo?> fetchAppReleaseInfo(Dio dio) async {
+/// Platforma podporovaná in-app updaterem, nebo null (iOS, web, …).
+/// Backend zná `android` a `windows`; ostatní se neptáme.
+String? currentReleasePlatform({TargetPlatform? platform}) {
+  switch (platform ?? defaultTargetPlatform) {
+    case TargetPlatform.android:
+      return 'android';
+    case TargetPlatform.windows:
+      return 'windows';
+    default:
+      return null;
+  }
+}
+
+/// Načte informace o release z backendu pro danou platformu.
+Future<AppReleaseInfo?> fetchAppReleaseInfo(
+  Dio dio, {
+  String platform = 'android',
+}) async {
   try {
     final res = await dio.get(
       '/api/app/release',
-      queryParameters: {'platform': 'android'},
+      queryParameters: {'platform': platform},
     );
     return AppReleaseInfo.fromJson(
       (res.data as Map).cast<String, dynamic>(),
@@ -64,16 +80,17 @@ Future<bool> openApkDownloadUrl(String url) async {
   return launchUrl(uri, mode: LaunchMode.externalApplication);
 }
 
-/// Vyhodnotí, zda zobrazit dialog aktualizace (jen Android release).
+/// Vyhodnotí, zda zobrazit dialog aktualizace (Android i Windows release).
 Future<AppUpdateCheckResult?> evaluateAppUpdate(Dio dio) async {
-  if (kDebugMode || defaultTargetPlatform != TargetPlatform.android) {
+  final platform = currentReleasePlatform();
+  if (kDebugMode || platform == null) {
     return null;
   }
 
   final currentBuild = await readCurrentAppBuild();
   if (currentBuild == null) return null;
 
-  final release = await fetchAppReleaseInfo(dio);
+  final release = await fetchAppReleaseInfo(dio, platform: platform);
   if (release == null) return null;
   if (!shouldShowAppUpdate(currentBuild: currentBuild, release: release)) {
     return null;
@@ -91,8 +108,8 @@ Future<ManualAppUpdateCheckResult> checkAppUpdateManually(
   bool? supported,
   Future<int?> Function()? buildReader,
 }) async {
-  final isSupported = supported ??
-      (!kDebugMode && defaultTargetPlatform == TargetPlatform.android);
+  final platform = currentReleasePlatform();
+  final isSupported = supported ?? (!kDebugMode && platform != null);
   if (!isSupported) {
     return const ManualAppUpdateCheckResult(
       status: ManualAppUpdateStatus.unsupported,
@@ -106,7 +123,7 @@ Future<ManualAppUpdateCheckResult> checkAppUpdateManually(
     );
   }
 
-  final release = await fetchAppReleaseInfo(dio);
+  final release = await fetchAppReleaseInfo(dio, platform: platform ?? 'android');
   if (release == null) {
     return const ManualAppUpdateCheckResult(
       status: ManualAppUpdateStatus.unavailable,

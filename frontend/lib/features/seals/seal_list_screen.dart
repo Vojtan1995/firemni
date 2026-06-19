@@ -19,6 +19,7 @@ import '../jobs/work_context_service.dart';
 import '../reports/export_service.dart';
 import '../sync/sync_conflict.dart';
 import 'seal_bulk_actions.dart';
+import 'seal_constants.dart';
 import 'seal_list_filters.dart';
 import 'seal_list_helpers.dart';
 import 'seal_list_row.dart';
@@ -44,6 +45,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
   String? _floorName;
   String? _offlineHint;
   final Set<SealProblemFilter> _activeFilters = {};
+  String? _tradeFilter;
   bool? _hasDrawing;
   bool _uploadingDrawing = false;
 
@@ -146,6 +148,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
               jobId: widget.jobId,
               floorId: widget.floorId,
               sealNumber: m['sealNumber'] as String,
+              trade: Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
               system: m['system'] as String? ?? existing?.system ?? '',
               construction: existing?.construction ?? '',
               location: existing?.location ?? '',
@@ -610,11 +613,16 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
   List<Map<String, dynamic>> _applyActiveFilters(
     List<Map<String, dynamic>> seals,
   ) {
-    return applySealListFilters(
+    var result = applySealListFilters(
       seals,
       filters: _activeFilters,
       isWorker: _isWorker,
     );
+    if (_tradeFilter != null) {
+      result =
+          result.where((s) => (s['trade'] as String?) == _tradeFilter).toList();
+    }
+    return result;
   }
 
   void _toggleFilter(SealProblemFilter filter) {
@@ -626,6 +634,45 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       }
     });
     _load();
+  }
+
+  Widget _tradeFilterBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        0,
+        AppSpacing.lg,
+        AppSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.handyman_outlined, size: 18, color: AppColors.textMuted),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: DropdownButton<String?>(
+              isExpanded: true,
+              value: _tradeFilter,
+              hint: const Text('Filtrovat dle řemesla'),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Všechna řemesla'),
+                ),
+                ...sealTrades.map(
+                  (t) => DropdownMenuItem<String?>(
+                    value: t,
+                    child: Text(sealTradeLabel(t)),
+                  ),
+                ),
+              ],
+              onChanged: (v) {
+                setState(() => _tradeFilter = v);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _filterChips() {
@@ -775,6 +822,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                   ),
                   child: _drawingActions(auth),
                 ),
+                _tradeFilterBar(),
                 _filterChips(),
                 if (_dataSource == SealListDataSource.offline)
                   Container(

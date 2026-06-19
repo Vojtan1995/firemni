@@ -33,7 +33,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
 
   Future<void> _loadJobs() async {
     final role = ref.read(authUserProvider)?['role'] as String?;
-    if (role != 'vedeni' && role != 'admin' && role != 'ucetni') return;
+    if (role != 'vedeni' && role != 'admin') return;
     try {
       final res = await ref.read(dioProvider).get('/api/reports/filter-options');
       final jobs = (res.data['jobs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
@@ -241,72 +241,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     );
   }
 
-  Widget _buildUcetniStats(Map<String, dynamic> s) {
-    return ListView(
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      children: [
-        const SectionHeader(title: 'Statistiky fakturace'),
-        if (_jobs.isNotEmpty) ...[
-          _buildFilterBar(),
-          const SizedBox(height: AppSpacing.lg),
-        ],
-        _kpiGrid([
-          _kpi(
-            'Soupisů celkem',
-            s['worksheetCount'],
-            icon: Icons.description,
-            onTap: () => _goSoupisy(),
-          ),
-          _kpi(
-            'Připraveno k fakturaci',
-            s['readyForInvoice'],
-            accent: AppColors.warning,
-            onTap: () => _goSoupisy(status: 'ready_for_invoice'),
-          ),
-          _kpi(
-            'Vyfakturované',
-            s['invoiced'],
-            accent: AppColors.textMuted,
-            onTap: () => _goSoupisy(status: 'invoiced'),
-          ),
-          _kpi(
-            'Čeká na fakturaci',
-            s['pendingInvoice'],
-            accent: AppColors.info,
-            onTap: () => _goSoupisy(status: 'reviewed'),
-          ),
-        ]),
-        if (s['byJob'] is List && (s['byJob'] as List).isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Soupisy podle zakázek', style: SectionHeaderStyle.h3),
-          ...(s['byJob'] as List).map((j) {
-            final m = j as Map<String, dynamic>;
-            final jobId = m['jobId'] as String?;
-            return AppCard(
-              showChevron: jobId != null,
-              onTap: jobId != null ? () => _goSoupisy(jobId: jobId) : null,
-              title: '${m['projectNumber']} ${m['name']}',
-              trailing: Text('${m['count']}'),
-            );
-          }),
-        ],
-        if (s['byWorker'] is List && (s['byWorker'] as List).isNotEmpty) ...[
-          const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Soupisy podle pracovníků', style: SectionHeaderStyle.h3),
-          ...(s['byWorker'] as List).map((w) {
-            final m = w as Map<String, dynamic>;
-            final userId = m['userId'] as String?;
-            return AppCard(
-              showChevron: userId != null,
-              onTap: userId != null ? () => _goSoupisy(workerId: userId) : null,
-              title: m['displayName'] as String? ?? '',
-              trailing: Text('${m['count']}'),
-            );
-          }),
-        ],
-      ],
-    );
-  }
 
   Widget _buildManagementStats(Map<String, dynamic> s) {
     return ListView(
@@ -432,11 +366,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
   @override
   Widget build(BuildContext context) {
     final role = ref.watch(authUserProvider)?['role'] as String?;
-    final title = role == 'worker'
-        ? 'Moje statistiky'
-        : role == 'ucetni'
-            ? 'Statistiky fakturace'
-            : 'Dashboard';
+    final title = role == 'worker' ? 'Moje statistiky' : 'Dashboard';
 
     return Scaffold(
       appBar: AppBar(
@@ -456,7 +386,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                         final s = _stats!;
                         final r = s['role'] as String? ?? role;
                         if (r == 'worker') return _buildWorkerStats(s);
-                        if (r == 'ucetni') return _buildUcetniStats(s);
                         return _buildManagementStats(s);
                       },
                     ),

@@ -32,6 +32,20 @@ double markerScaleForViewer(double viewerScale) =>
   );
 }
 
+Offset sealMarkerTopLeft({
+  required double x,
+  required double y,
+  required Size canvasSize,
+  required double scale,
+  bool highlighted = false,
+}) {
+  final dims = sealMarkerDimensions(scale, highlighted: highlighted);
+  return Offset(
+    x * canvasSize.width - dims.size / 2,
+    y * canvasSize.height - dims.size / 2,
+  );
+}
+
 class SealMarkerWidget extends StatelessWidget {
   const SealMarkerWidget({
     super.key,
@@ -52,7 +66,8 @@ class SealMarkerWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = markerColorForSeal(status: status, reviewStatus: reviewStatus);
+    final color =
+        markerColorForSeal(status: status, reviewStatus: reviewStatus);
     final dims = sealMarkerDimensions(scale, highlighted: highlighted);
 
     return GestureDetector(

@@ -53,6 +53,7 @@ describe('Authorization (wave 1)', () => {
         jobId: foreignJobId,
         floorId: foreignFloorId,
         sealNumber: '9999',
+        trade: 'elektrikari',
         system: 'Test',
         construction: 'Stěna',
         location: 'Sklep',
@@ -62,6 +63,7 @@ describe('Authorization (wave 1)', () => {
         entries: {
           create: {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'žádná',
@@ -116,6 +118,7 @@ describe('Authorization (wave 1)', () => {
         jobId: demoJobId,
         floorId: foreignFloorId,
         sealNumber: '8888',
+        trade: 'elektrikari',
         system: 'Test',
         construction: 'Stěna',
         location: 'Chodba',
@@ -123,6 +126,7 @@ describe('Authorization (wave 1)', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'žádná',
@@ -144,43 +148,6 @@ describe('Authorization (wave 1)', () => {
     expect(jobIds).not.toContain(foreignJobId);
     expect(res.body.serverTime).toBeDefined();
     expect(typeof res.body.hasMore).toBe('boolean');
-  });
-
-  it('ucetni cannot create seal via sync push → conflict/forbidden', async () => {
-    const ucetniToken = await login('ucetni');
-    const res = await request(app)
-      .post('/api/sync/push')
-      .set('Authorization', `Bearer ${ucetniToken}`)
-      .send({
-        mutations: [
-          {
-            mutationId: randomUUID(),
-            deviceId: 'auth-test',
-            entityType: 'seal',
-            operation: 'create',
-            payload: {
-              jobId: demoJobId,
-              floorId: demoFloorId,
-              sealNumber: '7777',
-              system: 'Sync',
-              construction: 'Stěna',
-              location: 'Test',
-              fireRating: 'EI 60',
-              entries: [
-                {
-                  entryType: 'EL.V.',
-                  dimension: '50',
-                  quantity: 1,
-                  insulation: 'žádná',
-                  materials: ['Pena'],
-                },
-              ],
-            },
-          },
-        ],
-      });
-    expect(res.status).toBe(200);
-    expect(res.body.results[0].status).toMatch(/conflict|error/);
   });
 
   it('unknown sync entity returns conflict, not ok', async () => {
@@ -210,6 +177,7 @@ describe('Authorization (wave 1)', () => {
         jobId: demoJobId,
         floorId: demoFloorId,
         sealNumber: `${Date.now()}`.slice(-4),
+        trade: 'elektrikari',
         system: 'RBAC',
         construction: 'Stěna',
         location: 'Test',
@@ -217,6 +185,7 @@ describe('Authorization (wave 1)', () => {
         entries: [
           {
             entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
             dimension: '50',
             quantity: 1,
             insulation: 'žádná',

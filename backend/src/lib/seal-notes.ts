@@ -28,8 +28,6 @@ export function resolveSealNotesForCreate(
   switch (role) {
     case UserRole.worker:
       return { note: null, internalNote };
-    case UserRole.ucetni:
-      return { note: normalizeSealNote(patch.note), internalNote: null };
     case UserRole.vedeni:
     case UserRole.admin:
       return {
@@ -59,11 +57,6 @@ export function applySealNotePatchByRole(
         internalNote = normalizeSealNote(patch.internalNote);
       }
       break;
-    case UserRole.ucetni:
-      if (patch.note !== undefined) {
-        note = normalizeSealNote(patch.note);
-      }
-      break;
     case UserRole.vedeni:
     case UserRole.admin:
       if (patch.note !== undefined) {
@@ -90,8 +83,7 @@ export function canViewInternalSealNote(role: UserRole): boolean {
   return (
     role === UserRole.worker ||
     role === UserRole.vedeni ||
-    role === UserRole.admin ||
-    role === UserRole.ucetni
+    role === UserRole.admin
   );
 }
 

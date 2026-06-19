@@ -8,9 +8,24 @@ double areaFromMm(int lengthMm, int widthMm) =>
 double vztLinearMeters(int lengthMm, int widthMm) =>
     ((2 * lengthMm + 2 * widthMm) * 2) / 1000.0;
 
-/// Plocha prvku s +50 mm na každou stranu
-double elementAreaWithMargin(int lengthMm, int widthMm) =>
-    ((lengthMm + 50) * (widthMm + 50)) / 1000000.0;
+/// Kruh: plocha z průměru v mm → m²
+double circleAreaFromDiameterMm(int diameterMm) {
+  final r = diameterMm / 2.0;
+  return (3.141592653589793 * r * r) / 1000000.0;
+}
+
+/// Vytáhne průměr (Ø) z rozměru typu "Ø50" nebo "Ø20-100".
+int? diameterFromDimension(String? dim) {
+  if (dim == null) return null;
+  final n = dim.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+  final range = RegExp(r'ø(\d+)-(\d+)').firstMatch(n);
+  if (range != null) {
+    return ((int.parse(range.group(1)!) + int.parse(range.group(2)!)) / 2).round();
+  }
+  final single = RegExp(r'ø(\d+)').firstMatch(n);
+  if (single != null) return int.parse(single.group(1)!);
+  return null;
+}
 
 class SealCalculationResult {
   const SealCalculationResult({
@@ -86,7 +101,14 @@ SealCalculationResult computeSealEntryPreview({
       final oL = parseMmText(other.itemLengthMmText);
       final oW = parseMmText(other.itemWidthMmText);
       if (oL != null && oW != null) {
-        deduction += elementAreaWithMargin(oL, oW);
+        // Obdélník: exaktní plocha bez příplatku (Task 5)
+        deduction += areaFromMm(oL, oW);
+      } else {
+        // Kruh: pokud má rozměr průměr Ø
+        final d = diameterFromDimension(other.dimension);
+        if (d != null && d > 0) {
+          deduction += circleAreaFromDiameterMm(d);
+        }
       }
     }
 

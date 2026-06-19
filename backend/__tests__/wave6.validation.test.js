@@ -12,6 +12,7 @@ describe('wave 6 validation and privacy', () => {
     jobId: '00000000-0000-0000-0000-000000000010',
     floorId: '00000000-0000-0000-0000-000000000011',
     sealNumber: '123',
+    trade: 'elektrikari',
     system: 'S',
     construction: 'Stěna',
     location: 'A',
@@ -19,6 +20,7 @@ describe('wave 6 validation and privacy', () => {
     entries: [
       {
         entryType: 'EL.V.',
+        electroInstallationType: 'Svazek',
         dimension: 'Ø20',
         quantity: 1,
         insulation: 'žádná',

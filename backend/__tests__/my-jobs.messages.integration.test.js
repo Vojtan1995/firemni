@@ -7,7 +7,6 @@ describe('My jobs and messages (phase 2)', () => {
   const app = createApp();
   let workerToken;
   let vedeniToken;
-  let ucetniToken;
   let jobId;
   let floorId;
 
@@ -22,11 +21,6 @@ describe('My jobs and messages (phase 2)', () => {
       .send({ username: 'vedeni', pin: '123456' });
     vedeniToken = vedeni.body.token;
 
-    const ucetni = await request(app)
-      .post('/api/auth/login')
-      .send({ username: 'ucetni', pin: '123456' });
-    ucetniToken = ucetni.body.token;
-
     const jobRes = await request(app)
       .get('/api/jobs/by-number/12345678')
       .set('Authorization', `Bearer ${workerToken}`);
@@ -39,10 +33,10 @@ describe('My jobs and messages (phase 2)', () => {
     await prisma.$disconnect();
   });
 
-  it('ucetni sees all active jobs in my jobs list', async () => {
+  it('vedeni sees all active jobs in my jobs list', async () => {
     const my = await request(app)
       .get('/api/jobs/my')
-      .set('Authorization', `Bearer ${ucetniToken}`);
+      .set('Authorization', `Bearer ${vedeniToken}`);
     expect(my.status).toBe(200);
     expect(my.body.length).toBeGreaterThan(0);
     expect(my.body.some((j) => j.id === jobId)).toBe(true);
@@ -63,6 +57,7 @@ describe('My jobs and messages (phase 2)', () => {
         jobId,
         floorId,
         sealNumber,
+        trade: 'elektrikari',
         system: 'Test',
         construction: 'Stěna',
         location: 'A',

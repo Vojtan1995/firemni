@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ucpavky/core/app_release_info.dart';
 import 'package:ucpavky/core/app_update_service.dart';
@@ -38,7 +39,52 @@ Dio _dioWithError() {
   return dio;
 }
 
+/// Zachytí query parametr `platform` z odchozího requestu.
+Dio _dioCapturingPlatform(List<String?> sink) {
+  final dio = Dio();
+  dio.interceptors.add(
+    InterceptorsWrapper(
+      onRequest: (options, handler) {
+        sink.add(options.queryParameters['platform'] as String?);
+        handler.resolve(
+          Response<dynamic>(
+            requestOptions: options,
+            statusCode: 200,
+            data: {'platform': options.queryParameters['platform'], 'updateAvailable': false},
+          ),
+        );
+      },
+    ),
+  );
+  return dio;
+}
+
 void main() {
+  group('currentReleasePlatform', () {
+    test('maps android and windows, ignores others', () {
+      expect(currentReleasePlatform(platform: TargetPlatform.android), 'android');
+      expect(currentReleasePlatform(platform: TargetPlatform.windows), 'windows');
+      expect(currentReleasePlatform(platform: TargetPlatform.iOS), isNull);
+      expect(currentReleasePlatform(platform: TargetPlatform.macOS), isNull);
+    });
+  });
+
+  group('fetchAppReleaseInfo platform', () {
+    test('defaults to android', () async {
+      final sink = <String?>[];
+      await fetchAppReleaseInfo(_dioCapturingPlatform(sink));
+      expect(sink, ['android']);
+    });
+
+    test('passes windows when requested', () async {
+      final sink = <String?>[];
+      final info =
+          await fetchAppReleaseInfo(_dioCapturingPlatform(sink), platform: 'windows');
+      expect(sink, ['windows']);
+      expect(info?.platform, 'windows');
+    });
+  });
+
   group('fetchAppReleaseInfo', () {
     test('parses configured release from backend', () async {
       final dio = _dioWithResponse({
