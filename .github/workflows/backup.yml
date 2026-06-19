@@ -1,9 +1,11 @@
 name: DB Backup
 
 on:
-  schedule:
-    # Každý den ve 2:00 UTC (4:00 Prague letní čas)
-    - cron: '0 2 * * *'
+  # Plánované zálohy jsou VYPNUTÉ, dokud nejsou nastavené BACKUP_S3_* secrets
+  # (jinak upload na R2/S3 padá a workflow svítí červeně). Po doplnění secrets
+  # stačí cron níže odkomentovat.
+  # schedule:
+  #   - cron: '0 2 * * *'   # každý den 2:00 UTC (4:00 Prague letní čas)
   workflow_dispatch:
     # Umožní ruční spuštění z GitHub Actions UI
 
@@ -14,12 +16,24 @@ jobs:
     timeout-minutes: 15
 
     steps:
+      - name: Check backup storage configured
+        id: cfg
+        run: |
+          if [ -z "${{ secrets.BACKUP_S3_BUCKET }}" ] || [ -z "${{ secrets.BACKUP_S3_ENDPOINT }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::BACKUP_S3_* secrets nejsou nastavené — upload zálohy přeskočen. Nastav je a odkomentuj cron v backup.yml."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install postgresql-client
+        if: steps.cfg.outputs.configured == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
 
       - name: Run pg_dump
+        if: steps.cfg.outputs.configured == 'true'
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
         run: |
@@ -31,6 +45,7 @@ jobs:
           echo "Backup hotov: ${FILENAME} (${SIZE})"
 
       - name: Upload to Cloudflare R2
+        if: steps.cfg.outputs.configured == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
@@ -44,6 +59,7 @@ jobs:
           echo "Upload hotov: s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}"
 
       - name: Prune backups older than 30 days
+        if: steps.cfg.outputs.configured == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
