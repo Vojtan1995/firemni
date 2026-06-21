@@ -1,6 +1,6 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -34,7 +34,10 @@ class FloorPlanViewer extends StatefulWidget {
   final int intrinsicWidth;
   final int intrinsicHeight;
   final TransformationController transformationController;
-  final double viewerScale;
+
+  /// Aktuální zoom jako [ValueListenable] – při změně zoomu se překreslí JEN
+  /// vrstva markerů (ValueListenableBuilder), nikoli PDF/obrázek ani celý strom.
+  final ValueListenable<double> viewerScale;
   final List<Map<String, dynamic>> markers;
   final ValueChanged<Size> onCanvasSizeChanged;
   final void Function(Offset local, Size canvasSize)? onTapPlan;
@@ -95,7 +98,27 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
               widget.onCanvasSizeChanged(canvasSize);
             });
 
-            final markerScale = markerScaleForViewer(widget.viewerScale);
+            // Podklad (PDF/obrázek) je v RepaintBoundary a NEzávisí na zoomu,
+            // takže se při zoomování nerasterizuje ani nerebuilduje.
+            final background = RepaintBoundary(
+              child: widget.isPdf
+                  ? _PdfCanvas(
+                      documentRef: _pdfDocumentRef,
+                      width: w,
+                      height: h,
+                    )
+                  : Image.memory(
+                      widget.bytes,
+                      width: w,
+                      height: h,
+                      fit: BoxFit.fill,
+                      // medium dává hladší interpolaci při přiblížení než
+                      // none; originální bitmapa zůstává nezměněná.
+                      filterQuality: FilterQuality.medium,
+                      gaplessPlayback: true,
+                    ),
+            );
+
             return GestureDetector(
               onTapUp: widget.onTapPlan != null
                   ? (d) => widget.onTapPlan!(d.localPosition, canvasSize)
@@ -106,52 +129,46 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                 child: Stack(
                   clipBehavior: Clip.none,
                   children: [
-                    if (widget.isPdf)
-                      _PdfCanvas(
-                        documentRef: _pdfDocumentRef,
-                        width: w,
-                        height: h,
-                      )
-                    else
-                      Image.memory(
-                        widget.bytes,
-                        width: w,
-                        height: h,
-                        fit: BoxFit.fill,
-                        // medium dává hladší interpolaci při přiblížení než
-                        // none; originální bitmapa zůstává nezměněná.
-                        filterQuality: FilterQuality.medium,
-                        gaplessPlayback: true,
-                      ),
-                    ...widget.markers.map((m) {
-                      final x = (m['x'] as num).toDouble();
-                      final y = (m['y'] as num).toDouble();
-                      final sealId = m['sealId'] as String;
-                      final pending = m['pending'] == true;
-                      final highlighted =
-                          pending || widget.highlightSealId == sealId;
-                      final topLeft = sealMarkerTopLeft(
-                        x: x,
-                        y: y,
-                        canvasSize: canvasSize,
-                        scale: markerScale,
-                        highlighted: highlighted,
-                      );
-                      return Positioned(
-                        left: topLeft.dx,
-                        top: topLeft.dy,
-                        child: SealMarkerWidget(
-                          sealNumber: m['sealNumber'] as String? ?? '',
-                          status: m['status'] as String? ?? 'draft',
-                          reviewStatus: m['reviewStatus'] as String?,
-                          scale: markerScale,
-                          highlighted: highlighted,
-                          onTap: widget.onMarkerTap != null && !pending
-                              ? () => widget.onMarkerTap!(m)
-                              : null,
-                        ),
-                      );
-                    }),
+                    background,
+                    // Jen tato vrstva reaguje na změnu zoomu.
+                    ValueListenableBuilder<double>(
+                      valueListenable: widget.viewerScale,
+                      builder: (context, viewerScale, _) {
+                        final markerScale = markerScaleForViewer(viewerScale);
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: widget.markers.map((m) {
+                            final x = (m['x'] as num).toDouble();
+                            final y = (m['y'] as num).toDouble();
+                            final sealId = m['sealId'] as String;
+                            final pending = m['pending'] == true;
+                            final highlighted =
+                                pending || widget.highlightSealId == sealId;
+                            final topLeft = sealMarkerTopLeft(
+                              x: x,
+                              y: y,
+                              canvasSize: canvasSize,
+                              scale: markerScale,
+                              highlighted: highlighted,
+                            );
+                            return Positioned(
+                              left: topLeft.dx,
+                              top: topLeft.dy,
+                              child: SealMarkerWidget(
+                                sealNumber: m['sealNumber'] as String? ?? '',
+                                status: m['status'] as String? ?? 'draft',
+                                reviewStatus: m['reviewStatus'] as String?,
+                                scale: markerScale,
+                                highlighted: highlighted,
+                                onTap: widget.onMarkerTap != null && !pending
+                                    ? () => widget.onMarkerTap!(m)
+                                    : null,
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),

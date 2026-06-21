@@ -155,7 +155,7 @@ export async function searchApp(params: SearchParams) {
   }
 
   const scope = await jobScopeWhere(params.role, params.userId);
-  const filterWhere = buildSealFilterWhere(filters, params.role);
+  const filterWhere = buildSealFilterWhere(filters, params.role, params.userId);
   const includeEntries = needsEntryInclude(filters);
 
   const where: Prisma.SealWhereInput = {
@@ -228,12 +228,13 @@ export async function searchApp(params: SearchParams) {
 export async function listFloorSealsFiltered(options: {
   floorId: string;
   role: UserRole;
+  userId?: string;
   showWorker: boolean;
   filters: SealProblemFilter[];
   trade?: SealTrade;
 }) {
   const includeEntries = needsEntryInclude(options.filters);
-  const filterWhere = buildSealFilterWhere(options.filters, options.role);
+  const filterWhere = buildSealFilterWhere(options.filters, options.role, options.userId);
 
   const rows = await prisma.seal.findMany({
     where: {

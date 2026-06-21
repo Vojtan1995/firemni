@@ -85,8 +85,32 @@ class SealListRow extends StatelessWidget {
           if (photoCount > 0)
             _iconBadge(Icons.photo_camera_outlined, AppColors.textMuted),
           if (hasNote) _iconBadge(Icons.sticky_note_2_outlined, AppColors.textMuted),
-          if (isReturned)
-            _iconBadge(Icons.replay, AppColors.error),
+          if (isReturned) ...[
+            Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.error.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.replay, size: 13, color: AppColors.error),
+                    const SizedBox(width: 3),
+                    Text(
+                      'Vráceno',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                            color: AppColors.error,
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
           if (pendingSync)
             _iconBadge(Icons.cloud_upload_outlined, AppColors.warning),
           if (placementPending)

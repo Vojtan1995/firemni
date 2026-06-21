@@ -9,7 +9,13 @@ enum SealProblemFilter {
   returned('returned', 'Vráceno'),
   pendingSync('pending_sync', 'Čeká sync'),
   hasNote('has_note', 'Má poznámku'),
-  missingData('missing_data', 'Chybí údaj');
+  missingData('missing_data', 'Nedokončené'),
+  // Task 6 – praktické filtry.
+  mine('mine', 'Moje'),
+  statusDraft('status_draft', 'Rozpracované'),
+  statusChecked('status_checked', 'Zkontrolované'),
+  statusInvoiced('status_invoiced', 'Fakturované'),
+  attention('attention', 'K řešení');
 
   const SealProblemFilter(this.apiValue, this.label);
   final String apiValue;
@@ -34,6 +40,7 @@ bool sealMatchesFilters(
   Map<String, dynamic> seal, {
   required Set<SealProblemFilter> filters,
   required bool isWorker,
+  String? currentUserId,
 }) {
   if (filters.isEmpty) return true;
 
@@ -60,6 +67,22 @@ bool sealMatchesFilters(
         if (validateSealForChecked(_sealForValidation(seal)).isEmpty) {
           return false;
         }
+      case SealProblemFilter.mine:
+        if (currentUserId == null || seal['createdById'] != currentUserId) {
+          return false;
+        }
+      case SealProblemFilter.statusDraft:
+        if (status != 'draft') return false;
+      case SealProblemFilter.statusChecked:
+        if (status != 'checked') return false;
+      case SealProblemFilter.statusInvoiced:
+        if (status != 'invoiced') return false;
+      case SealProblemFilter.attention:
+        // „K řešení": vrácené NEBO nedokončené.
+        final isReturned = reviewStatus == 'returned';
+        final hasMissing =
+            validateSealForChecked(_sealForValidation(seal)).isNotEmpty;
+        if (!isReturned && !hasMissing) return false;
     }
   }
   return true;
@@ -81,9 +104,15 @@ List<Map<String, dynamic>> applySealListFilters(
   List<Map<String, dynamic>> seals, {
   required Set<SealProblemFilter> filters,
   required bool isWorker,
+  String? currentUserId,
 }) {
   if (filters.isEmpty) return seals;
   return seals
-      .where((s) => sealMatchesFilters(s, filters: filters, isWorker: isWorker))
+      .where((s) => sealMatchesFilters(
+            s,
+            filters: filters,
+            isWorker: isWorker,
+            currentUserId: currentUserId,
+          ))
       .toList();
 }

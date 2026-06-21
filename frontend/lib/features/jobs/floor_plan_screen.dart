@@ -148,7 +148,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   int _total = 0;
   int _placed = 0;
   int _unplaced = 0;
-  double _viewerScale = 1;
+  // Zoom drží ValueNotifier – jeho změna překreslí jen vrstvu markerů ve
+  // FloorPlanViewer, ne celý strom (žádný setState při každém gestu zoomu).
+  final ValueNotifier<double> _viewerScale = ValueNotifier(1);
   Size? _canvasSize;
 
   @override
@@ -164,13 +166,15 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   void dispose() {
     _transformController.removeListener(_onTransformChanged);
     _transformController.dispose();
+    _viewerScale.dispose();
     super.dispose();
   }
 
   void _onTransformChanged() {
     final scale = _transformController.value.getMaxScaleOnAxis();
-    if ((scale - _viewerScale).abs() > 0.05 && mounted) {
-      setState(() => _viewerScale = scale);
+    // Aktualizuje jen notifier (bez setState) → překreslí se pouze markery.
+    if ((scale - _viewerScale.value).abs() > 0.05) {
+      _viewerScale.value = scale;
     }
   }
 

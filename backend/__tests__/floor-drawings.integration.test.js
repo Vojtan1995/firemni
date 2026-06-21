@@ -262,9 +262,10 @@ describe('Floor drawings and markers (task 5.3)', () => {
       .get(`/api/jobs/${jobId}/floors/${floor1Id}/next-seal-number`)
       .set('Authorization', `Bearer ${workerToken}`);
     expect(next.status).toBe(200);
-    expect(Number.parseInt(next.body.nextSealNumber, 10)).toBeGreaterThan(
-      Number.parseInt(`${SEAL_PREFIX}1`, 10),
-    );
+    // suggestNextSealNumber vrací nejmenší volné kladné číslo na patře (ne max+1).
+    // Toto patro je sdílené demo patro, takže se nezávisíme na konkrétní hodnotě –
+    // dedikované scénáře pokrývá seal-number-suggest.integration.test.js.
+    expect(Number.parseInt(next.body.nextSealNumber, 10)).toBeGreaterThanOrEqual(1);
 
     const stats = await request(app)
       .get(`/api/jobs/${jobId}/floors/${floor1Id}/placement-stats`)

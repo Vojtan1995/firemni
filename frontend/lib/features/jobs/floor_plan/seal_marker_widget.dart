@@ -72,8 +72,8 @@ class SealMarkerWidget extends StatelessWidget {
 
     return GestureDetector(
       onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+      // Žádná animovaná prodleva při zoomu – marker se překresluje okamžitě.
+      child: Container(
         width: dims.size,
         height: dims.size,
         decoration: BoxDecoration(

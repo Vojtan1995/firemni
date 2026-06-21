@@ -5,6 +5,7 @@ import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import 'job_export_actions.dart';
+import 'job_participants_dialog.dart';
 
 enum _JobListTab { active, completed, archived }
 
@@ -371,6 +372,17 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                                   ref,
                                   jobId: jobId,
                                   projectNumber: j['projectNumber'] as String? ?? '',
+                                ),
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.group_outlined),
+                                title: const Text('Pracovníci'),
+                                subtitle: const Text('Přiřadit / odebrat pracovníka'),
+                                onTap: () => JobParticipantsDialog.show(
+                                  context,
+                                  jobId: jobId,
+                                  jobLabel:
+                                      '${j['projectNumber']} – ${j['name']}',
                                 ),
                               ),
                               if (!readOnly) ...[

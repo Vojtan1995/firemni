@@ -25,6 +25,7 @@ export type Permission =
   | 'admin.backup'
   | 'worksheet.create'
   | 'worksheet.view'
+  | 'worksheet.delete'
   | 'worksheet.submit'
   | 'worksheet.review'
   | 'worksheet.invoice'
@@ -53,6 +54,9 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'admin.backup': [UserRole.admin],
   'worksheet.create': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'worksheet.view': [UserRole.worker, UserRole.vedeni, UserRole.admin],
+  // Mazat lze jen rozpracovaný (draft) soupis. Worker je navíc omezen na soupisy,
+  // jichž je účastníkem (vynuceno v assertWorksheetAccess).
+  'worksheet.delete': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'worksheet.submit': [UserRole.worker, UserRole.admin],
   'worksheet.review': [UserRole.vedeni, UserRole.admin],
   'worksheet.invoice': [UserRole.vedeni, UserRole.admin],

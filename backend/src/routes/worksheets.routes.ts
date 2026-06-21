@@ -8,6 +8,7 @@ import {
   addWorksheetItems,
   changeWorksheetStatus,
   createWorksheet,
+  deleteWorksheet,
   exportWorksheetCsv,
   exportWorksheetPdf,
   getWorksheet,
@@ -129,6 +130,15 @@ router.post('/:id/populate', requirePermission('worksheet.create'), async (req, 
       body,
     );
     res.status(201).json(result);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.delete('/:id', requirePermission('worksheet.delete'), async (req, res, next) => {
+  try {
+    const result = await deleteWorksheet(paramId(req.params.id), req.user!.role, req.user!.id);
+    res.json(result);
   } catch (e) {
     next(e);
   }

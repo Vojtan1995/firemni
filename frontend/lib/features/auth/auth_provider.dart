@@ -161,6 +161,7 @@ class AuthService {
   bool get canSubmitWorksheet => AppPermissions.canSubmitWorksheet(role);
   bool get canReviewWorksheet => AppPermissions.canReviewWorksheet(role);
   bool get canInvoiceWorksheet => AppPermissions.canInvoiceWorksheet(role);
+  bool get canDeleteWorksheet => AppPermissions.canDeleteWorksheet(role);
   bool get mustChangePin =>
       _ref.read(authUserProvider)?['mustChangePin'] == true;
 }

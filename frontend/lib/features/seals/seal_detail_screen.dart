@@ -1090,6 +1090,43 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       ),
       const SizedBox(height: AppSpacing.md),
 
+      // Vrácená ucpávka — výrazný banner, aby pracovník hned viděl, co opravit.
+      if (seal['reviewStatus'] == 'returned')
+        Container(
+          margin: const EdgeInsets.only(bottom: AppSpacing.md),
+          padding: const EdgeInsets.all(AppSpacing.md),
+          decoration: BoxDecoration(
+            color: AppColors.error.withValues(alpha: 0.1),
+            borderRadius: AppRadius.mdAll,
+            border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.replay, size: 18, color: AppColors.error),
+                  const SizedBox(width: AppSpacing.sm),
+                  Text(
+                    'Vráceno k opravě',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          color: AppColors.error,
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ],
+              ),
+              if ((seal['reviewComment'] as String?)?.trim().isNotEmpty == true) ...[
+                const SizedBox(height: AppSpacing.sm),
+                Text(
+                  'Co opravit: ${(seal['reviewComment'] as String).trim()}',
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ],
+            ],
+          ),
+        ),
+
       if (status == 'invoiced')
         Container(
           margin: const EdgeInsets.only(bottom: AppSpacing.md),

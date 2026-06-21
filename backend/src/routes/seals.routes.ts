@@ -109,6 +109,7 @@ router.get('/floors/:floorId/seals', async (req, res, next) => {
     const seals = await listFloorSealsFiltered({
       floorId,
       role,
+      userId,
       showWorker,
       filters,
       trade,

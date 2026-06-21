@@ -617,6 +617,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       seals,
       filters: _activeFilters,
       isWorker: _isWorker,
+      currentUserId: ref.read(currentUserIdProvider),
     );
     if (_tradeFilter != null) {
       result =
@@ -675,8 +676,30 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     );
   }
 
+  /// Praktické filtry dostupné všem rolím (i workerovi) v seznamu ucpávek na patře.
+  static const _practicalFilters = <SealProblemFilter>[
+    SealProblemFilter.mine,
+    SealProblemFilter.statusDraft,
+    SealProblemFilter.statusChecked,
+    SealProblemFilter.statusInvoiced,
+    SealProblemFilter.returned,
+    SealProblemFilter.missingData,
+    SealProblemFilter.attention,
+  ];
+
+  /// Rozšířené filtry jen pro vedení/admin (role s právem kontroly).
+  static const _advancedFilters = <SealProblemFilter>[
+    SealProblemFilter.noPhoto,
+    SealProblemFilter.onePhoto,
+    SealProblemFilter.awaitingReview,
+    SealProblemFilter.hasNote,
+  ];
+
   Widget _filterChips() {
-    if (!_canBulkSelect) return const SizedBox.shrink();
+    final filters = <SealProblemFilter>[
+      ..._practicalFilters,
+      if (_canBulkSelect) ..._advancedFilters,
+    ];
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(
@@ -686,18 +709,31 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
         AppSpacing.sm,
       ),
       child: Row(
-        children: SealProblemFilter.values
-            .map(
-              (f) => Padding(
-                padding: const EdgeInsets.only(right: AppSpacing.sm),
-                child: FilterChip(
-                  label: Text(f.label),
-                  selected: _activeFilters.contains(f),
-                  onSelected: (_) => _toggleFilter(f),
-                ),
+        children: [
+          // „Vše" zruší všechny aktivní filtry.
+          Padding(
+            padding: const EdgeInsets.only(right: AppSpacing.sm),
+            child: FilterChip(
+              label: const Text('Vše'),
+              selected: _activeFilters.isEmpty,
+              onSelected: (_) {
+                if (_activeFilters.isEmpty) return;
+                setState(() => _activeFilters.clear());
+                _load();
+              },
+            ),
+          ),
+          ...filters.map(
+            (f) => Padding(
+              padding: const EdgeInsets.only(right: AppSpacing.sm),
+              child: FilterChip(
+                label: Text(f.label),
+                selected: _activeFilters.contains(f),
+                onSelected: (_) => _toggleFilter(f),
               ),
-            )
-            .toList(),
+            ),
+          ),
+        ],
       ),
     );
   }

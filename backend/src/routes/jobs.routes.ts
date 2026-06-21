@@ -35,6 +35,18 @@ router.get('/my', async (req, res, next) => {
   }
 });
 
+router.get('/:jobId/participants', requirePermission('job.manage'), async (req, res, next) => {
+  try {
+    const jobId = paramId(req.params.jobId);
+    const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw notFound('Stavba nenalezena');
+    const participants = await jobParticipantService.listJobParticipants(jobId);
+    res.json(participants);
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post('/:jobId/participants', requirePermission('job.manage'), async (req, res, next) => {
   try {
     const jobId = paramId(req.params.jobId);

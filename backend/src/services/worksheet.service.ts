@@ -289,7 +289,10 @@ export async function getWorksheet(id: string, role: UserRole, userId: string) {
       job: { select: { projectNumber: true, name: true, address: true } },
       createdBy: { select: { displayName: true } },
       workers: { include: { user: { select: { id: true, displayName: true } } } },
-      items: { orderBy: { sortOrder: 'asc' } },
+      items: {
+        orderBy: { sortOrder: 'asc' },
+        include: { floor: { select: { name: true } } },
+      },
     },
   });
   if (!worksheet) throw notFound('Soupis nenalezen');
@@ -305,6 +308,23 @@ export async function getWorksheet(id: string, role: UserRole, userId: string) {
     statusHistory,
     allowedStatusTargets,
   };
+}
+
+/**
+ * Smaže rozpracovaný (draft) soupis. Volíme hard delete – soupisy jsou pouze
+ * serverové (žádná offline/Drift tabulka), draft nebyl nikdy odevzdán a položky
+ * i účastníci mají onDelete: Cascade, takže smazání neovlivní ucpávky, historii
+ * ani audit (WorkSheetItem referencuje Seal, ne naopak). Worker je omezen na
+ * vlastní/účastnický soupis přes assertWorksheetAccess.
+ */
+export async function deleteWorksheet(id: string, role: UserRole, userId: string) {
+  const ws = await assertWorksheetAccess(id, role, userId);
+  if (ws.status !== WorkSheetStatus.draft) {
+    throw badRequest('Smazat lze jen rozpracovaný soupis');
+  }
+  await prisma.workSheet.delete({ where: { id } });
+  await logActivity(userId, 'worksheet_delete', 'worksheet', id);
+  return { id };
 }
 
 async function assertWorksheetEditable(worksheetId: string, role: UserRole, userId: string) {

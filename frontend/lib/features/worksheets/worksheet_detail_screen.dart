@@ -9,6 +9,7 @@ import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../reports/export_service.dart';
+import '../seals/seal_constants.dart';
 
 class WorksheetDetailScreen extends ConsumerStatefulWidget {
   const WorksheetDetailScreen({super.key, required this.worksheetId});
@@ -107,6 +108,40 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
       );
     } finally {
       if (mounted) setState(() => _exporting = false);
+    }
+  }
+
+  Future<void> _deleteWorksheet() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Smazat soupis?'),
+        content: const Text(
+          'Rozpracovaný soupis bude odstraněn. Tuto akci nelze v aplikaci běžně vrátit zpět.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Smazat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await ref.read(dioProvider).delete('/api/worksheets/${widget.worksheetId}');
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Soupis byl smazán')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Nepodařilo se smazat soupis'))),
+      );
     }
   }
 
@@ -306,7 +341,20 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Text(_error!))
+              ? Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(_error!),
+                      const SizedBox(height: AppSpacing.md),
+                      AppSecondaryButton(
+                        label: 'Zkusit znovu',
+                        fullWidth: false,
+                        onPressed: _load,
+                      ),
+                    ],
+                  ),
+                )
               : _buildContent(auth),
     );
   }
@@ -387,6 +435,13 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
                       ),
             ),
             ..._workflowButtons(auth, status),
+            if (status == 'draft' && auth.canDeleteWorksheet)
+              AppSecondaryButton(
+                label: 'Smazat',
+                icon: Icons.delete_outline,
+                fullWidth: false,
+                onPressed: _deleteWorksheet,
+              ),
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
@@ -397,43 +452,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
             icon: Icons.list_alt_outlined,
           )
         else
-          ...items.map((item) {
-            final unitVal = parseNumOrNull(item['unitPrice']);
-            final totalVal = parseNumOrNull(item['totalPrice']);
-            final qty = parseNumOrNull(item['quantity']) ?? 0;
-            final computedTotal = totalVal ??
-                (unitVal != null ? unitVal * qty : null);
-            final unitLabel = item['unit'] as String? ?? 'kus';
-            return AppCard(
-              showChevron: false,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '#${item['sealNumber']} · ${item['entryType']} · ${item['dimension']}',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
-                  Row(
-                    children: [
-                      Expanded(child: Text('Množství: ${item['quantity']}')),
-                      if (unitVal != null)
-                        Expanded(
-                          child: Text(
-                            'Jedn. cena: ${unitVal.toStringAsFixed(2)} Kč/$unitLabel',
-                          ),
-                        ),
-                      if (computedTotal != null)
-                        Text(
-                          'Celkem: ${computedTotal.toStringAsFixed(2)} Kč',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
+          ...items.map(_buildItemCard),
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(title: 'Historie stavu', style: SectionHeaderStyle.h3),
         if (history.isEmpty)
@@ -473,6 +492,93 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
             );
           }),
       ],
+    );
+  }
+
+  /// Řemeslo/řemesla: podporuje nové pole `trades` (multi) i staré `trade`.
+  String _tradesLabel(Map<String, dynamic> item) {
+    final trades = item['trades'];
+    if (trades is List && trades.isNotEmpty) {
+      return trades.map((t) => sealTradeLabel(t?.toString())).join(', ');
+    }
+    final single = item['trade'];
+    return single == null ? '—' : sealTradeLabel(single.toString());
+  }
+
+  String _orDash(dynamic value) {
+    if (value == null) return '—';
+    final s = value.toString().trim();
+    return s.isEmpty ? '—' : s;
+  }
+
+  Widget _buildItemCard(Map<String, dynamic> item) {
+    final unitVal = parseNumOrNull(item['unitPrice']);
+    final totalVal = parseNumOrNull(item['totalPrice']);
+    final qty = parseNumOrNull(item['quantity']) ?? 0;
+    final computedTotal = totalVal ?? (unitVal != null ? unitVal * qty : null);
+    final unitLabel = item['unit'] as String? ?? 'kus';
+    final floorName = (item['floor'] as Map?)?['name'];
+    final note = (item['note'] as String?)?.trim();
+
+    return AppCard(
+      showChevron: false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Ucpávka #${_orDash(item['sealNumber'])}',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const SizedBox(height: AppSpacing.sm),
+          _itemLine('Patro', _orDash(floorName)),
+          _itemLine('Řemeslo', _tradesLabel(item)),
+          _itemLine('Systém', _orDash(item['system'])),
+          _itemLine('Typ', _orDash(item['entryType'])),
+          _itemLine('Materiál / katalogová položka', _orDash(item['catalogId'])),
+          _itemLine('Izolace', _orDash(item['insulation'])),
+          _itemLine('Umístění', _orDash(item['location'])),
+          _itemLine('Rozměr', _orDash(item['dimension'])),
+          _itemLine('Množství', '${_orDash(item['quantity'])} $unitLabel'),
+          _itemLine(
+            'Jedn. cena',
+            unitVal != null ? '${unitVal.toStringAsFixed(2)} Kč/$unitLabel' : '—',
+          ),
+          _itemLine(
+            'Cena celkem',
+            computedTotal != null ? '${computedTotal.toStringAsFixed(2)} Kč' : '—',
+            bold: true,
+          ),
+          if (note != null && note.isNotEmpty) _itemLine('Poznámka', note),
+        ],
+      ),
+    );
+  }
+
+  Widget _itemLine(String label, String value, {bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs / 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 160,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: bold
+                  ? const TextStyle(fontWeight: FontWeight.w600)
+                  : Theme.of(context).textTheme.bodyMedium,
+            ),
+          ),
+        ],
+      ),
     );
   }
 

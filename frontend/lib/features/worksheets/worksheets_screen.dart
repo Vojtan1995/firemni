@@ -202,7 +202,10 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
                           '${_statusLabels[status] ?? status} · $count položek',
                         ),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => context.push('/worksheets/$id'),
+                        onTap: () async {
+                          final changed = await context.push<bool>('/worksheets/$id');
+                          if (changed == true && mounted) _load();
+                        },
                       ),
                     );
                   },

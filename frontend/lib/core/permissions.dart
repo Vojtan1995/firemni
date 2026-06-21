@@ -21,6 +21,7 @@ class AppPermissions {
     'admin.trash': ['admin'],
     'worksheet.create': ['worker', 'vedeni', 'admin'],
     'worksheet.view': ['worker', 'vedeni', 'admin'],
+    'worksheet.delete': ['worker', 'vedeni', 'admin'],
     'worksheet.submit': ['worker', 'admin'],
     'worksheet.review': ['vedeni', 'admin'],
     'worksheet.invoice': ['vedeni', 'admin'],
@@ -64,6 +65,10 @@ class AppPermissions {
   static bool canSubmitWorksheet(String? role) => has(role, 'worksheet.submit');
 
   static bool canReviewWorksheet(String? role) => has(role, 'worksheet.review');
+
+  /// Mazat lze jen draft (vynuceno UI + backendem); worker je navíc omezen na
+  /// soupisy, jichž je účastníkem (backend assertWorksheetAccess).
+  static bool canDeleteWorksheet(String? role) => has(role, 'worksheet.delete');
 
   static bool canInvoiceWorksheet(String? role) => has(role, 'worksheet.invoice');
 

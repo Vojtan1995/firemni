@@ -95,19 +95,30 @@ export async function assertSealEditable(
   return seal;
 }
 
+/**
+ * Navrhne NEJMENŠÍ volné číslo v pořadí v rámci patra (jen návrh – unikátnost
+ * při uložení vynucuje checkDuplicateSealNumber + partiální unique index).
+ *
+ * Pravidla: do výpočtu vstupují jen čistě číselná čísla (`^\d+$`), nečíselná
+ * (A1, 1A, ...) se ignorují. Bez čísel → "1". Jinak od nejnižšího existujícího
+ * čísla hledá první nepoužitou hodnotu. Příklady: {1,2,3}→4, {1,3,4}→2,
+ * {5,55}→6, {10,11,13}→12. Vrací běžné číslo bez vodicích nul.
+ */
 export async function suggestNextSealNumber(floorId: string) {
   const seals = await prisma.seal.findMany({
     where: { floorId, deletedAt: null },
     select: { sealNumber: true },
   });
-  let max = 0;
+  const used = new Set<number>();
   for (const seal of seals) {
-    const parsed = Number.parseInt(seal.sealNumber, 10);
-    if (Number.isFinite(parsed) && parsed > max) {
-      max = parsed;
+    if (/^\d+$/.test(seal.sealNumber)) {
+      used.add(Number.parseInt(seal.sealNumber, 10));
     }
   }
-  return String(max + 1);
+  if (used.size === 0) return '1';
+  let candidate = Math.min(...used);
+  while (used.has(candidate)) candidate += 1;
+  return String(candidate);
 }
 
 /**

@@ -8,6 +8,12 @@ export const SEAL_PROBLEM_FILTERS = [
   'returned',
   'has_note',
   'missing_data',
+  // Task 6 – praktické filtry seznamu ucpávek.
+  'mine', // jen ucpávky vytvořené přihlášeným uživatelem
+  'status_draft',
+  'status_checked',
+  'status_invoiced',
+  'attention', // „K řešení" = vrácené (returned) NEBO nedokončené (missing_data)
 ] as const;
 
 export type SealProblemFilter = (typeof SEAL_PROBLEM_FILTERS)[number];
@@ -25,6 +31,7 @@ export function parseSealFilters(raw?: string | string[]): SealProblemFilter[] {
 export function buildSealFilterWhere(
   filters: SealProblemFilter[],
   role: UserRole,
+  userId?: string,
 ): Prisma.SealWhereInput {
   const and: Prisma.SealWhereInput[] = [];
   for (const f of filters) {
@@ -38,6 +45,19 @@ export function buildSealFilterWhere(
       case 'returned':
         and.push({ reviewStatus: 'returned' });
         break;
+      case 'status_draft':
+        and.push({ status: 'draft' });
+        break;
+      case 'status_checked':
+        and.push({ status: 'checked' });
+        break;
+      case 'status_invoiced':
+        and.push({ status: 'invoiced' });
+        break;
+      case 'mine':
+        // Bez userId nelze filtr aplikovat – raději nic nefiltrovat, než filtrovat chybně.
+        if (userId) and.push({ createdById: userId });
+        break;
       case 'has_note':
         if (role === UserRole.worker) {
           and.push({ internalNote: { not: null } });
@@ -50,6 +70,7 @@ export function buildSealFilterWhere(
           });
         }
         break;
+      // 'attention' a 'missing_data' se vyhodnocují post-query (viz applyPostSealFilters).
       default:
         break;
     }
@@ -79,18 +100,25 @@ function rowValidationShape(row: Record<string, unknown>) {
   };
 }
 
+function hasMissingData(r: Record<string, unknown>): boolean {
+  return validateSealForChecked(rowValidationShape(r)).length > 0;
+}
+
 export function applyPostSealFilters<T>(rows: T[], filters: SealProblemFilter[]): T[] {
   if (filters.length === 0) return rows;
-  const needsPost = filters.some((f) => f === 'one_photo' || f === 'missing_data');
+  const needsPost = filters.some(
+    (f) => f === 'one_photo' || f === 'missing_data' || f === 'attention',
+  );
   if (!needsPost) return rows;
 
   return rows.filter((row) => {
     const r = row as Record<string, unknown>;
     for (const f of filters) {
       if (f === 'one_photo' && rowPhotoCount(r) !== 1) return false;
-      if (f === 'missing_data') {
-        const issues = validateSealForChecked(rowValidationShape(r));
-        if (issues.length === 0) return false;
+      if (f === 'missing_data' && !hasMissingData(r)) return false;
+      // „K řešení": vrácené k opravě NEBO nedokončené (chybí data ke kontrole).
+      if (f === 'attention' && r.reviewStatus !== 'returned' && !hasMissingData(r)) {
+        return false;
       }
     }
     return true;
@@ -98,5 +126,5 @@ export function applyPostSealFilters<T>(rows: T[], filters: SealProblemFilter[])
 }
 
 export function needsEntryInclude(filters: SealProblemFilter[]): boolean {
-  return filters.includes('missing_data');
+  return filters.includes('missing_data') || filters.includes('attention');
 }

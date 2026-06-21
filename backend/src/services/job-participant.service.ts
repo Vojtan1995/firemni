@@ -25,6 +25,36 @@ export async function touchJobParticipant(
   });
 }
 
+/**
+ * Vrátí účastníky zakázky včetně počtu jejich (nesmazaných) ucpávek na zakázce.
+ * Slouží UI pro přiřazování pracovníků (varování při odebrání workera s prací).
+ */
+export async function listJobParticipants(jobId: string) {
+  const participants = await prisma.jobParticipant.findMany({
+    where: { jobId },
+    include: {
+      user: { select: { id: true, displayName: true, username: true, role: true } },
+    },
+    orderBy: { user: { displayName: 'asc' } },
+  });
+
+  const counts = await prisma.seal.groupBy({
+    by: ['createdById'],
+    where: { jobId, deletedAt: null },
+    _count: { _all: true },
+  });
+  const countMap = new Map(counts.map((c) => [c.createdById, c._count._all]));
+
+  return participants.map((p) => ({
+    userId: p.userId,
+    displayName: p.user.displayName,
+    username: p.user.username,
+    role: p.user.role,
+    roleOnJob: p.roleOnJob,
+    sealCount: countMap.get(p.userId) ?? 0,
+  }));
+}
+
 export async function joinJobByNumber(jobId: string, userId: string) {
   return prisma.$transaction(async (tx) => {
     const activeJob = await tx.job.findFirst({
