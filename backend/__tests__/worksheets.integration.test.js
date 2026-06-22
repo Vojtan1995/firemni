@@ -290,11 +290,14 @@ describe('Worksheets module integration', () => {
       return `${WS_TEST_PREFIX}${String(Date.now()).slice(-7)}${suffix}`;
     }
 
-    async function createSeal(suffix, targetFloorId = floorId) {
+    async function createSeal(suffix, targetFloorId = floorId, overrides = {}) {
       const res = await request(app)
         .post('/api/seals')
         .set('Authorization', `Bearer ${workerToken}`)
-        .send(sealBody(jobIdLocal, targetFloorId, uniqueSealNumber(suffix)));
+        .send({
+          ...sealBody(jobIdLocal, targetFloorId, uniqueSealNumber(suffix)),
+          ...overrides,
+        });
       expect(res.status).toBe(201);
       return res.body;
     }
@@ -340,6 +343,67 @@ describe('Worksheets module integration', () => {
       expect(addedEntryIds).toContain(draftSeal.entries[0].id);
       expect(addedEntryIds).toContain(checkedSeal.entries[0].id);
       expect(addedEntryIds).not.toContain(invoicedSeal.entries[0].id);
+    });
+
+    it('populate supports system and entryType filters', async () => {
+      const ws = await request(app)
+        .post('/api/worksheets')
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal });
+      expect(ws.status).toBe(201);
+
+      const matching = await createSeal('3', populateFloorId, {
+        system: 'FilterSystem',
+        entries: [
+          {
+            entryType: 'PVC',
+            dimension: '50',
+            quantity: 1,
+            insulation: 'žádná',
+            materials: ['Pena'],
+          },
+        ],
+      });
+      const wrongType = await createSeal('4', populateFloorId, {
+        system: 'FilterSystem',
+        entries: [
+          {
+            entryType: 'EL.V.',
+            electroInstallationType: 'Svazek',
+            dimension: '50',
+            quantity: 1,
+            insulation: 'žádná',
+            materials: ['Pena'],
+          },
+        ],
+      });
+      const wrongSystem = await createSeal('5', populateFloorId, {
+        system: 'OtherSystem',
+        entries: [
+          {
+            entryType: 'PVC',
+            dimension: '50',
+            quantity: 1,
+            insulation: 'žádná',
+            materials: ['Pena'],
+          },
+        ],
+      });
+
+      const populate = await request(app)
+        .post(`/api/worksheets/${ws.body.id}/populate`)
+        .set('Authorization', `Bearer ${workerToken}`)
+        .send({
+          floorIds: [populateFloorId],
+          system: 'FilterSystem',
+          entryType: 'PVC',
+        });
+      expect(populate.status).toBe(201);
+
+      const addedEntryIds = populate.body.items.map((item) => item.sealEntryId);
+      expect(addedEntryIds).toContain(matching.entries[0].id);
+      expect(addedEntryIds).not.toContain(wrongType.entries[0].id);
+      expect(addedEntryIds).not.toContain(wrongSystem.entries[0].id);
     });
   });
 });

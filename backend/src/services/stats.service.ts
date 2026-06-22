@@ -306,6 +306,11 @@ export async function getStatsOverview(
   const monthWhere = { ...baseWhere, createdAt: { gte: startOfMonth(now) } };
 
   if (role === UserRole.worker) {
+    const worksheetWhere = {
+      workers: { some: { userId } },
+      ...(parsedFilters?.jobId ? { jobId: parsedFilters.jobId } : {}),
+    };
+
     const [today, week, month, counts, photos, missingPhotos, returned, worksheets, byJob, estimated] =
       await Promise.all([
         prisma.seal.count({ where: { ...todayWhere, deletedAt: null } }),
@@ -315,7 +320,7 @@ export async function getStatsOverview(
         photoCount(baseWhere),
         missingPhotoCount(baseWhere),
         returnedSealCount(baseWhere),
-        prisma.workSheet.count({ where: { workers: { some: { userId } } } }),
+        prisma.workSheet.count({ where: worksheetWhere }),
         sealsByJob(baseWhere),
         estimatedValue(baseWhere),
       ]);

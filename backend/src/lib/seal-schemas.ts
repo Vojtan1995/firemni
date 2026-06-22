@@ -11,7 +11,7 @@ const optionalNote = z.string().max(SEAL_NOTE_MAX_LENGTH).optional();
 
 const optionalMm = z.number().int().positive().optional();
 
-export const ELECTRO_INSTALLATION_TYPES = ['Svazek', 'Husí krk', 'Žlab'] as const;
+export const ELECTRO_INSTALLATION_TYPES = ['Svazek', 'Husí krk', 'Žlab', 'Kabel'] as const;
 export const STEEL_ENTRY_TYPE = 'OCEL';
 export const ELECTRO_ENTRY_TYPE = 'EL.V.';
 
@@ -40,7 +40,7 @@ export const sealEntrySchema = z
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['electroInstallationType'],
-        message: 'U typu Elektro je nutné vybrat typ instalace (Svazek/Husí krk/Žlab)',
+        message: 'U typu Elektro je nutné vybrat typ instalace (Svazek/Husí krk/Žlab/Kabel)',
       });
     }
   });

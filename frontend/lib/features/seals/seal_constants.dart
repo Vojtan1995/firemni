@@ -89,7 +89,7 @@ const entryTypes = ['EL.V.', 'PVC', 'VZT', 'PROSTUP', 'OCEL', 'Měď'];
 const insulations = ['žádná', 'hořlavá', 'nehořlavá'];
 
 /// Podtyp elektro instalace – pouze pro typ EL.V. (Elektro).
-const electroInstallationTypes = ['Svazek', 'Husí krk', 'Žlab'];
+const electroInstallationTypes = ['Svazek', 'Husí krk', 'Žlab', 'Kabel'];
 
 const dimensionPresetsElV = [
   'Ø20',
@@ -178,6 +178,7 @@ List<String> dimensionPresetsForEntry(String entryType, String insulation) {
 }
 
 String defaultDimensionForEntry(String entryType, String insulation) {
+  if (entryType.isEmpty) return '';
   if (entryType == 'OCEL') return '';
   final presets = dimensionPresetsForEntry(entryType, insulation);
   return presets.isNotEmpty ? presets.first : '';

@@ -119,6 +119,8 @@ router.post('/:id/populate', requirePermission('worksheet.create'), async (req, 
       .object({
         floorIds: z.array(z.string().uuid()).optional(),
         status: z.string().optional(),
+        system: z.string().optional(),
+        entryType: z.string().optional(),
         from: z.string().optional(),
         to: z.string().optional(),
       })

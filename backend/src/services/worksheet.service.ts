@@ -556,7 +556,14 @@ export async function populateWorksheetFromFilters(
   worksheetId: string,
   role: UserRole,
   userId: string,
-  filters: { floorIds?: string[]; status?: string; from?: string; to?: string },
+  filters: {
+    floorIds?: string[];
+    status?: string;
+    system?: string;
+    entryType?: string;
+    from?: string;
+    to?: string;
+  },
 ) {
   const ws = await assertWorksheetEditable(worksheetId, role, userId);
   const workerIds = (
@@ -582,8 +589,18 @@ export async function populateWorksheetFromFilters(
 
   // Vynech prostupy, které už jsou v jakémkoliv soupisu – jinak by jediná zabraná
   // položka shodila celý dávkový import přes addWorksheetItems.
+  const entryWhere: Record<string, unknown> = {
+    deletedAt: null,
+    seal: sealWhere,
+    worksheetItems: { none: {} },
+  };
+  if (filters.entryType) entryWhere.entryType = filters.entryType;
+  if (filters.system) {
+    sealWhere.system = filters.system;
+  }
+
   const entries = await prisma.sealEntry.findMany({
-    where: { deletedAt: null, seal: sealWhere, worksheetItems: { none: {} } },
+    where: entryWhere,
     select: { id: true },
   });
 

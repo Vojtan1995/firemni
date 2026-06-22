@@ -8,7 +8,8 @@ void main() {
   });
 
   test('PROSTUP uses OC presets by insulation', () {
-    expect(dimensionPresetsForEntry('PROSTUP', 'nehořlavá'), contains('Ø20-100'));
+    expect(
+        dimensionPresetsForEntry('PROSTUP', 'nehořlavá'), contains('Ø20-100'));
     expect(dimensionPresetsForEntry('PROSTUP', 'hořlavá'), contains('Ø40'));
   });
 
@@ -19,5 +20,10 @@ void main() {
   test('defaultDimensionForEntry', () {
     expect(defaultDimensionForEntry('PVC', 'žádná'), 'Ø40');
     expect(defaultDimensionForEntry('OCEL', 'žádná'), '');
+    expect(defaultDimensionForEntry('', ''), '');
+  });
+
+  test('electro installation types include cable', () {
+    expect(electroInstallationTypes, contains('Kabel'));
   });
 }

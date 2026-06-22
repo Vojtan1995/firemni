@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
@@ -9,9 +10,8 @@ import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import '../reports/reports_screen.dart';
-import 'worksheet_create_helpers.dart';
 
-/// Export soupisu; uložené soupisy jsou na samostatné obrazovce.
+/// Hub pro export a vytváření soupisů ze stejných filtrů.
 class SoupisyScreen extends ConsumerStatefulWidget {
   const SoupisyScreen({super.key});
 
@@ -21,41 +21,12 @@ class SoupisyScreen extends ConsumerStatefulWidget {
 
 class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
   final _reportsKey = GlobalKey<ReportsScreenState>();
-  List<Map<String, dynamic>> _jobs = [];
-  List<Map<String, dynamic>> _workers = [];
+  final _dateFmt = DateFormat('yyyy-MM-dd');
   String? _jobIdFilter;
   String? _reportStatusFilter;
   String? _reportWorkerId;
   bool _queryParamsApplied = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadFilterOptions();
-  }
-
-  Future<void> _loadFilterOptions() async {
-    try {
-      final filterRes = await ref.read(dioProvider).get('/api/reports/filter-options');
-      if (!mounted) return;
-      setState(() {
-        _jobs = ((filterRes.data as Map)['jobs'] as List)
-            .cast<Map<String, dynamic>>();
-        _workers = ((filterRes.data as Map)['workers'] as List? ?? [])
-            .cast<Map<String, dynamic>>();
-      });
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            apiErrorMessage(e, fallback: 'Nepodařilo se načíst filtry'),
-          ),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
-  }
+  bool _creatingWorksheet = false;
 
   @override
   void didChangeDependencies() {
@@ -80,87 +51,76 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
     }
   }
 
-  Future<void> _createWorksheetQuick() async {
-    if (_jobs.isEmpty) {
+  String _dateParam(DateTime date) => _dateFmt.format(date);
+
+  Future<void> _createWorksheetFromFilters(
+    ReportsFilterSelection filters,
+  ) async {
+    if (filters.jobId == null || filters.jobId!.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Nejdříve vyberte dostupnou zakázku')),
+        const SnackBar(content: Text('Nejdříve vyberte zakázku')),
       );
       return;
     }
-    String? selectedJobId = _jobs.first['id'] as String?;
-    await showDialog<void>(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setDialogState) => AlertDialog(
-          title: const Text('Nový soupis práce'),
-          content: DropdownButtonFormField<String>(
-            key: ValueKey(selectedJobId),
-            initialValue: selectedJobId,
-            decoration: const InputDecoration(labelText: 'Zakázka'),
-            items: _jobs
-                .map((j) => DropdownMenuItem(
-                      value: j['id'] as String,
-                      child: Text('${j['projectNumber']} ${j['name']}'),
-                    ))
-                .toList(),
-            onChanged: (v) => setDialogState(() => selectedJobId = v),
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
-            FilledButton(
-              onPressed: () async {
-                if (selectedJobId == null) return;
-                Navigator.pop(ctx);
-                try {
-                  final auth = ref.read(authServiceProvider);
-                  List<String>? workerIds;
-                  if (!auth.isWorker) {
-                    workerIds = await pickWorksheetWorkerIds(
-                      ctx,
-                      workers: _workers,
-                    );
-                    if (workerIds == null || workerIds.isEmpty) return;
-                  }
 
-                  final body = <String, dynamic>{'jobId': selectedJobId};
-                  if (workerIds != null) body['workerIds'] = workerIds;
-
-                  final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
-                  final ws = res.data as Map<String, dynamic>;
-                  final popRes = await ref.read(dioProvider).post(
-                        '/api/worksheets/${ws['id']}/populate',
-                        data: {},
-                      );
-                  if (!mounted) return;
-                  final pop = popRes.data as Map<String, dynamic>?;
-                  final requested = (pop?['requestedCount'] as num?)?.toInt();
-                  final added = (pop?['addedCount'] as num?)?.toInt();
-                  if (requested != null &&
-                      added != null &&
-                      requested > added) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Do soupisu bylo přidáno $added z $requested položek. '
-                          '${requested - added} je již součástí jiného soupisu.',
-                        ),
-                      ),
-                    );
-                  }
-                } on DioException catch (e) {
-                  if (!mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba'))),
-                  );
-                }
-              },
-              child: const Text('Vytvořit'),
-            ),
-          ],
+    final auth = ref.read(authServiceProvider);
+    if (!auth.isWorker && filters.workerIds.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Nejdříve vyberte alespoň jednoho pracovníka'),
         ),
-      ),
-    );
+      );
+      return;
+    }
+
+    setState(() => _creatingWorksheet = true);
+    try {
+      final body = <String, dynamic>{'jobId': filters.jobId};
+      if (!auth.isWorker) body['workerIds'] = filters.workerIds;
+      if (filters.from != null) body['periodFrom'] = _dateParam(filters.from!);
+      if (filters.to != null) body['periodTo'] = _dateParam(filters.to!);
+
+      final res = await ref.read(dioProvider).post(
+            '/api/worksheets',
+            data: body,
+          );
+      final ws = res.data as Map<String, dynamic>;
+
+      final populateBody = <String, dynamic>{
+        if (filters.floorId != null) 'floorIds': [filters.floorId],
+        if (filters.status != null) 'status': filters.status,
+        if (filters.system != null) 'system': filters.system,
+        if (filters.entryType != null) 'entryType': filters.entryType,
+        if (filters.from != null) 'from': _dateParam(filters.from!),
+        if (filters.to != null) 'to': _dateParam(filters.to!),
+      };
+      final popRes = await ref.read(dioProvider).post(
+            '/api/worksheets/${ws['id']}/populate',
+            data: populateBody,
+          );
+
+      if (!mounted) return;
+      final pop = popRes.data as Map<String, dynamic>?;
+      final requested = (pop?['requestedCount'] as num?)?.toInt();
+      final added = (pop?['addedCount'] as num?)?.toInt();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            requested != null && added != null
+                ? 'Soupis vytvořen. Přidáno $added z $requested položek.'
+                : 'Soupis vytvořen.',
+          ),
+        ),
+      );
+      context.push('/worksheets/${ws['id']}');
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba'))),
+      );
+    } finally {
+      if (mounted) setState(() => _creatingWorksheet = false);
+    }
   }
 
   @override
@@ -174,67 +134,48 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
           const AppTopActions(),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: _loadFilterOptions,
+            onPressed: () => _reportsKey.currentState?.refreshFilterOptions(),
           ),
         ],
       ),
-      body: Column(
+      body: ListView(
+        padding: const EdgeInsets.all(AppSpacing.lg),
         children: [
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(AppSpacing.lg),
-              children: [
-                if (auth.canAccessReports)
-                  AppCard(
-                    showChevron: false,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const SectionHeader(
-                          title: 'Export soupisu',
-                          style: SectionHeaderStyle.h3,
-                        ),
-                        ReportsScreen(
-                          key: _reportsKey,
-                          compact: true,
-                          hideLoadButton: true,
-                          initialJobId: _jobIdFilter,
-                          initialStatus: _reportStatusFilter,
-                          initialWorkerId: _reportWorkerId,
-                        ),
-                      ],
-                    ),
+          if (auth.canAccessReports)
+            AppCard(
+              showChevron: false,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SectionHeader(
+                    title: 'Export a vytvoření soupisu',
+                    style: SectionHeaderStyle.h3,
                   ),
-                if (auth.canAccessReports) const SizedBox(height: AppSpacing.lg),
-                AppSecondaryButton(
-                  label: auth.isWorker
-                      ? 'Zobrazit uložené soupisy'
-                      : 'Soupisy podle pracovníků',
-                  icon: auth.isWorker
-                      ? Icons.folder_open_outlined
-                      : Icons.people_outline,
-                  onPressed: () => context.push('/saved-worksheets'),
-                ),
-              ],
-            ),
-          ),
-          if (auth.canCreateWorksheet)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.lg,
-                  AppSpacing.sm,
-                  AppSpacing.lg,
-                  AppSpacing.lg,
-                ),
-                child: AppPrimaryButton(
-                  label: 'Nový soupis',
-                  icon: Icons.add,
-                  onPressed: _createWorksheetQuick,
-                ),
+                  ReportsScreen(
+                    key: _reportsKey,
+                    compact: true,
+                    hideLoadButton: true,
+                    initialJobId: _jobIdFilter,
+                    initialStatus: _reportStatusFilter,
+                    initialWorkerId: _reportWorkerId,
+                    onCreateWorksheet: auth.canCreateWorksheet
+                        ? _createWorksheetFromFilters
+                        : null,
+                    worksheetActionLoading: _creatingWorksheet,
+                  ),
+                ],
               ),
             ),
+          if (auth.canAccessReports) const SizedBox(height: AppSpacing.lg),
+          AppSecondaryButton(
+            label: auth.isWorker
+                ? 'Zobrazit uložené soupisy'
+                : 'Soupisy podle pracovníků',
+            icon: auth.isWorker
+                ? Icons.folder_open_outlined
+                : Icons.people_outline,
+            onPressed: () => context.push('/saved-worksheets'),
+          ),
         ],
       ),
     );

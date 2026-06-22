@@ -11,6 +11,32 @@ import '../seals/seal_constants.dart';
 import 'export_service.dart';
 import 'reports_query.dart';
 
+class ReportsFilterSelection {
+  const ReportsFilterSelection({
+    required this.queryParams,
+    required this.workerIds,
+    this.jobId,
+    this.status,
+    this.workerId,
+    this.floorId,
+    this.system,
+    this.entryType,
+    this.from,
+    this.to,
+  });
+
+  final Map<String, String> queryParams;
+  final List<String> workerIds;
+  final String? jobId;
+  final String? status;
+  final String? workerId;
+  final String? floorId;
+  final String? system;
+  final String? entryType;
+  final DateTime? from;
+  final DateTime? to;
+}
+
 class ReportsScreen extends ConsumerStatefulWidget {
   const ReportsScreen({
     super.key,
@@ -19,6 +45,8 @@ class ReportsScreen extends ConsumerStatefulWidget {
     this.initialJobId,
     this.initialStatus,
     this.initialWorkerId,
+    this.onCreateWorksheet,
+    this.worksheetActionLoading = false,
   });
 
   /// Bez Scaffold a bez tabulky — pro vložení do [SoupisyScreen].
@@ -27,6 +55,9 @@ class ReportsScreen extends ConsumerStatefulWidget {
   final String? initialJobId;
   final String? initialStatus;
   final String? initialWorkerId;
+  final Future<void> Function(ReportsFilterSelection filters)?
+      onCreateWorksheet;
+  final bool worksheetActionLoading;
 
   @override
   ConsumerState<ReportsScreen> createState() => ReportsScreenState();
@@ -69,6 +100,31 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
         to: _filterTo,
       );
 
+  ReportsFilterSelection get currentFilters {
+    final currentUserId = ref.read(currentUserIdProvider);
+    final isWorker = _isWorker;
+    final workerIds = isWorker
+        ? <String>[if (currentUserId != null) currentUserId]
+        : _filterWorkerId != null
+            ? <String>[_filterWorkerId!]
+            : _workers
+                .map((w) => w['id'] as String?)
+                .whereType<String>()
+                .toList();
+    return ReportsFilterSelection(
+      queryParams: _queryParams,
+      workerIds: workerIds,
+      jobId: _filterJobId,
+      status: _filterStatus,
+      workerId: isWorker ? currentUserId : _filterWorkerId,
+      floorId: _filterFloorId,
+      system: _filterSystem,
+      entryType: _filterEntryType,
+      from: _filterFrom,
+      to: _filterTo,
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -87,7 +143,9 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
     setState(() {
       if (jobId != null) _filterJobId = jobId.isEmpty ? null : jobId;
       if (status != null) _filterStatus = status.isEmpty ? null : status;
-      if (workerId != null) _filterWorkerId = workerId.isEmpty ? null : workerId;
+      if (workerId != null) {
+        _filterWorkerId = workerId.isEmpty ? null : workerId;
+      }
     });
     if (_filterJobId != null) {
       await _loadFloorsForJob(_filterJobId);
@@ -97,7 +155,8 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Future<void> _loadFilterOptions() async {
     try {
-      final res = await ref.read(dioProvider).get('/api/reports/filter-options');
+      final res =
+          await ref.read(dioProvider).get('/api/reports/filter-options');
       if (!mounted) return;
       final data = res.data as Map;
       setState(() {
@@ -128,8 +187,7 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
       return;
     }
     try {
-      final res =
-          await ref.read(dioProvider).get('/api/jobs/$jobId/floors');
+      final res = await ref.read(dioProvider).get('/api/jobs/$jobId/floors');
       if (!mounted) return;
       setState(() {
         _floors = (res.data as List).cast<Map<String, dynamic>>();
@@ -169,6 +227,8 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
   }
 
   Future<void> load() => _load();
+
+  Future<void> refreshFilterOptions() => _loadFilterOptions();
 
   Future<void> _load() async {
     setState(() => _loading = true);
@@ -274,244 +334,260 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
 
   Widget _buildFiltersPanel(BuildContext context, bool isWorker) {
     return Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-job-$_filterJobId'),
-                  isExpanded: true,
-                  initialValue: _filterJobId,
-                  decoration: const InputDecoration(
-                    labelText: 'Stavba',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: _dropdownLabel('Všechny stavby'),
-                    ),
-                    ..._jobs.map(
-                      (j) => DropdownMenuItem<String?>(
-                        value: j['id'] as String,
-                        child: _dropdownLabel(
-                          '${j['projectNumber']} – ${j['name']}',
-                        ),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) {
-                    setState(() => _filterJobId = v);
-                    _loadFloorsForJob(v);
-                  },
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
-                  isExpanded: true,
-                  initialValue: _filterFloorId,
-                  decoration: const InputDecoration(
-                    labelText: 'Patro',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: _dropdownLabel('Všechna patra'),
-                    ),
-                    ..._floors.map(
-                      (f) => DropdownMenuItem<String?>(
-                        value: f['id'] as String,
-                        child: _dropdownLabel(f['name'] as String),
-                      ),
-                    ),
-                  ],
-                  onChanged: _filterJobId == null
-                      ? null
-                      : (v) => setState(() => _filterFloorId = v),
-                ),
-                if (!isWorker) ...[
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<String?>(
-                    key: ValueKey('filter-worker-$_filterWorkerId'),
-                    isExpanded: true,
-                    initialValue: _filterWorkerId,
-                    decoration: const InputDecoration(
-                      labelText: 'Pracovník',
-                      border: OutlineInputBorder(),
-                    ),
-                    items: [
-                      DropdownMenuItem<String?>(
-                        value: null,
-                        child: _dropdownLabel('Všichni pracovníci'),
-                      ),
-                      ..._workers.map(
-                        (w) => DropdownMenuItem<String?>(
-                          value: w['id'] as String,
-                          child: _dropdownLabel(
-                            w['displayName'] as String? ??
-                                w['username'] as String,
-                          ),
-                        ),
-                      ),
-                    ],
-                    onChanged: (v) => setState(() => _filterWorkerId = v),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-status-$_filterStatus'),
-                  isExpanded: true,
-                  initialValue: _filterStatus,
-                  decoration: const InputDecoration(
-                    labelText: 'Status',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: _statusOptions.entries
-                      .map(
-                        (e) => DropdownMenuItem<String?>(
-                          value: e.key,
-                          child: _dropdownLabel(e.value),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (v) => setState(() => _filterStatus = v),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-system-$_filterSystem'),
-                  isExpanded: true,
-                  initialValue: _filterSystem,
-                  decoration: const InputDecoration(
-                    labelText: 'Systém',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: _dropdownLabel('Všechny systémy'),
-                    ),
-                    ...sealSystems.map(
-                      (s) => DropdownMenuItem<String?>(
-                        value: s,
-                        child: _dropdownLabel(s),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _filterSystem = v),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  key: ValueKey('filter-entry-$_filterEntryType'),
-                  isExpanded: true,
-                  initialValue: _filterEntryType,
-                  decoration: const InputDecoration(
-                    labelText: 'Typ prostupu',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    DropdownMenuItem<String?>(
-                      value: null,
-                      child: _dropdownLabel('Všechny typy'),
-                    ),
-                    ...entryTypes.map(
-                      (t) => DropdownMenuItem<String?>(
-                        value: t,
-                        child: _dropdownLabel(t),
-                      ),
-                    ),
-                  ],
-                  onChanged: (v) => setState(() => _filterEntryType = v),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _pickDate(isFrom: true),
-                        child: Text('Od: ${_formatFilterDate(_filterFrom)}'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => _pickDate(isFrom: false),
-                        child: Text('Do: ${_formatFilterDate(_filterTo)}'),
-                      ),
-                    ),
-                  ],
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: _filterFrom == null && _filterTo == null
-                        ? null
-                        : () => setState(() {
-                              _filterFrom = null;
-                              _filterTo = null;
-                            }),
-                    child: const Text('Vymazat období'),
-                  ),
-                ),
-                if (!widget.hideLoadButton) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _loading ? null : _load,
-                      child: _loading
-                          ? const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text('Načíst'),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _exporting ? null : _exportCsv,
-                        icon: _exporting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.download),
-                        label: const Text('Export CSV'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: _exporting ? null : _exportPdf,
-                        icon: _exporting
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child:
-                                    CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Icon(Icons.picture_as_pdf),
-                        label: const Text('Export PDF'),
-                      ),
-                    ),
-                  ],
-                ),
-                if (!widget.hideLoadButton && _totalCzk != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'Součet bez DPH: ${_totalCzk!.toStringAsFixed(2)} Kč',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ],
-              ],
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          DropdownButtonFormField<String?>(
+            key: ValueKey('filter-job-$_filterJobId'),
+            isExpanded: true,
+            initialValue: _filterJobId,
+            decoration: const InputDecoration(
+              labelText: 'Stavba',
+              border: OutlineInputBorder(),
             ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: _dropdownLabel('Všechny stavby'),
+              ),
+              ..._jobs.map(
+                (j) => DropdownMenuItem<String?>(
+                  value: j['id'] as String,
+                  child: _dropdownLabel(
+                    '${j['projectNumber']} – ${j['name']}',
+                  ),
+                ),
+              ),
+            ],
+            onChanged: (v) {
+              setState(() => _filterJobId = v);
+              _loadFloorsForJob(v);
+            },
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
+            isExpanded: true,
+            initialValue: _filterFloorId,
+            decoration: const InputDecoration(
+              labelText: 'Patro',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: _dropdownLabel('Všechna patra'),
+              ),
+              ..._floors.map(
+                (f) => DropdownMenuItem<String?>(
+                  value: f['id'] as String,
+                  child: _dropdownLabel(f['name'] as String),
+                ),
+              ),
+            ],
+            onChanged: _filterJobId == null
+                ? null
+                : (v) => setState(() => _filterFloorId = v),
+          ),
+          if (!isWorker) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              key: ValueKey('filter-worker-$_filterWorkerId'),
+              isExpanded: true,
+              initialValue: _filterWorkerId,
+              decoration: const InputDecoration(
+                labelText: 'Pracovník',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: _dropdownLabel('Všichni pracovníci'),
+                ),
+                ..._workers.map(
+                  (w) => DropdownMenuItem<String?>(
+                    value: w['id'] as String,
+                    child: _dropdownLabel(
+                      w['displayName'] as String? ?? w['username'] as String,
+                    ),
+                  ),
+                ),
+              ],
+              onChanged: (v) => setState(() => _filterWorkerId = v),
+            ),
+          ],
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            key: ValueKey('filter-status-$_filterStatus'),
+            isExpanded: true,
+            initialValue: _filterStatus,
+            decoration: const InputDecoration(
+              labelText: 'Status',
+              border: OutlineInputBorder(),
+            ),
+            items: _statusOptions.entries
+                .map(
+                  (e) => DropdownMenuItem<String?>(
+                    value: e.key,
+                    child: _dropdownLabel(e.value),
+                  ),
+                )
+                .toList(),
+            onChanged: (v) => setState(() => _filterStatus = v),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            key: ValueKey('filter-system-$_filterSystem'),
+            isExpanded: true,
+            initialValue: _filterSystem,
+            decoration: const InputDecoration(
+              labelText: 'Systém',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: _dropdownLabel('Všechny systémy'),
+              ),
+              ...sealSystems.map(
+                (s) => DropdownMenuItem<String?>(
+                  value: s,
+                  child: _dropdownLabel(s),
+                ),
+              ),
+            ],
+            onChanged: (v) => setState(() => _filterSystem = v),
+          ),
+          const SizedBox(height: 12),
+          DropdownButtonFormField<String?>(
+            key: ValueKey('filter-entry-$_filterEntryType'),
+            isExpanded: true,
+            initialValue: _filterEntryType,
+            decoration: const InputDecoration(
+              labelText: 'Typ prostupu',
+              border: OutlineInputBorder(),
+            ),
+            items: [
+              DropdownMenuItem<String?>(
+                value: null,
+                child: _dropdownLabel('Všechny typy'),
+              ),
+              ...entryTypes.map(
+                (t) => DropdownMenuItem<String?>(
+                  value: t,
+                  child: _dropdownLabel(t),
+                ),
+              ),
+            ],
+            onChanged: (v) => setState(() => _filterEntryType = v),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _pickDate(isFrom: true),
+                  child: Text('Od: ${_formatFilterDate(_filterFrom)}'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _pickDate(isFrom: false),
+                  child: Text('Do: ${_formatFilterDate(_filterTo)}'),
+                ),
+              ),
+            ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _filterFrom == null && _filterTo == null
+                  ? null
+                  : () => setState(() {
+                        _filterFrom = null;
+                        _filterTo = null;
+                      }),
+              child: const Text('Vymazat období'),
+            ),
+          ),
+          if (!widget.hideLoadButton) ...[
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _loading ? null : _load,
+                child: _loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Načíst'),
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _exporting ? null : _exportCsv,
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.download),
+                  label: const Text('Export CSV'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _exporting ? null : _exportPdf,
+                  icon: _exporting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.picture_as_pdf),
+                  label: const Text('Export PDF'),
+                ),
+              ),
+            ],
+          ),
+          if (widget.onCreateWorksheet != null) ...[
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: widget.worksheetActionLoading
+                    ? null
+                    : () => widget.onCreateWorksheet!(currentFilters),
+                icon: widget.worksheetActionLoading
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.playlist_add_check),
+                label: const Text('Vytvořit soupis z filtrů'),
+              ),
+            ),
+          ],
+          if (!widget.hideLoadButton && _totalCzk != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Součet bez DPH: ${_totalCzk!.toStringAsFixed(2)} Kč',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+          ],
+        ],
+      ),
     );
   }
 

@@ -98,6 +98,15 @@ describe('Seal entry types + conditional fields — Task 3', () => {
     expect(res.body.entries[0].electroInstallationType).toBe('Žlab');
   });
 
+  it('accepts Elektro with subtype Kabel', async () => {
+    const res = await create(`${PREFIX}8`, {
+      entryType: 'EL.V.',
+      electroInstallationType: 'Kabel',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.entries[0].electroInstallationType).toBe('Kabel');
+  });
+
   it('old Ocel entry without Doizolováno is still displayable', async () => {
     const creator = await prisma.user.findUnique({ where: { username: 'vedeni' } });
     const seal = await prisma.seal.create({

@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:drift/drift.dart' show Value, OrderingTerm;
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -88,12 +88,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         if (!mounted) return;
         final db = ref.read(databaseProvider);
         await _loadFloorContext(db);
-        await _applyNewSealDefaults(db);
         var next = await suggestNextSealNumber(db, floorId: widget.floorId);
         try {
           final res = await ref.read(dioProvider).get(
-            '/api/jobs/${widget.jobId}/floors/${widget.floorId}/next-seal-number',
-          );
+                '/api/jobs/${widget.jobId}/floors/${widget.floorId}/next-seal-number',
+              );
           next = (res.data as Map)['nextSealNumber'] as String? ?? next;
         } catch (_) {}
         if (!mounted) return;
@@ -151,8 +150,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     if (seal['status'] != 'draft' && seal['status'] != 'checked') {
       setState(() => _loadingInitial = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Fakturované ucpávky nelze upravovat')),
+        const SnackBar(content: Text('Fakturované ucpávky nelze upravovat')),
       );
       context.pop();
       return;
@@ -233,29 +231,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     });
   }
 
-  /// Předvyplní bezpečné výchozí hodnoty pro NOVOU ucpávku (nikdy pro editaci).
-  /// Preferuje poslední použité hodnoty pracovníka na této zakázce (z poslední
-  /// lokální ucpávky), jinak bezpečný default požární odolnosti. Materiály ani
-  /// konkrétní produkty se nepředvybírají, aby nevznikla chybná evidence.
-  Future<void> _applyNewSealDefaults(AppDatabase db) async {
-    final lastSeal = await (db.select(db.localSeals)
-          ..where((s) => s.jobId.equals(widget.jobId))
-          ..where((s) => s.deletedAt.isNull())
-          ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)])
-          ..limit(1))
-        .getSingleOrNull();
-    if (lastSeal != null) {
-      _trade ??= lastSeal.trade;
-      _system ??= lastSeal.system;
-      _construction ??= lastSeal.construction;
-      _location ??= lastSeal.location;
-      _fireRating ??= lastSeal.fireRating;
-    }
-    // Bezpečný default odolnosti, pokud není co převzít (90 min je nejběžnější).
-    _fireRating ??= '90 min';
-    if (mounted) setState(() {});
-  }
-
   Future<void> _openDraftPlacement() async {
     final sealNumber = _numberCtrl.text.trim();
     if (sealNumber.isEmpty) {
@@ -330,7 +305,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Značka na výkresu je volitelná — doplníte ji teď nebo později ve výkresu patra.',
+          widget.isEdit
+              ? 'Značku můžete upravit ve výkresu patra.'
+              : 'Novou ucpávku je nutné před uložením zakreslit do výkresu.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 8),
@@ -339,7 +316,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           const Text('Značka potvrzena')
         else if (!drawing.isInteractive)
           Text(
-            'Po uložení: čeká na zakreslení (výkres zatím není stažen).',
+            widget.isEdit
+                ? 'Výkres zatím není stažený.'
+                : 'Výkres zatím není stažený, uložení nové ucpávky proto nejde dokončit.',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         const SizedBox(height: 8),
@@ -348,7 +327,9 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             onPressed: _openDraftPlacement,
             icon: const Icon(Icons.place),
             label: Text(
-              _markerPlacementConfirmed ? 'Změnit umístění' : 'Umístit na výkres',
+              _markerPlacementConfirmed
+                  ? 'Změnit umístění'
+                  : 'Umístit na výkres',
             ),
           ),
       ],
@@ -455,6 +436,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           content: Text('Hlavní prostup potřebuje alespoň jeden materiál')));
       return;
     }
+    if (_entries.any((e) => e.entryType.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Každý prostup potřebuje typ')));
+      return;
+    }
+    if (_entries.any((e) => e.insulation.trim().isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Každý prostup potřebuje izolaci')));
+      return;
+    }
     if (_entries.asMap().entries.any((i) {
       final e = i.value;
       if (e.dimension.trim().isNotEmpty) return false;
@@ -472,7 +463,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           const SnackBar(content: Text('Každý prostup potřebuje rozměr')));
       return;
     }
-    if (_entries.any((e) => e.entryType == 'OCEL' && e.steelInsulated == null)) {
+    if (_entries
+        .any((e) => e.entryType == 'OCEL' && e.steelInsulated == null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('U typu Ocel vyberte Doizolováno (Ano/Ne)')));
       return;
@@ -480,8 +472,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     if (_entries.any(
         (e) => e.entryType == 'EL.V.' && e.electroInstallationType == null)) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content:
-              Text('U typu Elektro vyberte typ instalace (Svazek/Husí krk/Žlab)')));
+          content: Text(
+              'U typu Elektro vyberte typ instalace (Svazek/Husí krk/Žlab/Kabel)')));
       return;
     }
     final overDeducted = _entries.asMap().entries.any((i) {
@@ -498,7 +490,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     });
     if (overDeducted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Odečtená plocha je větší než celková plocha prostupu.')));
+          content:
+              Text('Odečtená plocha je větší než celková plocha prostupu.')));
       return;
     }
     if (!widget.isEdit && _photoPaths.isEmpty) {
@@ -509,14 +502,23 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
 
     final db = ref.read(databaseProvider);
-    final drawing =
-        _drawingState ?? await resolveFloorDrawingState(db, floorId: widget.floorId);
+    final drawing = _drawingState ??
+        await resolveFloorDrawingState(db, floorId: widget.floorId);
+    if (!mounted) return;
 
     final placementPending = computeMarkerPlacementPending(
       isEdit: widget.isEdit,
       drawing: drawing,
       markerPlacementConfirmed: _markerPlacementConfirmed,
     );
+    if (placementPending) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Novou ucpávku je nutné nejdřív zakreslit do výkresu.'),
+        ),
+      );
+      return;
+    }
 
     final duplicate = await findLocalDuplicateSeal(
       db,
@@ -652,16 +654,16 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               ),
             );
         await ref.read(syncServiceProvider).enqueueMutation(
-              db: db,
-              entityType: 'seal_marker',
-              operation: 'update',
-              payload: {
-                'sealId': sealId,
-                'floorId': widget.floorId,
-                'x': _draftMarkerX,
-                'y': _draftMarkerY,
-              },
-            );
+          db: db,
+          entityType: 'seal_marker',
+          operation: 'update',
+          payload: {
+            'sealId': sealId,
+            'floorId': widget.floorId,
+            'x': _draftMarkerX,
+            'y': _draftMarkerY,
+          },
+        );
       }
 
       for (final path in _photoPaths) {
@@ -868,163 +870,163 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     return UnsavedChangesPopScope(
       isDirty: _isDirty,
       child: Scaffold(
-      appBar: AppBar(
-        title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            const SectionHeader(
-              title: 'Základ',
-              style: SectionHeaderStyle.h3,
-            ),
-            if (_floorName != null) ...[
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('Patro'),
-                subtitle: Text(_floorName!),
+        appBar: AppBar(
+          title: Text(widget.isEdit ? 'Upravit ucpávku' : 'Nová ucpávka'),
+        ),
+        body: SingleChildScrollView(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SectionHeader(
+                title: 'Základ',
+                style: SectionHeaderStyle.h3,
+              ),
+              if (_floorName != null) ...[
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Patro'),
+                  subtitle: Text(_floorName!),
+                ),
+                const SizedBox(height: 8),
+              ],
+              TextField(
+                controller: _numberCtrl,
+                decoration: InputDecoration(
+                  labelText: 'Číslo ucpávky *',
+                  border: const OutlineInputBorder(),
+                  helperText: _duplicateNumberError == null
+                      ? 'Pouze číslice — číslo musí odpovídat štítku v terénu'
+                      : null,
+                  errorText: _duplicateNumberError,
+                ),
+                keyboardType: TextInputType.number,
               ),
               const SizedBox(height: 8),
-            ],
-            TextField(
-              controller: _numberCtrl,
-              decoration: InputDecoration(
-                labelText: 'Číslo ucpávky *',
-                border: const OutlineInputBorder(),
-                helperText: _duplicateNumberError == null
-                    ? 'Pouze číslice — číslo musí odpovídat štítku v terénu'
-                    : null,
-                errorText: _duplicateNumberError,
-              ),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 8),
-            ChipSelector(
-              label: 'Řemeslo *',
-              options: sealTrades,
-              selected: _trade,
-              labelFor: sealTradeLabel,
-              onSelected: (v) {
-                setState(() => _trade = v);
-                _markDirty();
-              },
-            ),
-            const SizedBox(height: 8),
-            ChipSelector(
-              label: 'Systém *',
-              options: sealSystems,
-              selected: _system,
-              onSelected: (v) {
-                setState(() => _system = v);
-                _markDirty();
-              },
-            ),
-            const SizedBox(height: 14),
-            const SectionHeader(
-              title: 'Hlavní prostup',
-              subtitle: 'Technické údaje',
-              style: SectionHeaderStyle.h3,
-            ),
-            if (_entries.isNotEmpty)
-              _EntryEditor(
-                index: 0,
-                entry: _entries.first,
-                system: _system,
-                allEntries: _entries,
-                canRemove: false,
-                onChanged: () {
-                  setState(() {});
+              ChipSelector(
+                label: 'Řemeslo *',
+                options: sealTrades,
+                selected: _trade,
+                labelFor: sealTradeLabel,
+                onSelected: (v) {
+                  setState(() => _trade = v);
                   _markDirty();
                 },
               ),
-            if (_entries.length > 1) ...[
               const SizedBox(height: 8),
+              ChipSelector(
+                label: 'Systém *',
+                options: sealSystems,
+                selected: _system,
+                onSelected: (v) {
+                  setState(() => _system = v);
+                  _markDirty();
+                },
+              ),
+              const SizedBox(height: 14),
               const SectionHeader(
-                title: 'Další prostupy',
+                title: 'Hlavní prostup',
+                subtitle: 'Technické údaje',
                 style: SectionHeaderStyle.h3,
               ),
-              ..._entries.asMap().entries.where((i) => i.key > 0).map(
-                    (i) => _EntryEditor(
-                      index: i.key,
-                      entry: i.value,
-                      system: _system,
-                      allEntries: _entries,
-                      canRemove: true,
-                      onRemove: () => _removeEntry(i.key),
-                      onChanged: () {
-                        setState(() {});
-                        _markDirty();
-                      },
+              if (_entries.isNotEmpty)
+                _EntryEditor(
+                  index: 0,
+                  entry: _entries.first,
+                  system: _system,
+                  allEntries: _entries,
+                  canRemove: false,
+                  onChanged: () {
+                    setState(() {});
+                    _markDirty();
+                  },
+                ),
+              if (_entries.length > 1) ...[
+                const SizedBox(height: 8),
+                const SectionHeader(
+                  title: 'Další prostupy',
+                  style: SectionHeaderStyle.h3,
+                ),
+                ..._entries.asMap().entries.where((i) => i.key > 0).map(
+                      (i) => _EntryEditor(
+                        index: i.key,
+                        entry: i.value,
+                        system: _system,
+                        allEntries: _entries,
+                        canRemove: true,
+                        onRemove: () => _removeEntry(i.key),
+                        onChanged: () {
+                          setState(() {});
+                          _markDirty();
+                        },
+                      ),
                     ),
-                  ),
+              ],
+              TextButton.icon(
+                onPressed: () {
+                  setState(() => _entries.add(SealEntryDraftData()));
+                  _markDirty();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Přidat prostup'),
+              ),
+              const SizedBox(height: 14),
+              const SectionHeader(
+                title: 'Umístění',
+                style: SectionHeaderStyle.h3,
+              ),
+              ChipSelector(
+                label: 'Konstrukce *',
+                options: constructions,
+                selected: _construction,
+                onSelected: (v) {
+                  setState(() => _construction = v);
+                  _markDirty();
+                },
+              ),
+              const SizedBox(height: 8),
+              ChipSelector(
+                label: 'Umístění *',
+                options: locations,
+                selected: _location,
+                onSelected: (v) {
+                  setState(() => _location = v);
+                  _markDirty();
+                },
+              ),
+              const SizedBox(height: 8),
+              ChipSelector(
+                label: 'Požární odolnost *',
+                options: fireRatings,
+                selected: _fireRating,
+                onSelected: (v) {
+                  setState(() => _fireRating = v);
+                  _markDirty();
+                },
+              ),
+              const SizedBox(height: 14),
+              const SectionHeader(
+                  title: 'Značka ve výkresu', style: SectionHeaderStyle.h3),
+              _drawingSection(),
+              const SizedBox(height: 14),
+              const SectionHeader(
+                  title: 'Foto a poznámka', style: SectionHeaderStyle.h3),
+              if (!widget.isEdit) ...[
+                _photosSection(),
+                const SizedBox(height: 12),
+              ],
+              ..._noteFields(ref.read(authServiceProvider).role),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: _saving ? null : _save,
+                child: _saving
+                    ? const CircularProgressIndicator()
+                    : const Text('Uložit'),
+              ),
             ],
-            TextButton.icon(
-              onPressed: () {
-                setState(() => _entries.add(SealEntryDraftData()));
-                _markDirty();
-              },
-              icon: const Icon(Icons.add),
-              label: const Text('Přidat prostup'),
-            ),
-            const SizedBox(height: 14),
-            const SectionHeader(
-              title: 'Umístění',
-              style: SectionHeaderStyle.h3,
-            ),
-            ChipSelector(
-              label: 'Konstrukce *',
-              options: constructions,
-              selected: _construction,
-              onSelected: (v) {
-                setState(() => _construction = v);
-                _markDirty();
-              },
-            ),
-            const SizedBox(height: 8),
-            ChipSelector(
-              label: 'Umístění *',
-              options: locations,
-              selected: _location,
-              onSelected: (v) {
-                setState(() => _location = v);
-                _markDirty();
-              },
-            ),
-            const SizedBox(height: 8),
-            ChipSelector(
-              label: 'Požární odolnost *',
-              options: fireRatings,
-              selected: _fireRating,
-              onSelected: (v) {
-                setState(() => _fireRating = v);
-                _markDirty();
-              },
-            ),
-            const SizedBox(height: 14),
-            const SectionHeader(
-                title: 'Značka ve výkresu', style: SectionHeaderStyle.h3),
-            _drawingSection(),
-            const SizedBox(height: 14),
-            const SectionHeader(
-                title: 'Foto a poznámka', style: SectionHeaderStyle.h3),
-            if (!widget.isEdit) ...[
-              _photosSection(),
-              const SizedBox(height: 12),
-            ],
-            ..._noteFields(ref.read(authServiceProvider).role),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _saving ? null : _save,
-              child: _saving
-                  ? const CircularProgressIndicator()
-                  : const Text('Uložit'),
-            ),
-          ],
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -1175,7 +1177,8 @@ class _EntryEditorState extends State<_EntryEditor> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ...lines.map((l) => Text(l, style: Theme.of(context).textTheme.bodySmall)),
+          ...lines.map(
+              (l) => Text(l, style: Theme.of(context).textTheme.bodySmall)),
           if (calc.netAreaWasNegative)
             Text(
               'Odečtená plocha je větší než celková plocha prostupu.',
@@ -1230,7 +1233,7 @@ class _EntryEditorState extends State<_EntryEditor> {
 
   void _applyEntryType(String v) {
     entry.entryType = v;
-    entry.dimension = defaultDimensionForEntry(v, entry.insulation);
+    entry.dimension = '';
     if (v != 'OCEL') entry.steelInsulated = null;
     if (v != 'EL.V.') entry.electroInstallationType = null;
     widget.onChanged();
@@ -1238,9 +1241,6 @@ class _EntryEditorState extends State<_EntryEditor> {
 
   void _applyInsulation(String v) {
     entry.insulation = v;
-    if (entry.entryType == 'PROSTUP') {
-      entry.dimension = defaultDimensionForEntry(entry.entryType, v);
-    }
     widget.onChanged();
   }
 
@@ -1252,6 +1252,16 @@ class _EntryEditorState extends State<_EntryEditor> {
   }
 
   Widget _dimensionSection() {
+    if (entry.entryType.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Text(
+          'Nejdřív vyberte typ prostupu',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      );
+    }
+
     if (entry.entryType == 'PROSTUP') {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1268,7 +1278,8 @@ class _EntryEditorState extends State<_EntryEditor> {
         children: [
           ChipSelector(
             label: 'Rozměr (průměr)',
-            options: dimensionPresetsForEntry(entry.entryType, entry.insulation),
+            options:
+                dimensionPresetsForEntry(entry.entryType, entry.insulation),
             selected: entry.dimension.isEmpty ? null : entry.dimension,
             onSelected: (v) {
               entry.dimension = v;
@@ -1427,7 +1438,7 @@ class _EntryEditorState extends State<_EntryEditor> {
             ChipSelector(
               label: 'Izolace',
               options: insulations,
-              selected: entry.insulation,
+              selected: entry.insulation.isEmpty ? null : entry.insulation,
               onSelected: _applyInsulation,
             ),
             const SizedBox(height: 8),

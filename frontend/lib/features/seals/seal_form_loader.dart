@@ -15,7 +15,7 @@ List<SealEntryDraftData> entryDraftsFromSealMap(Map<String, dynamic> seal) {
       }
     }
     list.add(SealEntryDraftData(
-      entryType: m['entryType'] as String? ?? 'EL.V.',
+      entryType: m['entryType'] as String? ?? '',
       dimension: m['dimension'] as String? ?? '',
       quantity: _quantityFromApi(m['quantity']),
       insulation: m['insulation'] as String? ?? 'žádná',
@@ -44,16 +44,19 @@ int _quantityFromApi(dynamic value) {
 /// Mutable entry fields shared by form and loader.
 class SealEntryDraftData {
   SealEntryDraftData({
-    this.entryType = 'EL.V.',
+    String entryType = '',
     String? dimension,
     this.quantity = 1,
-    this.insulation = 'žádná',
+    String insulation = '',
     List<String>? materials,
     this.itemLengthMmText = '',
     this.itemWidthMmText = '',
     this.steelInsulated,
     this.electroInstallationType,
-  })  : dimension = dimension ?? defaultDimensionForEntry('EL.V.', 'žádná'),
+  })  : entryType = entryType,
+        insulation = insulation,
+        dimension =
+            dimension ?? defaultDimensionForEntry(entryType, insulation),
         materials = materials ?? [];
 
   String entryType;
@@ -67,6 +70,6 @@ class SealEntryDraftData {
   /// Doizolováno (Ano/Ne) – pouze pro typ OCEL.
   bool? steelInsulated;
 
-  /// Typ elektro instalace (Svazek/Husí krk/Žlab) – pouze pro typ EL.V.
+  /// Typ elektro instalace (Svazek/Husí krk/Žlab/Kabel) – pouze pro typ EL.V.
   String? electroInstallationType;
 }

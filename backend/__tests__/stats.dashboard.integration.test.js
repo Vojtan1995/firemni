@@ -35,6 +35,10 @@ describe('Management dashboard stats (task 5.2)', () => {
   let jobId;
   let floor1Id;
   let sealId;
+  let workerId;
+  let extraJobId;
+  let targetWorksheetId;
+  let extraWorksheetId;
 
   async function login(username) {
     const res = await request(app)
@@ -47,6 +51,7 @@ describe('Management dashboard stats (task 5.2)', () => {
   beforeAll(async () => {
     const worker = await login('worker1');
     workerToken = worker.token;
+    workerId = worker.user.id;
     managementToken = (await login('vedeni')).token;
 
     const jobRes = await request(app)
@@ -67,9 +72,48 @@ describe('Management dashboard stats (task 5.2)', () => {
       .set('Authorization', `Bearer ${managementToken}`)
       .send({ action: 'returned', comment: 'Opravit rozměr' })
       .expect(200);
+
+    const manager = await prisma.user.findUnique({ where: { username: 'vedeni' } });
+    const extraJob = await prisma.job.create({
+      data: {
+        projectNumber: `88${Date.now().toString().slice(-6)}`,
+        name: 'Stats worksheet filter',
+        createdById: manager.id,
+        participants: {
+          create: {
+            userId: workerId,
+            roleOnJob: 'worker',
+            assignedById: manager.id,
+          },
+        },
+      },
+    });
+    extraJobId = extraJob.id;
+
+    const targetWorksheet = await prisma.workSheet.create({
+      data: {
+        jobId,
+        createdById: workerId,
+        workers: { create: { userId: workerId } },
+      },
+    });
+    targetWorksheetId = targetWorksheet.id;
+
+    const extraWorksheet = await prisma.workSheet.create({
+      data: {
+        jobId: extraJobId,
+        createdById: workerId,
+        workers: { create: { userId: workerId } },
+      },
+    });
+    extraWorksheetId = extraWorksheet.id;
   });
 
   afterAll(async () => {
+    await prisma.workSheet.deleteMany({
+      where: { id: { in: [targetWorksheetId, extraWorksheetId].filter(Boolean) } },
+    });
+    if (extraJobId) await prisma.job.delete({ where: { id: extraJobId } });
     await prisma.seal.deleteMany({ where: { sealNumber: { startsWith: SEAL_PREFIX } } });
     await prisma.$disconnect();
   });
@@ -114,6 +158,23 @@ describe('Management dashboard stats (task 5.2)', () => {
     expect(res.body.role).toBe('worker');
     expect(res.body.returnedForFix).toBeGreaterThanOrEqual(1);
     expect(res.body.missingPhotos).toBeGreaterThanOrEqual(1);
+  });
+
+  it('worker worksheet count respects job filter', async () => {
+    const res = await request(app)
+      .get(`/api/stats/overview?jobId=${jobId}`)
+      .set('Authorization', `Bearer ${workerToken}`);
+
+    const expected = await prisma.workSheet.count({
+      where: { jobId, workers: { some: { userId: workerId } } },
+    });
+    const unfiltered = await prisma.workSheet.count({
+      where: { workers: { some: { userId: workerId } } },
+    });
+
+    expect(res.status).toBe(200);
+    expect(res.body.worksheetCount).toBe(expected);
+    expect(res.body.worksheetCount).toBeLessThan(unfiltered);
   });
 
   it('status filter limits seal counts', async () => {
