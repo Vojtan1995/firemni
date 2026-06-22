@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -921,6 +920,68 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     if (result != null) setState(() => _filter = result);
   }
 
+  List<PopupMenuEntry<String>> _drawingMenuItems(AuthService auth) {
+    final items = <PopupMenuEntry<String>>[];
+    if (auth.canManageFloorDrawings) {
+      items.add(
+        PopupMenuItem(
+          value: 'upload',
+          enabled: !_uploading,
+          child: Row(
+            children: [
+              const Icon(Icons.upload_file),
+              const SizedBox(width: AppSpacing.sm),
+              Text(_drawing != null ? 'Nahradit výkres' : 'Nahrát výkres'),
+            ],
+          ),
+        ),
+      );
+      if (_drawing != null) {
+        items.add(
+          const PopupMenuItem(
+            value: 'delete',
+            child: Row(
+              children: [
+                Icon(Icons.delete_outline),
+                SizedBox(width: AppSpacing.sm),
+                Text('Smazat výkres'),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+    if (auth.canAccessReports && _drawing != null) {
+      items.add(
+        const PopupMenuItem(
+          value: 'export',
+          child: Row(
+            children: [
+              Icon(Icons.picture_as_pdf_outlined),
+              SizedBox(width: AppSpacing.sm),
+              Text('Export PDF'),
+            ],
+          ),
+        ),
+      );
+    }
+    return items;
+  }
+
+  void _onDrawingMenuSelected(String action) {
+    switch (action) {
+      case 'upload':
+        _uploadDrawing();
+        return;
+      case 'delete':
+        _deleteDrawing();
+        return;
+      case 'export':
+        _exportPdf();
+        return;
+    }
+  }
+
   List<Map<String, dynamic>> get _visibleMarkers {
     final userId = ref.read(currentUserIdProvider);
     final placedIds = _markers.map((m) => m['sealId'] as String).toSet();
@@ -954,12 +1015,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           title: Text(_isDraftMode ? 'Umístit značku' : 'Výkres patra'),
           actions: [
             if (_imageBytes != null) ...[
-              if (auth.canAccessReports)
-                IconButton(
-                  icon: const Icon(Icons.picture_as_pdf_outlined),
-                  tooltip: 'Export PDF',
-                  onPressed: _exportPdf,
-                ),
               IconButton(
                 icon: const Icon(Icons.search),
                 tooltip: 'Najít ucpávku',
@@ -971,25 +1026,19 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                 onPressed: _showFilters,
               ),
             ],
-            if (auth.canManageFloorDrawings) ...[
-              IconButton(
+            if (_drawingMenuItems(auth).isNotEmpty)
+              PopupMenuButton<String>(
                 icon: _uploading
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.upload_file),
-                onPressed: _uploading ? null : _uploadDrawing,
-                tooltip: _drawing != null ? 'Nahradit výkres' : 'Nahrát výkres',
+                    : const Icon(Icons.more_vert),
+                tooltip: 'Akce výkresu',
+                onSelected: _onDrawingMenuSelected,
+                itemBuilder: (_) => _drawingMenuItems(auth),
               ),
-              if (_drawing != null)
-                IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: _deleteDrawing,
-                  tooltip: 'Smazat výkres',
-                ),
-            ],
             IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
           ],
         ),

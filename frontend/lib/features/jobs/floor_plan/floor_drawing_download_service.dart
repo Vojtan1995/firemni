@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
@@ -90,20 +89,47 @@ Future<bool> downloadFloorDrawingFile({
   }
 }
 
-Future<void> upsertFloorDrawingMetadata(
+Future<bool> upsertFloorDrawingMetadata(
   AppDatabase db, {
   required String floorId,
   required String jobId,
   required Map<String, dynamic> meta,
   String? localPath,
 }) async {
+  final incomingFilePath = meta['filePath'] as String? ?? '';
+  final existing = await (db.select(db.localFloorDrawings)
+        ..where((d) => d.floorId.equals(floorId)))
+      .getSingleOrNull();
+  final drawingChanged = existing != null &&
+      existing.filePath.isNotEmpty &&
+      incomingFilePath.isNotEmpty &&
+      existing.filePath != incomingFilePath;
+
+  if (drawingChanged) {
+    final oldPath = existing.localPath;
+    if (oldPath != null && oldPath.isNotEmpty) {
+      try {
+        final oldFile = File(oldPath);
+        if (oldFile.existsSync()) oldFile.deleteSync();
+      } catch (_) {}
+    }
+    await (db.delete(db.localSealMarkers)
+          ..where((m) => m.floorId.equals(floorId)))
+        .go();
+    await (db.update(db.localSeals)
+          ..where((s) => s.floorId.equals(floorId) & s.deletedAt.isNull()))
+        .write(
+      const LocalSealsCompanion(markerPlacementPending: Value(true)),
+    );
+  }
+
   final hasFile =
       localPath != null && localPath.isNotEmpty && File(localPath).existsSync();
   await db.into(db.localFloorDrawings).insertOnConflictUpdate(
         LocalFloorDrawingsCompanion.insert(
           floorId: floorId,
           jobId: jobId,
-          filePath: meta['filePath'] as String? ?? '',
+          filePath: incomingFilePath,
           localPath: Value(localPath),
           mimeType: meta['mimeType'] as String? ?? 'image/webp',
           width: meta['width'] as int? ?? 1,
@@ -117,6 +143,7 @@ Future<void> upsertFloorDrawingMetadata(
               DateTime.now(),
         ),
       );
+  return drawingChanged;
 }
 
 /// Zpracuje výkresy čekající na stažení (retry fronta).

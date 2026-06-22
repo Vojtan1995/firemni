@@ -18,13 +18,15 @@ void main() {
 
   Future<void> pumpHelpDialog(
     WidgetTester tester,
-    ManualUpdateChecker checker,
-  ) async {
+    ManualUpdateChecker checker, {
+    String userRole = 'worker',
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: AppHelpDialog(
             dio: Dio(),
+            userRole: userRole,
             packageInfoLoader: () async => packageInfo(),
             updateChecker: checker,
           ),
@@ -43,6 +45,55 @@ void main() {
     );
 
     expect(find.text('Verze 1.2.3 (7)'), findsOneWidget);
+  });
+
+  testWidgets('worker sees only worker workflow help', (tester) async {
+    await pumpHelpDialog(
+      tester,
+      () async => const ManualAppUpdateCheckResult(
+        status: ManualAppUpdateStatus.upToDate,
+      ),
+      userRole: 'worker',
+    );
+
+    expect(find.text('Přihlášení a PIN'), findsOneWidget);
+    expect(find.text('Zakázky a patra'), findsOneWidget);
+    expect(find.text('Založení ucpávky'), findsOneWidget);
+    expect(find.text('Moje soupisy'), findsOneWidget);
+
+    expect(find.text('Soupisy, kontrola a fakturace'), findsNothing);
+    expect(find.text('Správa staveb a výkresů'), findsNothing);
+    expect(find.text('Uživatelé a logy'), findsNothing);
+    expect(find.text('Koš a obnova'), findsNothing);
+  });
+
+  testWidgets('management sees management help sections', (tester) async {
+    await pumpHelpDialog(
+      tester,
+      () async => const ManualAppUpdateCheckResult(
+        status: ManualAppUpdateStatus.upToDate,
+      ),
+      userRole: 'vedeni',
+    );
+
+    expect(find.text('Soupisy, kontrola a fakturace'), findsOneWidget);
+    expect(find.text('Správa staveb a výkresů'), findsOneWidget);
+    expect(find.text('Uživatelé a logy'), findsOneWidget);
+    expect(find.text('Moje soupisy'), findsNothing);
+    expect(find.text('Koš a obnova'), findsNothing);
+  });
+
+  testWidgets('admin sees trash help section', (tester) async {
+    await pumpHelpDialog(
+      tester,
+      () async => const ManualAppUpdateCheckResult(
+        status: ManualAppUpdateStatus.upToDate,
+      ),
+      userRole: 'admin',
+    );
+
+    expect(find.text('Koš a obnova'), findsOneWidget);
+    expect(find.text('Správa staveb a výkresů'), findsOneWidget);
   });
 
   testWidgets('shows latest version status', (tester) async {

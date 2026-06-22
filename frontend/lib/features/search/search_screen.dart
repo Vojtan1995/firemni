@@ -10,6 +10,7 @@ import '../../core/design_tokens.dart';
 import '../../database/database_provider.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../seals/seal_list_filters.dart';
 import 'search_service.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
@@ -26,6 +27,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   bool _loading = false;
   bool _offline = false;
   String? _error;
+  String? _initialFilters;
+  bool _queryParamsApplied = false;
 
   @override
   void initState() {
@@ -46,9 +49,34 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     _debounce = Timer(const Duration(milliseconds: 300), _runSearch);
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_queryParamsApplied) return;
+    _queryParamsApplied = true;
+    final qp = GoRouterState.of(context).uri.queryParameters;
+    _initialFilters = qp['filters'];
+    final q = qp['q'];
+    if (q != null) _ctrl.text = q;
+    if ((_initialFilters?.isNotEmpty ?? false) || (q?.isNotEmpty ?? false)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _runSearch());
+    }
+  }
+
+  bool get _hasActiveFilters => _initialFilters?.trim().isNotEmpty == true;
+
+  String get _filterDescription {
+    final filters = (_initialFilters ?? '')
+        .split(',')
+        .map((v) => SealProblemFilter.fromApi(v.trim())?.label)
+        .whereType<String>()
+        .toList();
+    return filters.isEmpty ? 'aktivní filtr' : filters.join(', ');
+  }
+
   Future<void> _runSearch() async {
     final q = _ctrl.text.trim();
-    if (q.length < 2) {
+    if (q.length < 2 && !_hasActiveFilters) {
       setState(() {
         _hits = [];
         _error = null;
@@ -63,10 +91,13 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
     });
 
     try {
+      final params = <String, dynamic>{'limit': 25};
+      if (q.length >= 2) params['q'] = q;
+      if (_hasActiveFilters) params['filters'] = _initialFilters;
       final res = await ref.read(dioProvider).get(
-        '/api/search',
-        queryParameters: {'q': q, 'limit': 25},
-      );
+            '/api/search',
+            queryParameters: params,
+          );
       final items = (res.data['items'] as List? ?? [])
           .cast<Map<String, dynamic>>()
           .map(SearchHit.fromApi)
@@ -82,6 +113,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
       final hits = await searchLocal(
         ref.read(databaseProvider),
         query: q,
+        filters: _initialFilters,
         userId: userId,
         isWorker: ref.read(authServiceProvider).isWorker,
       );
@@ -141,6 +173,29 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               onSubmitted: (_) => _runSearch(),
             ),
           ),
+          if (_hasActiveFilters)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.sm,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  avatar: const Icon(Icons.filter_list, size: 18),
+                  label: Text(_filterDescription),
+                  onDeleted: () {
+                    setState(() {
+                      _initialFilters = null;
+                      _hits = [];
+                      _error = null;
+                    });
+                  },
+                ),
+              ),
+            ),
           if (_loading) const LinearProgressIndicator(minHeight: 2),
           if (_error != null)
             Padding(
@@ -156,7 +211,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
             child: _hits.isEmpty && !_loading
                 ? EmptyState(
                     message: _ctrl.text.trim().length < 2
-                        ? 'Zadejte alespoň 2 znaky'
+                        ? (_hasActiveFilters
+                            ? 'Žádné položky pro filtr'
+                            : 'Zadejte alespoň 2 znaky')
                         : 'Žádné výsledky',
                     icon: Icons.search_off,
                   )

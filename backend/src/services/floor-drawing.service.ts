@@ -1,18 +1,18 @@
-import path from 'path';
-import sharp from 'sharp';
-import { pdf as pdfToImg } from 'pdf-to-img';
-import { UserRole } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { badRequest, forbidden, notFound } from '../lib/errors.js';
-import { hasPermission } from '../lib/permissions.js';
+import path from "path";
+import sharp from "sharp";
+import { pdf as pdfToImg } from "pdf-to-img";
+import { UserRole } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { hasPermission } from "../lib/permissions.js";
 import {
   assertFloorReadable,
   assertJobWritable,
   assertSealReadable,
-} from './authorization.service.js';
-import { assertSealEditable } from './seal.service.js';
-import { getObjectStorage, sanitizeObjectKey } from './storage.service.js';
-import { logActivity } from './audit.service.js';
+} from "./authorization.service.js";
+import { assertSealEditable } from "./seal.service.js";
+import { getObjectStorage, sanitizeObjectKey } from "./storage.service.js";
+import { logActivity } from "./audit.service.js";
 
 const maxDrawingBytes = 25 * 1024 * 1024;
 
@@ -22,7 +22,11 @@ const pdfParseTimeoutMs = 20_000;
 
 /** Obalí promise timeoutem; po vypršení rejectuje `badRequest(message)`.
  *  Timer se vždy uklidí, aby nedržel event loop. */
-function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  message: string,
+): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => reject(badRequest(message)), ms);
@@ -31,7 +35,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 function clamp01(value: number) {
-  if (!Number.isFinite(value)) throw badRequest('Souřadnice musí být číslo');
+  if (!Number.isFinite(value)) throw badRequest("Souřadnice musí být číslo");
   return Math.min(1, Math.max(0, value));
 }
 
@@ -40,72 +44,81 @@ function resolveDrawingMimeAndExt(
   originalname: string,
 ): { mimeType: string; ext: string } {
   const normalized = mimetype.toLowerCase();
-  if (normalized === 'application/pdf') {
-    return { mimeType: 'application/pdf', ext: 'pdf' };
+  if (normalized === "application/pdf") {
+    return { mimeType: "application/pdf", ext: "pdf" };
   }
-  if (normalized === 'image/png') {
-    return { mimeType: 'image/png', ext: 'png' };
+  if (normalized === "image/png") {
+    return { mimeType: "image/png", ext: "png" };
   }
-  if (normalized === 'image/jpeg' || normalized === 'image/jpg') {
-    return { mimeType: 'image/jpeg', ext: 'jpg' };
+  if (normalized === "image/jpeg" || normalized === "image/jpg") {
+    return { mimeType: "image/jpeg", ext: "jpg" };
   }
-  if (normalized === 'image/webp') {
-    return { mimeType: 'image/webp', ext: 'webp' };
+  if (normalized === "image/webp") {
+    return { mimeType: "image/webp", ext: "webp" };
   }
 
   const ext = path.extname(originalname).toLowerCase();
-  if (ext === '.pdf') return { mimeType: 'application/pdf', ext: 'pdf' };
-  if (ext === '.png') return { mimeType: 'image/png', ext: 'png' };
-  if (ext === '.jpg' || ext === '.jpeg') return { mimeType: 'image/jpeg', ext: 'jpg' };
-  if (ext === '.webp') return { mimeType: 'image/webp', ext: 'webp' };
+  if (ext === ".pdf") return { mimeType: "application/pdf", ext: "pdf" };
+  if (ext === ".png") return { mimeType: "image/png", ext: "png" };
+  if (ext === ".jpg" || ext === ".jpeg")
+    return { mimeType: "image/jpeg", ext: "jpg" };
+  if (ext === ".webp") return { mimeType: "image/webp", ext: "webp" };
 
-  throw badRequest('Nepodporovaný formát výkresu');
+  throw badRequest("Nepodporovaný formát výkresu");
 }
 
-async function getPdfPageSize(buffer: Buffer): Promise<{ width: number; height: number }> {
+async function getPdfPageSize(
+  buffer: Buffer,
+): Promise<{ width: number; height: number }> {
   const doc = await withTimeout(
     pdfToImg(buffer, { scale: 1 }),
     pdfParseTimeoutMs,
-    'Zpracování PDF výkresu trvalo příliš dlouho',
+    "Zpracování PDF výkresu trvalo příliš dlouho",
   );
   try {
     const pageBuffer = await withTimeout(
       doc.getPage(1),
       pdfParseTimeoutMs,
-      'Zpracování PDF výkresu trvalo příliš dlouho',
+      "Zpracování PDF výkresu trvalo příliš dlouho",
     );
     const meta = await sharp(pageBuffer).metadata();
     if (!meta.width || !meta.height) {
-      throw badRequest('Nelze určit rozměry PDF výkresu');
+      throw badRequest("Nelze určit rozměry PDF výkresu");
     }
     return { width: meta.width, height: meta.height };
   } catch {
-    throw badRequest('Soubor není platný PDF výkres');
+    throw badRequest("Soubor není platný PDF výkres");
   } finally {
     await doc.destroy();
   }
 }
 
-async function getImageDimensions(buffer: Buffer): Promise<{ width: number; height: number }> {
+async function getImageDimensions(
+  buffer: Buffer,
+): Promise<{ width: number; height: number }> {
   try {
-    const meta = await sharp(buffer, { failOn: 'error' }).metadata();
+    const meta = await sharp(buffer, { failOn: "error" }).metadata();
     if (!meta.width || !meta.height) {
-      throw badRequest('Nelze určit rozměry výkresu');
+      throw badRequest("Nelze určit rozměry výkresu");
     }
     return { width: meta.width, height: meta.height };
   } catch {
-    throw badRequest('Soubor není platný obrázek výkresu');
+    throw badRequest("Soubor není platný obrázek výkresu");
   }
 }
 
-export async function getFloorDrawingBundle(floorId: string, role: UserRole, userId: string) {
+export async function getFloorDrawingBundle(
+  floorId: string,
+  role: UserRole,
+  userId: string,
+) {
   await assertFloorReadable(floorId, role, userId);
 
   const floor = await prisma.jobFloor.findFirst({
     where: { id: floorId, deletedAt: null },
     select: { jobId: true },
   });
-  if (!floor) throw notFound('Patro nenalezeno');
+  if (!floor) throw notFound("Patro nenalezeno");
 
   const drawing = await prisma.floorDrawing.findUnique({
     where: { floorId },
@@ -124,11 +137,13 @@ export async function getFloorDrawingBundle(floorId: string, role: UserRole, use
           status: true,
           reviewStatus: true,
           createdById: true,
-          createdBy: { select: { id: true, displayName: true, username: true } },
+          createdBy: {
+            select: { id: true, displayName: true, username: true },
+          },
         },
       },
     },
-    orderBy: { seal: { sealNumber: 'asc' } },
+    orderBy: { seal: { sealNumber: "asc" } },
   });
 
   return {
@@ -161,14 +176,18 @@ export async function getFloorDrawingBundle(floorId: string, role: UserRole, use
   };
 }
 
-export async function getFloorDrawingFile(floorId: string, role: UserRole, userId: string) {
+export async function getFloorDrawingFile(
+  floorId: string,
+  role: UserRole,
+  userId: string,
+) {
   await assertFloorReadable(floorId, role, userId);
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
-  if (!drawing) throw notFound('Výkres patra nenalezen');
+  if (!drawing) throw notFound("Výkres patra nenalezen");
 
   const storage = getObjectStorage();
   if (!(await storage.exists(drawing.filePath))) {
-    throw notFound('Soubor výkresu nenalezen');
+    throw notFound("Soubor výkresu nenalezen");
   }
   const body = await storage.get(drawing.filePath);
   return { body, mimeType: drawing.mimeType, filePath: drawing.filePath };
@@ -176,16 +195,21 @@ export async function getFloorDrawingFile(floorId: string, role: UserRole, userI
 
 export async function uploadFloorDrawing(
   floorId: string,
-  file: { buffer: Buffer; mimetype: string; originalname: string; size: number },
+  file: {
+    buffer: Buffer;
+    mimetype: string;
+    originalname: string;
+    size: number;
+  },
   userId: string,
   role: UserRole,
 ) {
   if (
-    !hasPermission(role, 'floor.drawing.manage') &&
-    !hasPermission(role, 'floor.manage') &&
-    !hasPermission(role, 'job.manage')
+    !hasPermission(role, "floor.drawing.manage") &&
+    !hasPermission(role, "floor.manage") &&
+    !hasPermission(role, "job.manage")
   ) {
-    throw forbidden('Nahrát výkres může pouze vedení nebo admin');
+    throw forbidden("Nahrát výkres může pouze vedení nebo admin");
   }
   const floor = await assertFloorReadable(floorId, role, userId);
   await assertJobWritable(floor.jobId, role, userId);
@@ -193,11 +217,14 @@ export async function uploadFloorDrawing(
     throw badRequest(`Výkres nesmí být větší než ${maxDrawingBytes} B`);
   }
 
-  const { mimeType, ext } = resolveDrawingMimeAndExt(file.mimetype, file.originalname);
+  const { mimeType, ext } = resolveDrawingMimeAndExt(
+    file.mimetype,
+    file.originalname,
+  );
   const output = file.buffer;
 
   const dimensions =
-    mimeType === 'application/pdf'
+    mimeType === "application/pdf"
       ? await getPdfPageSize(output)
       : await getImageDimensions(output);
 
@@ -215,25 +242,41 @@ export async function uploadFloorDrawing(
 
   let drawing;
   try {
-    drawing = await prisma.floorDrawing.upsert({
-      where: { floorId },
-      create: {
-        floorId,
-        filePath,
-        mimeType,
-        width: dimensions.width,
-        height: dimensions.height,
-        fileSize: output.length,
-        uploadedById: userId,
-      },
-      update: {
-        filePath,
-        mimeType,
-        width: dimensions.width,
-        height: dimensions.height,
-        fileSize: output.length,
-        uploadedById: userId,
-      },
+    drawing = await prisma.$transaction(async (tx) => {
+      const upserted = await tx.floorDrawing.upsert({
+        where: { floorId },
+        create: {
+          floorId,
+          filePath,
+          mimeType,
+          width: dimensions.width,
+          height: dimensions.height,
+          fileSize: output.length,
+          uploadedById: userId,
+        },
+        update: {
+          filePath,
+          mimeType,
+          width: dimensions.width,
+          height: dimensions.height,
+          fileSize: output.length,
+          uploadedById: userId,
+        },
+      });
+
+      if (existing) {
+        await tx.sealMarker.deleteMany({ where: { floorId } });
+        await tx.seal.updateMany({
+          where: { floorId, deletedAt: null },
+          data: {
+            markerPlacementPending: true,
+            updatedById: userId,
+            version: { increment: 1 },
+          },
+        });
+      }
+
+      return upserted;
     });
   } catch (e) {
     try {
@@ -252,8 +295,9 @@ export async function uploadFloorDrawing(
     }
   }
 
-  await logActivity(userId, 'floor_drawing_upload', 'job_floor', floorId, {
+  await logActivity(userId, "floor_drawing_upload", "job_floor", floorId, {
     drawingId: drawing.id,
+    replaced: existing != null,
   });
 
   return drawing;
@@ -272,17 +316,17 @@ export async function upsertSealMarker(
 
   const seal = await assertSealReadable(sealId, role, userId);
   if (seal.floorId !== floorId) {
-    throw badRequest('Ucpávka není na tomto patře');
+    throw badRequest("Ucpávka není na tomto patře");
   }
 
   if (role === UserRole.worker) {
     await assertSealEditable(sealId, role, userId);
-  } else if (!hasPermission(role, 'seal.edit')) {
-    throw forbidden('Nemáte oprávnění umístit značku');
+  } else if (!hasPermission(role, "seal.edit")) {
+    throw forbidden("Nemáte oprávnění umístit značku");
   }
 
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
-  if (!drawing) throw badRequest('Patro nemá nahraný výkres');
+  if (!drawing) throw badRequest("Patro nemá nahraný výkres");
 
   const marker = await prisma.$transaction(async (tx) => {
     const upserted = await tx.sealMarker.upsert({
@@ -307,7 +351,7 @@ export async function upsertSealMarker(
     return upserted;
   });
 
-  await logActivity(userId, 'seal_marker_upsert', 'seal', sealId, {
+  await logActivity(userId, "seal_marker_upsert", "seal", sealId, {
     floorId,
     x: nx,
     y: ny,
@@ -316,19 +360,23 @@ export async function upsertSealMarker(
   return marker;
 }
 
-export async function deleteSealMarker(sealId: string, userId: string, role: UserRole) {
+export async function deleteSealMarker(
+  sealId: string,
+  userId: string,
+  role: UserRole,
+) {
   const seal = await assertSealReadable(sealId, role, userId);
   if (role === UserRole.worker) {
     await assertSealEditable(sealId, role, userId);
-  } else if (!hasPermission(role, 'seal.edit')) {
-    throw forbidden('Nemáte oprávnění smazat značku');
+  } else if (!hasPermission(role, "seal.edit")) {
+    throw forbidden("Nemáte oprávnění smazat značku");
   }
 
   const existing = await prisma.sealMarker.findUnique({ where: { sealId } });
-  if (!existing) throw notFound('Značka nenalezena');
+  if (!existing) throw notFound("Značka nenalezena");
 
   await prisma.sealMarker.delete({ where: { sealId } });
-  await logActivity(userId, 'seal_marker_delete', 'seal', seal.id);
+  await logActivity(userId, "seal_marker_delete", "seal", seal.id);
   return { ok: true };
 }
 
@@ -338,17 +386,17 @@ export async function deleteFloorDrawing(
   role: UserRole,
 ) {
   if (
-    !hasPermission(role, 'floor.drawing.manage') &&
-    !hasPermission(role, 'floor.manage') &&
-    !hasPermission(role, 'job.manage')
+    !hasPermission(role, "floor.drawing.manage") &&
+    !hasPermission(role, "floor.manage") &&
+    !hasPermission(role, "job.manage")
   ) {
-    throw forbidden('Smazat výkres může pouze vedení nebo admin');
+    throw forbidden("Smazat výkres může pouze vedení nebo admin");
   }
   const floor = await assertFloorReadable(floorId, role, userId);
   await assertJobWritable(floor.jobId, role, userId);
 
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
-  if (!drawing) throw notFound('Výkres patra nenalezen');
+  if (!drawing) throw notFound("Výkres patra nenalezen");
 
   const storage = getObjectStorage();
   try {
@@ -359,7 +407,7 @@ export async function deleteFloorDrawing(
 
   await prisma.sealMarker.deleteMany({ where: { floorId } });
   await prisma.floorDrawing.delete({ where: { floorId } });
-  await logActivity(userId, 'floor_drawing_delete', 'job_floor', floorId, {
+  await logActivity(userId, "floor_drawing_delete", "job_floor", floorId, {
     drawingId: drawing.id,
   });
 

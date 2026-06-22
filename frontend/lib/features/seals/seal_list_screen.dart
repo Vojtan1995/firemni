@@ -13,7 +13,6 @@ import '../../database/database_provider.dart';
 import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
-import '../jobs/floor_plan/floor_drawing_service.dart';
 import '../jobs/job_context_bar.dart';
 import '../jobs/work_context_service.dart';
 import '../reports/export_service.dart';
@@ -47,7 +46,6 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
   final Set<SealProblemFilter> _activeFilters = {};
   String? _tradeFilter;
   bool? _hasDrawing;
-  bool _uploadingDrawing = false;
 
   @override
   void initState() {
@@ -88,9 +86,9 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       try {
         final floors = await dio.get('/api/jobs/${widget.jobId}/floors');
         final floorList = (floors.data as List).cast<Map<String, dynamic>>();
-        _floorName = floorList
-            .cast<Map<String, dynamic>?>()
-            .firstWhere((f) => f?['id'] == widget.floorId, orElse: () => null)?['name'] as String?;
+        _floorName = floorList.cast<Map<String, dynamic>?>().firstWhere(
+            (f) => f?['id'] == widget.floorId,
+            orElse: () => null)?['name'] as String?;
       } catch (_) {}
       await _cacheSealsFromApi(db, apiList);
       final merged = await _mergeWithUnsyncedLocal(db, apiList);
@@ -148,7 +146,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
               jobId: widget.jobId,
               floorId: widget.floorId,
               sealNumber: m['sealNumber'] as String,
-              trade: Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
+              trade:
+                  Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
               system: m['system'] as String? ?? existing?.system ?? '',
               construction: existing?.construction ?? '',
               location: existing?.location ?? '',
@@ -175,8 +174,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     List<Map<String, dynamic>> apiList,
   ) async {
     final localOnFloor = await (db.select(db.localSeals)
-          ..where((s) =>
-              s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
+          ..where(
+              (s) => s.floorId.equals(widget.floorId) & s.deletedAt.isNull()))
         .get();
     final photoCounts = await _photoCountsForSeals(
       db,
@@ -201,9 +200,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     final ids = seals.map((s) => s['id'] as String).toList();
     if (ids.isEmpty) return;
 
-    final locals = await (db.select(db.localSeals)
-          ..where((s) => s.id.isIn(ids)))
-        .get();
+    final locals =
+        await (db.select(db.localSeals)..where((s) => s.id.isIn(ids))).get();
     final byId = {for (final r in locals) r.id: r};
 
     for (final seal in seals) {
@@ -301,125 +299,19 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     context.push('/floor-plan/${widget.floorId}?jobId=${widget.jobId}');
   }
 
-  Future<void> _uploadDrawing() async {
-    final replacing = _hasDrawing == true;
-    setState(() => _uploadingDrawing = true);
-    try {
-      final uploaded = await pickAndUploadFloorDrawing(
-        context: context,
-        dio: ref.read(dioProvider),
-        jobId: widget.jobId,
-        floorId: widget.floorId,
-      );
-      if (!uploaded) return;
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(replacing ? 'Výkres nahrazen' : 'Výkres nahrán'),
-        ),
-      );
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Upload selhal'))),
-      );
-    } finally {
-      if (mounted) setState(() => _uploadingDrawing = false);
-    }
-  }
-
-  Future<void> _deleteDrawing() async {
-    try {
-      final deleted = await confirmAndDeleteFloorDrawing(
-        context: context,
-        dio: ref.read(dioProvider),
-        jobId: widget.jobId,
-        floorId: widget.floorId,
-      );
-      if (!deleted) return;
-      await _load();
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Výkres smazán')),
-      );
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Smazání selhalo'))),
-      );
-    }
-  }
-
-  Future<void> _exportDrawingPdf() async {
-    try {
-      await exportFloorDrawingPdf(
-        dio: ref.read(dioProvider),
-        jobId: widget.jobId,
-        floorId: widget.floorId,
-        fileNameBase: 'vykres-${widget.floorId}',
-      );
-    } on ExportSaveCancelled {
-      // user dismissed save dialog
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Export selhal'))),
-      );
-    }
-  }
-
-  Widget _drawingActions(AuthService auth) {
-    final canManage = auth.canManageFloorDrawings;
-    final canExport = auth.canAccessReports && _hasDrawing == true;
-
-    if (_hasDrawing != true && !canManage) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-        child: Text('Výkres zatím není nahrán'),
-      );
-    }
-
-    return Wrap(
-      spacing: AppSpacing.sm,
-      runSpacing: AppSpacing.sm,
-      children: [
-        if (_hasDrawing == true)
-          AppPrimaryButton(
-            label: 'Otevřít výkres patra',
-            icon: Icons.map_outlined,
-            fullWidth: false,
-            onPressed: _openFloorPlan,
-          ),
-        if (canManage && _hasDrawing != true)
-          AppSecondaryButton(
-            label: 'Nahrát výkres',
-            icon: Icons.upload_file,
-            fullWidth: false,
-            onPressed: _uploadingDrawing ? null : _uploadDrawing,
-          ),
-        if (canManage && _hasDrawing == true) ...[
-          AppSecondaryButton(
-            label: 'Nahradit výkres',
-            icon: Icons.upload_file,
-            fullWidth: false,
-            onPressed: _uploadingDrawing ? null : _uploadDrawing,
-          ),
-          AppSecondaryButton(
-            label: 'Smazat výkres',
-            icon: Icons.delete_outline,
-            fullWidth: false,
-            onPressed: _deleteDrawing,
-          ),
-        ],
-        if (canExport)
-          AppSecondaryButton(
-            label: 'Export PDF',
-            icon: Icons.picture_as_pdf_outlined,
-            fullWidth: false,
-            onPressed: _exportDrawingPdf,
-          ),
-      ],
+  Widget _drawingEntry() {
+    final hasDrawing = _hasDrawing == true;
+    return AppCard(
+      leading: AppIconBox(
+        icon: Icons.map_outlined,
+        backgroundColor: hasDrawing
+            ? AppColors.success.withValues(alpha: 0.12)
+            : AppColors.warning.withValues(alpha: 0.12),
+        color: hasDrawing ? AppColors.success : AppColors.warning,
+      ),
+      title: hasDrawing ? 'Otevřít výkres patra' : 'Výkres patra',
+      subtitle: hasDrawing ? 'Výkres nahrán' : 'Výkres zatím není nahrán',
+      onTap: widget.jobId.isEmpty ? null : _openFloorPlan,
     );
   }
 
@@ -455,7 +347,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     }
 
     try {
-      final res = await ref.read(dioProvider).post('/api/seals/bulk-status', data: {
+      final res =
+          await ref.read(dioProvider).post('/api/seals/bulk-status', data: {
         'ids': _selectedIds.toList(),
         'status': status,
         if (comment != null) 'comment': comment,
@@ -485,7 +378,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
 
     List<Map<String, dynamic>> floors = [];
     try {
-      final res = await ref.read(dioProvider).get('/api/jobs/${widget.jobId}/floors');
+      final res =
+          await ref.read(dioProvider).get('/api/jobs/${widget.jobId}/floors');
       floors = (res.data as List).cast<Map<String, dynamic>>();
     } on DioException catch (_) {
       if (!mounted) return;
@@ -529,13 +423,13 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       context,
       title: 'Přesunout ucpávky',
       count: count,
-      message:
-          'Přesunout $count ucpávek na patro „${target['name']}“?',
+      message: 'Přesunout $count ucpávek na patro „${target['name']}“?',
     );
     if (!ok) return;
 
     try {
-      final res = await ref.read(dioProvider).post('/api/seals/bulk-move', data: {
+      final res =
+          await ref.read(dioProvider).post('/api/seals/bulk-move', data: {
         'ids': _selectedIds.toList(),
         'floorId': target['id'],
       });
@@ -572,10 +466,10 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
 
     try {
       final res = await ref.read(dioProvider).post(
-        '/api/seals/bulk-export/csv',
-        data: {'ids': _selectedIds.toList()},
-        options: Options(responseType: ResponseType.bytes),
-      );
+            '/api/seals/bulk-export/csv',
+            data: {'ids': _selectedIds.toList()},
+            options: Options(responseType: ResponseType.bytes),
+          );
       final bytes = normalizeExportBytes(res.data, exportLabel: 'CSV export');
       await saveExportFile(
         bytes: bytes,
@@ -647,7 +541,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.handyman_outlined, size: 18, color: AppColors.textMuted),
+          const Icon(Icons.handyman_outlined,
+              size: 18, color: AppColors.textMuted),
           const SizedBox(width: AppSpacing.sm),
           Expanded(
             child: DropdownButton<String?>(
@@ -772,8 +667,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       ),
       floatingActionButton: auth.isWorker || auth.isVedeni || auth.isAdmin
           ? FloatingActionButton.extended(
-              onPressed: () => context
-                  .push('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}'),
+              onPressed: () => context.push(
+                  '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}'),
               icon: const Icon(Icons.add, size: 20),
               label: const Text('Nová'),
             )
@@ -829,7 +724,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                         ),
                       ],
                       child: const Padding(
-                        padding: EdgeInsets.symmetric(horizontal: AppSpacing.md),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: AppSpacing.md),
                         child: Row(
                           children: [
                             Text('Akce'),
@@ -856,7 +752,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                     AppSpacing.lg,
                     0,
                   ),
-                  child: _drawingActions(auth),
+                  child: _drawingEntry(),
                 ),
                 _tradeFilterBar(),
                 _filterChips(),
@@ -867,29 +763,37 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                     decoration: BoxDecoration(
                       color: AppColors.warning.withValues(alpha: 0.1),
                       borderRadius: AppRadius.mdAll,
-                      border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
+                      border: Border.all(
+                          color: AppColors.warning.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.cloud_off, color: AppColors.warning, size: 20),
+                        const Icon(Icons.cloud_off,
+                            color: AppColors.warning, size: 20),
                         const SizedBox(width: AppSpacing.md),
                         Expanded(
                           child: Text(
                             _offlineHint ??
                                 'Zobrazena poslední uložená data z zařízení.',
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium
+                                ?.copyWith(
                                   color: AppColors.warning,
                                 ),
                           ),
                         ),
-                        TextButton(onPressed: _load, child: const Text('Zkusit znovu')),
+                        TextButton(
+                            onPressed: _load,
+                            child: const Text('Zkusit znovu')),
                       ],
                     ),
                   ),
                 if (_seals.isEmpty)
                   Expanded(
                     child: EmptyState(
-                      message: _offlineHint ?? 'Na tomto patře zatím nejsou ucpávky.',
+                      message: _offlineHint ??
+                          'Na tomto patře zatím nejsou ucpávky.',
                       icon: Icons.inventory_2_outlined,
                     ),
                   )

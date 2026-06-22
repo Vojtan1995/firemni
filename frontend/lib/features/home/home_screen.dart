@@ -50,7 +50,7 @@ class HomeScreen extends ConsumerWidget {
               ),
             ),
           AppCard(
-            leading: AppIconBox(
+            leading: const AppIconBox(
               icon: Icons.person,
               backgroundColor: AppColors.bgSecondary,
               color: AppColors.textPrimary,
@@ -79,7 +79,8 @@ class HomeScreen extends ConsumerWidget {
 
           // --- Přehledy ---
           if (auth.canViewStats || auth.canViewPriceList) ...[
-            const SectionHeader(title: 'Přehledy', style: SectionHeaderStyle.h3),
+            const SectionHeader(
+                title: 'Přehledy', style: SectionHeaderStyle.h3),
             if (auth.canViewStats)
               _MenuTile(
                 icon: Icons.analytics_outlined,
@@ -133,6 +134,7 @@ class HomeScreen extends ConsumerWidget {
             onTap: () => showAppHelpDialog(
               context: context,
               dio: ref.read(dioProvider),
+              userRole: role,
             ),
           ),
         ],

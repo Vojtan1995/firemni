@@ -7,6 +7,7 @@ import '../../core/design_tokens.dart';
 import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../home/action_items_card.dart';
 import '../worksheets/worksheet_navigation.dart';
 
 class StatsScreen extends ConsumerStatefulWidget {
@@ -35,8 +36,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     final role = ref.read(authUserProvider)?['role'] as String?;
     if (role != 'vedeni' && role != 'admin') return;
     try {
-      final res = await ref.read(dioProvider).get('/api/reports/filter-options');
-      final jobs = (res.data['jobs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+      final res =
+          await ref.read(dioProvider).get('/api/reports/filter-options');
+      final jobs =
+          (res.data['jobs'] as List?)?.cast<Map<String, dynamic>>() ?? [];
       if (mounted) setState(() => _jobs = jobs);
     } catch (_) {}
   }
@@ -59,9 +62,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     });
     try {
       final res = await ref.read(dioProvider).get(
-        '/api/stats/overview',
-        queryParameters: _queryParams.isEmpty ? null : _queryParams,
-      );
+            '/api/stats/overview',
+            queryParameters: _queryParams.isEmpty ? null : _queryParams,
+          );
       if (!mounted) return;
       setState(() {
         _stats = Map<String, dynamic>.from(res.data as Map);
@@ -84,7 +87,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     }
   }
 
-  void _goSoupisy({String? status, String? jobId, String? reportStatus, String? workerId}) {
+  void _goSoupisy(
+      {String? status, String? jobId, String? reportStatus, String? workerId}) {
     goToSoupisy(
       context,
       status: status,
@@ -129,10 +133,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           DropdownButtonFormField<String?>(
-            value: _filterJobId,
+            initialValue: _filterJobId,
             decoration: const InputDecoration(labelText: 'Zakázka'),
             items: [
-              const DropdownMenuItem(value: null, child: Text('Všechny zakázky')),
+              const DropdownMenuItem(
+                  value: null, child: Text('Všechny zakázky')),
               ..._jobs.map(
                 (j) => DropdownMenuItem(
                   value: j['id'] as String,
@@ -147,7 +152,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           ),
           const SizedBox(height: AppSpacing.sm),
           DropdownButtonFormField<String?>(
-            value: _filterStatus,
+            initialValue: _filterStatus,
             decoration: const InputDecoration(labelText: 'Stav ucpávky'),
             items: const [
               DropdownMenuItem(value: null, child: Text('Všechny stavy')),
@@ -189,11 +194,13 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           ),
           _kpi('Fotek', s['photosAdded'], icon: Icons.photo_camera),
           _kpi('Soupisů', s['worksheetCount'], icon: Icons.description),
-          _kpi('Odhad hodnoty (Kč)', s['estimatedValueCzk'], accent: AppColors.accent),
+          _kpi('Odhad hodnoty (Kč)', s['estimatedValueCzk'],
+              accent: AppColors.accent),
         ]),
         if (s['byJob'] is List && (s['byJob'] as List).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Práce podle zakázek', style: SectionHeaderStyle.h3),
+          const SectionHeader(
+              title: 'Práce podle zakázek', style: SectionHeaderStyle.h3),
           ...(s['byJob'] as List).map((j) {
             final m = j as Map<String, dynamic>;
             final count = parseNum(m['count']);
@@ -209,9 +216,10 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                       Expanded(
                         child: Text(
                           '${m['projectNumber']} ${m['name']}',
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                fontWeight: FontWeight.w600,
-                              ),
+                          style:
+                              Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                         ),
                       ),
                       Text(
@@ -241,7 +249,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
     );
   }
 
-
   Widget _buildManagementStats(Map<String, dynamic> s) {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -260,14 +267,14 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             'Vrácené',
             s['returnedSeals'],
             accent: AppColors.error,
-            onTap: () => context.push('/search'),
+            onTap: () => context.push(actionSearchRoute('returned')),
           ),
           _kpi(
             'Bez fotky',
             s['missingPhotos'],
             accent: AppColors.warning,
             icon: Icons.photo_camera_outlined,
-            onTap: () => context.push('/search'),
+            onTap: () => context.push(actionSearchRoute('no_photo')),
           ),
           _kpi(
             'Čeká sync',
@@ -293,9 +300,11 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             onTap: () => _goSoupisy(status: 'ready_for_invoice'),
           ),
         ]),
-        if (s['byJobDetailed'] is List && (s['byJobDetailed'] as List).isNotEmpty) ...[
+        if (s['byJobDetailed'] is List &&
+            (s['byJobDetailed'] as List).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Přehled podle zakázek', style: SectionHeaderStyle.h3),
+          const SectionHeader(
+              title: 'Přehled podle zakázek', style: SectionHeaderStyle.h3),
           ...(s['byJobDetailed'] as List).map((j) {
             final m = j as Map<String, dynamic>;
             final jobId = m['jobId'] as String?;
@@ -318,7 +327,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           color: AppColors.textMuted,
                         ),
                   ),
-                  if (parseNum(m['missingPhotos']) > 0 || parseNum(m['returned']) > 0)
+                  if (parseNum(m['missingPhotos']) > 0 ||
+                      parseNum(m['returned']) > 0)
                     Text(
                       'Bez fotky: ${m['missingPhotos']} · Vrácené: ${m['returned']}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -333,7 +343,8 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         if (s['syncPendingByUser'] is List &&
             (s['syncPendingByUser'] as List).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Čekající synchronizace', style: SectionHeaderStyle.h3),
+          const SectionHeader(
+              title: 'Čekající synchronizace', style: SectionHeaderStyle.h3),
           ...(s['syncPendingByUser'] as List).map((u) {
             final m = u as Map<String, dynamic>;
             return AppCard(
@@ -347,15 +358,17 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
         if (s['jobsWithoutActivity'] is List &&
             (s['jobsWithoutActivity'] as List).isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Zakázky bez aktivity', style: SectionHeaderStyle.h3),
+          const SectionHeader(
+              title: 'Zakázky bez aktivity', style: SectionHeaderStyle.h3),
           ...(s['jobsWithoutActivity'] as List).map((j) {
             final m = j as Map<String, dynamic>;
             return AppCard(
               showChevron: true,
               borderColor: AppColors.warning.withValues(alpha: 0.4),
-              leading: const Icon(Icons.warning_amber, color: AppColors.warning),
+              leading:
+                  const Icon(Icons.warning_amber, color: AppColors.warning),
               title: '${m['projectNumber']} ${m['name']}',
-              onTap: () => context.go('/jobs-admin'),
+              onTap: () => context.go(jobsWithoutActivityRoute),
             );
           }),
         ],

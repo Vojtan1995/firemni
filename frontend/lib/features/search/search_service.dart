@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart' hide Column;
 
 import '../../database/database.dart';
+import '../seals/seal_list_filters.dart';
 
 class SearchHit {
   SearchHit({
@@ -15,6 +18,8 @@ class SearchHit {
     this.system,
     this.status,
     this.subtitle,
+    this.reviewStatus,
+    this.photoCount,
   });
 
   final String type;
@@ -28,6 +33,8 @@ class SearchHit {
   final String? system;
   final String? status;
   final String? subtitle;
+  final String? reviewStatus;
+  final int? photoCount;
 
   factory SearchHit.fromApi(Map<String, dynamic> json) {
     final type = json['type'] as String? ?? 'seal';
@@ -51,6 +58,8 @@ class SearchHit {
       floorName: json['floorName'] as String?,
       system: json['system'] as String?,
       status: json['status'] as String?,
+      reviewStatus: json['reviewStatus'] as String?,
+      photoCount: json['photoCount'] as int?,
       subtitle: [
         json['jobName'],
         json['floorName'],
@@ -68,12 +77,18 @@ bool _containsTerm(String? value, String term) {
 Future<List<SearchHit>> searchLocal(
   AppDatabase db, {
   required String query,
+  String? filters,
   required String? userId,
   required bool isWorker,
   int limit = 25,
 }) async {
   final term = query.trim().toLowerCase();
-  if (term.length < 2) return [];
+  final parsedFilters = (filters ?? '')
+      .split(',')
+      .map((v) => SealProblemFilter.fromApi(v.trim()))
+      .whereType<SealProblemFilter>()
+      .toSet();
+  if (term.length < 2 && parsedFilters.isEmpty) return [];
 
   Set<String>? allowedJobIds;
   if (isWorker && userId != null) {
@@ -96,25 +111,35 @@ Future<List<SearchHit>> searchLocal(
 
   final hits = <SearchHit>[];
 
-  for (final job in jobs) {
-    if (job.deletedAt != null) continue;
-    if (allowedJobIds != null && !allowedJobIds.contains(job.id)) continue;
-    if (_containsTerm(job.name, term) || _containsTerm(job.projectNumber, term)) {
-      hits.add(SearchHit(
-        type: 'job',
-        id: job.id,
-        jobName: job.name,
-        projectNumber: job.projectNumber,
-        subtitle: job.projectNumber,
-      ));
+  if (term.length >= 2) {
+    for (final job in jobs) {
+      if (job.deletedAt != null) continue;
+      if (allowedJobIds != null && !allowedJobIds.contains(job.id)) continue;
+      if (_containsTerm(job.name, term) ||
+          _containsTerm(job.projectNumber, term)) {
+        hits.add(SearchHit(
+          type: 'job',
+          id: job.id,
+          jobName: job.name,
+          projectNumber: job.projectNumber,
+          subtitle: job.projectNumber,
+        ));
+      }
     }
+  }
+
+  final photos = await db.select(db.localPhotos).get();
+  final photoCounts = <String, int>{};
+  for (final photo in photos) {
+    photoCounts[photo.sealId] = (photoCounts[photo.sealId] ?? 0) + 1;
   }
 
   for (final row in seals) {
     if (allowedJobIds != null && !allowedJobIds.contains(row.jobId)) continue;
     final job = jobById[row.jobId];
     final floor = floorById[row.floorId];
-    final match = _containsTerm(row.sealNumber, term) ||
+    final textMatches = term.length < 2 ||
+        _containsTerm(row.sealNumber, term) ||
         _containsTerm(row.system, term) ||
         _containsTerm(row.construction, term) ||
         _containsTerm(row.location, term) ||
@@ -126,7 +151,20 @@ Future<List<SearchHit>> searchLocal(
             ? _containsTerm(row.internalNote, term)
             : _containsTerm(row.note, term) ||
                 _containsTerm(row.internalNote, term));
-    if (!match) continue;
+    if (!textMatches) continue;
+
+    final reviewStatus = _localReviewStatus(row);
+    final photoCount = photoCounts[row.id] ?? 0;
+    if (!_matchesLocalFilters(
+      row,
+      filters: parsedFilters,
+      photoCount: photoCount,
+      reviewStatus: reviewStatus,
+      currentUserId: userId,
+    )) {
+      continue;
+    }
+
     hits.add(SearchHit(
       type: 'seal',
       id: row.id,
@@ -138,6 +176,8 @@ Future<List<SearchHit>> searchLocal(
       floorName: floor?.name,
       system: row.system,
       status: row.status,
+      reviewStatus: reviewStatus,
+      photoCount: photoCount,
       subtitle: [
         job?.name,
         floor?.name,
@@ -148,4 +188,56 @@ Future<List<SearchHit>> searchLocal(
   }
 
   return hits.take(limit).toList();
+}
+
+String? _localReviewStatus(LocalSeal row) {
+  final payload = row.jsonPayload;
+  if (payload == null || payload.isEmpty) return null;
+  try {
+    final parsed = jsonDecode(payload) as Map<String, dynamic>;
+    return parsed['reviewStatus'] as String?;
+  } catch (_) {
+    return null;
+  }
+}
+
+bool _matchesLocalFilters(
+  LocalSeal row, {
+  required Set<SealProblemFilter> filters,
+  required int photoCount,
+  required String? reviewStatus,
+  required String? currentUserId,
+}) {
+  for (final filter in filters) {
+    switch (filter) {
+      case SealProblemFilter.noPhoto:
+        if (photoCount > 0) return false;
+      case SealProblemFilter.onePhoto:
+        if (photoCount != 1) return false;
+      case SealProblemFilter.returned:
+        if (reviewStatus != 'returned') return false;
+      case SealProblemFilter.statusDraft:
+      case SealProblemFilter.awaitingReview:
+        if (row.status != 'draft') return false;
+      case SealProblemFilter.statusChecked:
+        if (row.status != 'checked') return false;
+      case SealProblemFilter.statusInvoiced:
+        if (row.status != 'invoiced') return false;
+      case SealProblemFilter.mine:
+        if (currentUserId == null) return false;
+      case SealProblemFilter.attention:
+        if (reviewStatus != 'returned' && !row.markerPlacementPending) {
+          return false;
+        }
+      case SealProblemFilter.pendingSync:
+        if (row.isSynced) return false;
+      case SealProblemFilter.hasNote:
+        final hasNote = (row.note?.trim().isNotEmpty ?? false) ||
+            (row.internalNote?.trim().isNotEmpty ?? false);
+        if (!hasNote) return false;
+      case SealProblemFilter.missingData:
+        if (!row.markerPlacementPending) return false;
+    }
+  }
+  return true;
 }

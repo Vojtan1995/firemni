@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
@@ -43,11 +44,26 @@ class JobsAdminScreen extends ConsumerStatefulWidget {
 class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
   List<Map<String, dynamic>> _jobs = [];
   _JobListTab _tab = _JobListTab.active;
+  bool _withoutActivityOnly = false;
+  bool _queryParamsApplied = false;
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_queryParamsApplied) return;
+    _queryParamsApplied = true;
+    final filter = GoRouterState.of(context).uri.queryParameters['filter'];
+    if (filter == 'without_activity') {
+      _withoutActivityOnly = true;
+      _tab = _JobListTab.active;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    }
   }
 
   void _showError(Object e) {
@@ -66,7 +82,11 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
     try {
       final res = await ref.read(dioProvider).get(
         '/api/jobs',
-        queryParameters: {'status': _tab.apiStatus},
+        queryParameters: {
+          'status': _tab.apiStatus,
+          if (_withoutActivityOnly && _tab == _JobListTab.active)
+            'filter': 'without_activity',
+        },
       );
       setState(() => _jobs = (res.data as List).cast<Map<String, dynamic>>());
     } catch (e) {
@@ -84,13 +104,21 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(controller: numCtrl, decoration: const InputDecoration(labelText: '8místné číslo')),
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Název')),
+            TextField(
+                controller: numCtrl,
+                decoration: const InputDecoration(labelText: '8místné číslo')),
+            TextField(
+                controller: nameCtrl,
+                decoration: const InputDecoration(labelText: 'Název')),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Vytvořit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Vytvořit')),
         ],
       ),
     );
@@ -108,7 +136,8 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
 
   Future<void> _editJob(Map<String, dynamic> job) async {
     final nameCtrl = TextEditingController(text: job['name'] as String? ?? '');
-    final addressCtrl = TextEditingController(text: job['address'] as String? ?? '');
+    final addressCtrl =
+        TextEditingController(text: job['address'] as String? ?? '');
     final noteCtrl = TextEditingController(text: job['note'] as String? ?? '');
     final ok = await showDialog<bool>(
       context: context,
@@ -118,15 +147,25 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Název')),
-              TextField(controller: addressCtrl, decoration: const InputDecoration(labelText: 'Adresa')),
-              TextField(controller: noteCtrl, decoration: const InputDecoration(labelText: 'Poznámka')),
+              TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(labelText: 'Název')),
+              TextField(
+                  controller: addressCtrl,
+                  decoration: const InputDecoration(labelText: 'Adresa')),
+              TextField(
+                  controller: noteCtrl,
+                  decoration: const InputDecoration(labelText: 'Poznámka')),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Uložit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Uložit')),
         ],
       ),
     );
@@ -154,17 +193,23 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
           decoration: const InputDecoration(labelText: 'Důvod (volitelně)'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Smazat')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Smazat')),
         ],
       ),
     );
     if (ok != true) return;
     try {
       await ref.read(dioProvider).delete(
-        '/api/jobs/${job['id']}',
-        data: reasonCtrl.text.isEmpty ? {} : {'deleteReason': reasonCtrl.text},
-      );
+            '/api/jobs/${job['id']}',
+            data: reasonCtrl.text.isEmpty
+                ? {}
+                : {'deleteReason': reasonCtrl.text},
+          );
       await _load();
     } catch (e) {
       _showError(e);
@@ -186,16 +231,24 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Nové patro'),
-        content: TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Název patra')),
+        content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(labelText: 'Název patra')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Přidat')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Přidat')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await ref.read(dioProvider).post('/api/jobs/$jobId/floors', data: {'name': nameCtrl.text});
+      await ref
+          .read(dioProvider)
+          .post('/api/jobs/$jobId/floors', data: {'name': nameCtrl.text});
       await _load();
     } catch (e) {
       _showError(e);
@@ -203,21 +256,30 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
   }
 
   Future<void> _editFloor(String jobId, Map<String, dynamic> floor) async {
-    final nameCtrl = TextEditingController(text: floor['name'] as String? ?? '');
+    final nameCtrl =
+        TextEditingController(text: floor['name'] as String? ?? '');
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: const Text('Upravit patro'),
-        content: TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Název patra')),
+        content: TextField(
+            controller: nameCtrl,
+            decoration: const InputDecoration(labelText: 'Název patra')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Uložit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Uložit')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await ref.read(dioProvider).patch('/api/jobs/$jobId/floors/${floor['id']}', data: {
+      await ref
+          .read(dioProvider)
+          .patch('/api/jobs/$jobId/floors/${floor['id']}', data: {
         'name': nameCtrl.text,
       });
       await _load();
@@ -233,14 +295,20 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
         title: const Text('Smazat patro?'),
         content: Text('Opravdu smazat patro „${floor['name']}“?'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Zrušit')),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text('Smazat')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, false),
+              child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, true),
+              child: const Text('Smazat')),
         ],
       ),
     );
     if (ok != true) return;
     try {
-      await ref.read(dioProvider).delete('/api/jobs/$jobId/floors/${floor['id']}');
+      await ref
+          .read(dioProvider)
+          .delete('/api/jobs/$jobId/floors/${floor['id']}');
       await _load();
     } catch (e) {
       _showError(e);
@@ -306,7 +374,8 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Stavby')),
       floatingActionButton: _tab == _JobListTab.active
-          ? FloatingActionButton(onPressed: _createJob, child: const Icon(Icons.add))
+          ? FloatingActionButton(
+              onPressed: _createJob, child: const Icon(Icons.add))
           : null,
       body: Column(
         children: [
@@ -318,11 +387,37 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                   .toList(),
               selected: {_tab},
               onSelectionChanged: (s) {
-                setState(() => _tab = s.first);
+                final next = s.first;
+                setState(() {
+                  _tab = next;
+                  if (next != _JobListTab.active) {
+                    _withoutActivityOnly = false;
+                  }
+                });
                 _load();
               },
             ),
           ),
+          if (_withoutActivityOnly)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                0,
+                AppSpacing.lg,
+                AppSpacing.sm,
+              ),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Chip(
+                  avatar: const Icon(Icons.warning_amber_outlined, size: 18),
+                  label: const Text('Zakázky bez aktivity'),
+                  onDeleted: () {
+                    setState(() => _withoutActivityOnly = false);
+                    _load();
+                  },
+                ),
+              ),
+            ),
           Expanded(
             child: _jobs.isEmpty
                 ? EmptyState(
@@ -330,7 +425,8 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                     icon: Icons.apartment_outlined,
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
                     itemCount: _jobs.length,
                     itemBuilder: (_, i) {
                       final j = _jobs[i];
@@ -351,13 +447,19 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                             ),
                             title: Text(
                               '${j['projectNumber']} – ${j['name']}',
-                              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodyLarge
+                                  ?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
                             ),
                             subtitle: Text(
                               _statusLabel(j),
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall
+                                  ?.copyWith(
                                     color: AppColors.textMuted,
                                   ),
                             ),
@@ -371,13 +473,15 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                                   context,
                                   ref,
                                   jobId: jobId,
-                                  projectNumber: j['projectNumber'] as String? ?? '',
+                                  projectNumber:
+                                      j['projectNumber'] as String? ?? '',
                                 ),
                               ),
                               ListTile(
                                 leading: const Icon(Icons.group_outlined),
                                 title: const Text('Pracovníci'),
-                                subtitle: const Text('Přiřadit / odebrat pracovníka'),
+                                subtitle:
+                                    const Text('Přiřadit / odebrat pracovníka'),
                                 onTap: () => JobParticipantsDialog.show(
                                   context,
                                   jobId: jobId,
@@ -405,12 +509,20 @@ class _JobsAdminScreenState extends ConsumerState<JobsAdminScreen> {
                                       ? null
                                       : PopupMenuButton<String>(
                                           onSelected: (v) {
-                                            if (v == 'edit') _editFloor(jobId, floor);
-                                            if (v == 'delete') _deleteFloor(jobId, floor);
+                                            if (v == 'edit') {
+                                              _editFloor(jobId, floor);
+                                            }
+                                            if (v == 'delete') {
+                                              _deleteFloor(jobId, floor);
+                                            }
                                           },
                                           itemBuilder: (_) => const [
-                                            PopupMenuItem(value: 'edit', child: Text('Upravit')),
-                                            PopupMenuItem(value: 'delete', child: Text('Smazat')),
+                                            PopupMenuItem(
+                                                value: 'edit',
+                                                child: Text('Upravit')),
+                                            PopupMenuItem(
+                                                value: 'delete',
+                                                child: Text('Smazat')),
                                           ],
                                         ),
                                 );

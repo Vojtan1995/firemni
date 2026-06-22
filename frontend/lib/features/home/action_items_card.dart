@@ -7,6 +7,9 @@ import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
 import '../worksheets/worksheet_navigation.dart';
 
+String actionSearchRoute(String filter) => '/search?filters=$filter';
+String get jobsWithoutActivityRoute => '/jobs-admin?filter=without_activity';
+
 /// Karta „Vyžaduje akci" na domovské obrazovce. Načte `/api/stats/overview` a podle
 /// role zobrazí jen ty položky, které mají nenulový počet a vedou na konkrétní akci.
 /// Když není co řešit (nebo nastane chyba), nezobrazí se nic.
@@ -67,14 +70,14 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
           count: _n('returnedForFix'),
           icon: Icons.assignment_return_outlined,
           color: AppColors.error,
-          onTap: () => context.push('/search'),
+          onTap: () => context.push(actionSearchRoute('returned')),
         ),
         _ActionItem(
           label: 'Bez fotky',
           count: _n('missingPhotos'),
           icon: Icons.photo_camera_outlined,
           color: AppColors.warning,
-          onTap: () => context.push('/search'),
+          onTap: () => context.push(actionSearchRoute('no_photo')),
         ),
       ].where((i) => i.count > 0).toList();
     }
@@ -89,7 +92,7 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
         count: _n('uncheckedSeals'),
         icon: Icons.fact_check_outlined,
         color: AppColors.warning,
-        onTap: () => context.push('/search'),
+        onTap: () => context.push(actionSearchRoute('status_draft')),
       ),
       _ActionItem(
         label: 'Připraveno k fakturaci',
@@ -103,7 +106,7 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
         count: jobsWithoutActivityCount,
         icon: Icons.warning_amber_outlined,
         color: AppColors.warning,
-        onTap: () => context.go('/jobs-admin'),
+        onTap: () => context.go(jobsWithoutActivityRoute),
       ),
     ].where((i) => i.count > 0).toList();
   }
@@ -116,7 +119,8 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SectionHeader(title: 'Vyžaduje akci', style: SectionHeaderStyle.h3),
+        const SectionHeader(
+            title: 'Vyžaduje akci', style: SectionHeaderStyle.h3),
         ...items.map(
           (item) => AppCard(
             leading: AppIconBox(
