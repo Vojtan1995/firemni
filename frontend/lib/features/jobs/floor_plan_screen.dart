@@ -15,10 +15,9 @@ import '../auth/auth_provider.dart';
 import 'dart:convert';
 import '../reports/export_service.dart' show ExportSaveCancelled;
 import '../sync/sync_service.dart';
-import 'floor_drawing_storage.dart';
+import 'floor_plan/floor_drawing_availability.dart';
 import 'floor_plan/floor_drawing_download_service.dart';
 import 'floor_plan/floor_drawing_service.dart';
-import 'floor_plan/floor_drawing_status.dart';
 import 'floor_plan/floor_drawing_upload.dart';
 import 'floor_plan/floor_plan_viewer.dart';
 import 'floor_plan/floor_plan_filter_sheet.dart';
@@ -230,33 +229,24 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           (data['markers'] as List? ?? []).cast<Map<String, dynamic>>();
       await _cacheBundle(db, drawing, markers);
       Uint8List? bytes;
+      String? pendingMessage;
       if (drawing != null) {
-        bytes = await _fetchDrawingBytes(drawing['fileUrl'] as String?);
-        if (bytes != null) {
-          final mime = drawing['mimeType'] as String? ?? 'image/webp';
-          final ext = floorDrawingExtensionForMime(mime);
-          final localPath = await persistFloorDrawingBytes(
-            widget.floorId,
-            bytes,
-            extension: ext,
-          );
-          await db.into(db.localFloorDrawings).insertOnConflictUpdate(
-                LocalFloorDrawingsCompanion.insert(
-                  floorId: widget.floorId,
-                  jobId: widget.jobId,
-                  filePath: drawing['filePath'] as String,
-                  localPath: Value(localPath),
-                  mimeType: mime,
-                  width: drawing['width'] as int? ?? 1,
-                  height: drawing['height'] as int? ?? 1,
-                  downloadStatus: Value(
-                    FloorDrawingDownloadStatus.downloaded.toDb(),
-                  ),
-                  updatedAt: DateTime.tryParse(
-                          drawing['updatedAt'] as String? ?? '') ??
-                      DateTime.now(),
-                ),
-              );
+        await downloadFloorDrawingFile(
+          dio: ref.read(dioProvider),
+          db: db,
+          jobId: widget.jobId,
+          floorId: widget.floorId,
+          meta: drawing,
+        );
+        final state = await resolveFloorDrawingState(
+          db,
+          floorId: widget.floorId,
+        );
+        bytes = state.bytes;
+        if (bytes == null) {
+          pendingMessage = state.lastError?.isNotEmpty == true
+              ? 'Výkres existuje, ale stažení souboru selhalo. Zkontrolujte síť a zkuste stažení znovu.'
+              : 'Výkres existuje, soubor není stažen. Připojte síť nebo zkuste stažení znovu.';
         }
       }
       await _loadFloorSealsFromApi();
@@ -269,6 +259,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         _imageBytes = bytes;
         _loading = false;
         _fromCache = false;
+        _offlinePendingMessage = pendingMessage;
       });
       _focusSealIfNeeded();
     } on DioException catch (_) {
@@ -441,18 +432,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
             ),
           );
     }
-  }
-
-  Future<Uint8List?> _fetchDrawingBytes(String? url) async {
-    if (url == null || url.isEmpty) return null;
-    final res = await ref.read(dioProvider).get(
-          url,
-          options: Options(responseType: ResponseType.bytes),
-        );
-    final data = res.data;
-    if (data is Uint8List) return data;
-    if (data is List<int>) return Uint8List.fromList(data);
-    return null;
   }
 
   Future<bool> _loadOffline(AppDatabase db, {bool keepLoading = false}) async {
@@ -1128,7 +1107,12 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                                 ? Icons.cloud_download_outlined
                                 : Icons.map_outlined,
                             action: _offlinePendingMessage != null
-                                ? null
+                                ? AppSecondaryButton(
+                                    label: 'Zkusit stáhnout',
+                                    icon: Icons.refresh,
+                                    fullWidth: false,
+                                    onPressed: _loading ? null : _load,
+                                  )
                                 : auth.canManageFloorDrawings
                                     ? AppPrimaryButton(
                                         label: 'Nahrát výkres',
