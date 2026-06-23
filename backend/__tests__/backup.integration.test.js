@@ -40,4 +40,22 @@ describe('Admin backup API', () => {
     expect([201, 500]).toContain(res.status);
     expect(res.body.status).toBeDefined();
   });
+
+  it('worker cannot verify storage', async () => {
+    const res = await request(app)
+      .post('/api/admin/storage/verify')
+      .set('Authorization', `Bearer ${workerToken}`);
+    expect(res.status).toBe(403);
+  });
+
+  it('admin can verify storage access', async () => {
+    const res = await request(app)
+      .post('/api/admin/storage/verify')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.storage.driver).toBeDefined();
+    expect(typeof res.body.storage.publicUploads).toBe('boolean');
+    expect(res.body.checkedAt).toBeDefined();
+  });
 });

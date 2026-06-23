@@ -1,10 +1,11 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import {
   LocalObjectStorage,
   sanitizeObjectKey,
+  verifyObjectStorageAccess,
 } from '../dist/services/storage.service.js';
 
 describe('storage.service', () => {
@@ -44,6 +45,27 @@ describe('storage.service', () => {
 
     it('blocks path escape on get', async () => {
       await expect(storage.get('../outside.webp')).rejects.toThrow();
+    });
+
+    it('verifyObjectStorageAccess performs a clean roundtrip', async () => {
+      await verifyObjectStorageAccess(storage);
+      expect(fs.readdirSync(tempDir)).toHaveLength(0);
+    });
+  });
+
+  describe('verifyObjectStorageAccess', () => {
+    it('fails when uploaded object is not visible', async () => {
+      const brokenStorage = {
+        put: jest.fn().mockResolvedValue(undefined),
+        exists: jest.fn().mockResolvedValue(false),
+        get: jest.fn(),
+        delete: jest.fn().mockResolvedValue(undefined),
+      };
+
+      await expect(verifyObjectStorageAccess(brokenStorage)).rejects.toThrow(
+        /uploaded object is not visible/,
+      );
+      expect(brokenStorage.delete).toHaveBeenCalled();
     });
   });
 });

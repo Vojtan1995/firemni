@@ -1,5 +1,11 @@
 # DEPLOY_RAILWAY_PLAN.md
 
+> Aktualizace 2026-06-23: tento soubor je historicky plan/audit. Pro aktualni
+> produkcni nasazeni pouzijte `docs/DEPLOY_RAILWAY.md` a
+> `docs/R2_STORAGE_RUNBOOK.md`. Produkce uz nesmi spolehat na `UPLOAD_PATH`
+> na Railway; backend fail-fast vyzaduje `STORAGE_DRIVER=s3`,
+> `PUBLIC_UPLOADS=false` a kompletni `S3_*` konfiguraci.
+
 ## Cíl
 Připravit backend pro demo/beta nasazení na Railway s PostgreSQL tak, aby Android APK volala veřejné HTTPS API, bez změny business logiky, API kontraktů a Flutter UI.
 

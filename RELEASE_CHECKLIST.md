@@ -168,6 +168,39 @@ ponechat `APP_RELEASE_MIN_BUILD=3`, aby build `1.0.2+3` nebyl blokovany.
 
 ---
 
+## 5d. Produkcni R2/S3 storage gate
+
+Pred ostrym redeployem backendu na Railway:
+
+1. V Railway backend service nastav:
+   - `STORAGE_DRIVER=s3`
+   - `PUBLIC_UPLOADS=false`
+   - `S3_BUCKET=<r2-bucket-name>`
+   - `S3_ACCESS_KEY_ID=<r2-access-key-id>`
+   - `S3_SECRET_ACCESS_KEY=<r2-secret-access-key>`
+   - `S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com`
+   - `S3_REGION=auto`
+   - `S3_FORCE_PATH_STYLE=true`
+   - `S3_KEY_PREFIX=photos`
+   - `VERIFY_STORAGE_ON_START=true`
+2. Lokalne over R2 credentials:
+   `cd backend && npm run storage:verify -- --env=../.env.local`
+3. Vygeneruj kontrolni Railway env block:
+   `cd backend && npm run storage:railway-env -- --env=../.env.local`
+4. Po deployi over:
+   - `GET /ready` -> `storage.driver = "s3"`, `storage.publicUploads = false`
+   - `POST /api/admin/storage/verify` s admin bearer tokenem -> `ok = true`
+   - upload/download jedne fotky pres `/api/seals/:id/photos` a `/api/photos/:id/file`
+   - upload/download jednoho vykresu pres `/api/jobs/:jobId/floors/:floorId/drawing` a `/drawing/file`
+5. Spust audit:
+   `cd backend && npm run storage:audit -- --env=../.env.local`
+6. Recovernute soubory backfillni:
+   `cd backend && npm run storage:backfill-local -- --env=../.env.local --write`
+
+Bez splneneho R2/S3 gate nebrat nove uploady jako bezpecne.
+
+---
+
 ## 6. Checklist před spuštěním interní bety
 
 ### Infrastruktura

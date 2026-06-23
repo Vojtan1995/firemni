@@ -2,6 +2,8 @@
 
 Datum auditu: 2026-06-13 · Rozsah: backend (Express/TS/Prisma), Flutter frontend, konfigurace, CI/CD, závislosti, role. Kód nebyl měněn.
 
+Dodatek 2026-06-23: storage riziko `STORAGE_DRIVER=local` na Railway je v kodu osetrene fail-fast validaci. Produkce vyzaduje `STORAGE_DRIVER=s3`, `PUBLIC_UPLOADS=false`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`; lokalni storage v produkci projde jen s nouzovym `ALLOW_LOCAL_STORAGE_IN_PRODUCTION=true`. Operacni postup je v `docs/R2_STORAGE_RUNBOOK.md`.
+
 ---
 
 ## Verdikt

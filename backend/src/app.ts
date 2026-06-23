@@ -51,7 +51,15 @@ export function createApp() {
   app.get('/ready', async (_req, res, next) => {
     try {
       await prisma.$queryRaw`SELECT 1`;
-      res.json({ status: 'ready', database: 'ok', timestamp: new Date().toISOString() });
+      res.json({
+        status: 'ready',
+        database: 'ok',
+        storage: {
+          driver: config.storageDriver,
+          publicUploads: config.publicUploads,
+        },
+        timestamp: new Date().toISOString(),
+      });
     } catch (e) {
       next(e);
     }

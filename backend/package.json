@@ -12,7 +12,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "storage:verify": "tsx scripts/storage-health.ts verify",
+    "storage:audit": "tsx scripts/storage-health.ts audit",
+    "storage:railway-env": "tsx scripts/storage-health.ts railway-env",
+    "storage:backfill-local": "tsx scripts/storage-health.ts backfill-local"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

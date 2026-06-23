@@ -39,6 +39,10 @@ describe('API smoke (integration)', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ready');
     expect(res.body.database).toBe('ok');
+    expect(res.body.storage).toEqual({
+      driver: expect.any(String),
+      publicUploads: expect.any(Boolean),
+    });
     expect(res.body.timestamp).toBeDefined();
   });
 

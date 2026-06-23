@@ -84,7 +84,7 @@ Minimální proměnné prostředí:
 | `STORAGE_DRIVER=s3` | perzistentní fotky na Railway |
 | `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, `S3_ENDPOINT` | object storage |
 
-Podrobnosti: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md).
+Podrobnosti: [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md), R2 overeni a backfill: [docs/R2_STORAGE_RUNBOOK.md](docs/R2_STORAGE_RUNBOOK.md).
 
 Lokální vývoj používá `STORAGE_DRIVER=local` (default) a `UPLOAD_PATH=./uploads`.
 

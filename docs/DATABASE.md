@@ -106,17 +106,21 @@ Zabraňuje duplicitním číslům ucpávek na stejném patře. Server vrátí `4
 
 ---
 
-## Foto storage
+## File storage
 
-Metadata (path, mime, size, hash) jsou v DB v tabulce `seal_photos`.
-Fyzické soubory jsou mimo DB:
+Metadata jsou v DB v tabulkách `seal_photos` a `floor_drawings`.
+Fyzické soubory fotek a výkresů jsou mimo DB:
 
 | Prostředí | Storage |
 |-----------|---------|
 | Vývoj | `backend/uploads/` (local filesystem) |
 | Produkce | S3-kompatibilní object storage (Cloudflare R2 nebo AWS S3) – `STORAGE_DRIVER=s3` |
 
-Přístup k fotkám: `GET /api/photos/:id/file` (vyžaduje autentizaci, kontroluje autorizaci).
+Přístup k souborům:
+- fotky: `GET /api/photos/:id/file` (vyžaduje autentizaci, kontroluje autorizaci),
+- výkresy: `GET /api/jobs/:jobId/floors/:floorId/drawing/file`.
+
+V produkci backend odmítne start bez `STORAGE_DRIVER=s3`, `PUBLIC_UPLOADS=false` a kompletní `S3_*` konfigurace. DB `file_path` je objektový klíč; při `S3_KEY_PREFIX=photos` je reálný objekt v R2 pod `photos/<file_path>`.
 
 ---
 

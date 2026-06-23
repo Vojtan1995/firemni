@@ -6,6 +6,10 @@ function parseBoolean(value: string | undefined, defaultValue: boolean) {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
+function envBoolean(name: string, defaultValue: boolean) {
+  return parseBoolean(process.env[name], defaultValue);
+}
+
 function parseCorsOrigin(value: string) {
   if (value.includes(',')) {
     return value
@@ -35,6 +39,7 @@ export const config = {
   corsOrigin: parseCorsOrigin(corsOriginRaw),
   allowWildcardCors: parseBoolean(process.env.ALLOW_WILDCARD_CORS, false),
   publicUploads: parseBoolean(process.env.PUBLIC_UPLOADS, nodeEnv !== 'production'),
+  verifyStorageOnStart: parseBoolean(process.env.VERIFY_STORAGE_ON_START, nodeEnv === 'production'),
   sessionDays: 7,
   backup: {
     enabled: parseBoolean(process.env.BACKUP_ENABLED, false),
@@ -55,7 +60,8 @@ export function validateConfig() {
   const runtimeEnv = process.env.NODE_ENV || config.nodeEnv;
   if (runtimeEnv !== 'production') return;
 
-  if (!process.env.JWT_SECRET || config.jwtSecret === 'dev-secret-change-me' || config.jwtSecret === 'change-me-in-production') {
+  const jwtSecret = process.env.JWT_SECRET || '';
+  if (!jwtSecret || jwtSecret === 'dev-secret-change-me' || jwtSecret === 'change-me-in-production') {
     throw new Error('JWT_SECRET must be set to a strong non-default value in production');
   }
 
@@ -69,19 +75,41 @@ export function validateConfig() {
     throw new Error('CORS_ORIGIN=* is not allowed in production unless ALLOW_WILDCARD_CORS=true is explicitly set');
   }
 
-  if (process.env.PUBLIC_UPLOADS === undefined) {
-    throw new Error('PUBLIC_UPLOADS must be explicitly set to true or false in production');
+  const publicUploadsRaw = process.env.PUBLIC_UPLOADS;
+  if (publicUploadsRaw === undefined) {
+    throw new Error('PUBLIC_UPLOADS must be explicitly set to false in production');
+  }
+  if (parseBoolean(publicUploadsRaw, true)) {
+    throw new Error('PUBLIC_UPLOADS must be false in production');
   }
 
   const storageDriver = (process.env.STORAGE_DRIVER || 'local').toLowerCase();
+  if (!['local', 's3'].includes(storageDriver)) {
+    throw new Error('STORAGE_DRIVER must be either local or s3');
+  }
+  if (storageDriver !== 's3') {
+    if (!envBoolean('ALLOW_LOCAL_STORAGE_IN_PRODUCTION', false)) {
+      throw new Error('STORAGE_DRIVER=s3 is required in production; local storage is not persistent on Railway');
+    }
+    return;
+  }
+
   if (storageDriver === 's3') {
     const missing = [
       !process.env.S3_BUCKET && 'S3_BUCKET',
       !process.env.S3_ACCESS_KEY_ID && 'S3_ACCESS_KEY_ID',
       !process.env.S3_SECRET_ACCESS_KEY && 'S3_SECRET_ACCESS_KEY',
+      !process.env.S3_ENDPOINT && 'S3_ENDPOINT',
     ].filter(Boolean);
     if (missing.length > 0) {
       throw new Error(`S3 storage requires: ${missing.join(', ')}`);
+    }
+    const endpoint = process.env.S3_ENDPOINT || '';
+    if (
+      endpoint.includes('r2.cloudflarestorage.com') &&
+      !envBoolean('S3_FORCE_PATH_STYLE', false)
+    ) {
+      throw new Error('Cloudflare R2 requires S3_FORCE_PATH_STYLE=true');
     }
   }
 }

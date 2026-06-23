@@ -158,6 +158,36 @@ export function getObjectStorage(): ObjectStorage {
   return storageInstance;
 }
 
+export async function verifyObjectStorageAccess(
+  storage: ObjectStorage = getObjectStorage(),
+) {
+  const key = sanitizeObjectKey(
+    `storage-health-${Date.now()}-${Math.random().toString(36).slice(2)}.txt`,
+  );
+  const body = Buffer.from(`storage ok ${new Date().toISOString()}\n`, 'utf8');
+
+  try {
+    await storage.put(key, body, 'text/plain; charset=utf-8');
+    if (!(await storage.exists(key))) {
+      throw new Error('Object storage verification failed: uploaded object is not visible');
+    }
+    const downloaded = await storage.get(key);
+    if (!downloaded.equals(body)) {
+      throw new Error('Object storage verification failed: downloaded object differs');
+    }
+  } finally {
+    try {
+      await storage.delete(key);
+    } catch {
+      // Best effort cleanup; the original verification error is more important.
+    }
+  }
+
+  if (await storage.exists(key)) {
+    throw new Error('Object storage verification failed: temporary object was not deleted');
+  }
+}
+
 /** Test-only reset of cached storage singleton. */
 export function resetObjectStorageForTests() {
   storageInstance = null;

@@ -2,6 +2,32 @@
 
 Minimální postup pro nasazení backendu na Railway pro demo/beta provoz.
 
+## Aktualni produkcni storage pravidlo
+
+Produkce nesmi bezet na lokalnim `UPLOAD_PATH` na Railway. Backend pri
+`NODE_ENV=production` fail-fast vyzaduje:
+
+```env
+STORAGE_DRIVER=s3
+PUBLIC_UPLOADS=false
+S3_BUCKET=<r2-bucket-name>
+S3_ACCESS_KEY_ID=<r2-access-key-id>
+S3_SECRET_ACCESS_KEY=<r2-secret-access-key>
+S3_ENDPOINT=https://<cloudflare-account-id>.r2.cloudflarestorage.com
+S3_REGION=auto
+S3_FORCE_PATH_STYLE=true
+S3_KEY_PREFIX=photos
+VERIFY_STORAGE_ON_START=true
+```
+
+Pred redeployem overte R2 prikazem `npm run storage:verify -- --env=../.env.local`.
+Pri startu produkcniho backendu se stejny write/read/delete check spusti automaticky.
+Po redeployi musi `GET /ready` vracet `storage.driver = "s3"` a
+`storage.publicUploads = false`. Admin musi overit i
+`POST /api/admin/storage/verify`, ktery provede live write/read/delete test
+aktualni storage vrstvy. Backfill a audit jsou popsane v
+[R2_STORAGE_RUNBOOK.md](R2_STORAGE_RUNBOOK.md).
+
 ## Scope
 - Pouze deploy/config změny.
 - Bez změn business logiky.
@@ -35,9 +61,9 @@ Nastavte:
 - `JWT_SECRET=<silny_secret>` (vytvořit v Railway ručně)
 - `CORS_ORIGIN=https://<frontend-nebo-app-domain>` pro ostrý provoz whitelist
 - `PUBLIC_UPLOADS=false`
-- `UPLOAD_PATH=./uploads` (pouze pro `STORAGE_DRIVER=local`)
+- `UPLOAD_PATH` nenastavujte pro produkci; local storage je jen pro vyvoj nebo nouzovy override
 
-### Perzistentní fotky (doporučeno pro produkci)
+### Perzistentní fotky a výkresy (povinné pro produkci)
 Railway filesystem není perzistentní. Pro ostrý provoz nastavte S3-kompatibilní bucket (Railway Object Storage, Cloudflare R2, AWS S3, MinIO):
 
 - `STORAGE_DRIVER=s3`
@@ -48,6 +74,9 @@ Railway filesystem není perzistentní. Pro ostrý provoz nastavte S3-kompatibil
 - `S3_ENDPOINT=https://<endpoint>` (u Railway/R2/MinIO povinné)
 - `S3_KEY_PREFIX=photos` (volitelný prefix klíčů)
 - `S3_FORCE_PATH_STYLE=true` (u některých providerů nutné)
+
+Pro Cloudflare R2 použijte S3 API access key pair, ne obecný Cloudflare API token.
+Detailni postup overeni, auditu a backfillu je v [R2_STORAGE_RUNBOOK.md](R2_STORAGE_RUNBOOK.md).
 
 Při `STORAGE_DRIVER=s3`:
 - soubory přežijí restart/redeploy,
@@ -80,6 +109,7 @@ Poznámka:
 8. Ověřte:
    - `GET https://<backend-domain>/health`
    - `GET https://<backend-domain>/ready`
+   - `POST https://<backend-domain>/api/admin/storage/verify` s admin bearer tokenem
    - `POST https://<backend-domain>/api/auth/login`
 
 ## 6) Android APK na veřejnou URL

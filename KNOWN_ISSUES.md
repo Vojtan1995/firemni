@@ -96,4 +96,6 @@ Přehled pro beta a release: [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) §5.
 
 - **Projev:** `GET /api/photos/:id/file` vrací 404 po redeployi, DB řádek zůstává.
 - **Příčina:** `UPLOAD_PATH=./uploads` na efemérním disku hostitele.
-- **Mitigace:** persistent volume / S3 — mimo scope PHOTO-01 klienta.
+- **Aktuální prevence:** produkční backend fail-fast vyžaduje `STORAGE_DRIVER=s3`, `PUBLIC_UPLOADS=false` a kompletní `S3_*` env. Lokální storage v produkci projde jen s nouzovým `ALLOW_LOCAL_STORAGE_IN_PRODUCTION=true`.
+- **Ověření:** `GET /ready` musí vracet `storage.driver = "s3"`; R2 lze před redeployem ověřit `npm run storage:verify -- --env=../.env.local`.
+- **Obnova:** chybějící soubory backfillnout do R2 pod stejným DB klíčem přes `npm run storage:backfill-local -- --env=../.env.local --write`.
