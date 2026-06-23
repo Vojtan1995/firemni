@@ -87,8 +87,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return '/soupisy';
         }
         if (state.matchedLocation == '/stats' &&
-            (role == 'worker' ||
-                !AppPermissions.canViewStats(role))) {
+            !AppPermissions.canViewStats(role)) {
           return '/';
         }
         if (!AppPermissions.canManageWorksheets(role) &&
