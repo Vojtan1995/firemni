@@ -162,6 +162,9 @@ class AuthService {
   bool get canReviewWorksheet => AppPermissions.canReviewWorksheet(role);
   bool get canInvoiceWorksheet => AppPermissions.canInvoiceWorksheet(role);
   bool get canDeleteWorksheet => AppPermissions.canDeleteWorksheet(role);
+  bool get canCreateRepair => AppPermissions.canCreateRepair(role);
+  bool get canViewRepairs => AppPermissions.canViewRepairs(role);
+  bool get canExportRepairs => AppPermissions.canExportRepairs(role);
   bool get mustChangePin =>
       _ref.read(authUserProvider)?['mustChangePin'] == true;
 }

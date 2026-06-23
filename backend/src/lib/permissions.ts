@@ -29,7 +29,10 @@ export type Permission =
   | 'worksheet.submit'
   | 'worksheet.review'
   | 'worksheet.invoice'
-  | 'stats.view';
+  | 'stats.view'
+  | 'repair.create'
+  | 'repair.view'
+  | 'repair.export';
 
 const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'seal.create': [UserRole.worker, UserRole.vedeni, UserRole.admin],
@@ -61,6 +64,10 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'worksheet.review': [UserRole.vedeni, UserRole.admin],
   'worksheet.invoice': [UserRole.vedeni, UserRole.admin],
   'stats.view': [UserRole.worker, UserRole.vedeni, UserRole.admin],
+  'repair.create': [UserRole.worker, UserRole.vedeni, UserRole.admin],
+  // Worker je v service vrstvě navíc omezen na opravy svých zakázek (assertJobReadable).
+  'repair.view': [UserRole.worker, UserRole.vedeni, UserRole.admin],
+  'repair.export': [UserRole.vedeni, UserRole.admin],
 };
 
 export function hasPermission(role: UserRole, permission: Permission): boolean {

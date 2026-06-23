@@ -1309,6 +1309,15 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             onInvoice: () => _changeStatus('invoiced'),
             onRevertToDraft: () => _changeStatus('draft'),
           ),
+          if (auth.canCreateRepair && !offline)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.sm),
+              child: AppSecondaryButton(
+                label: 'Opravit',
+                icon: Icons.build_outlined,
+                onPressed: () => context.push('/seal/${widget.sealId}/repair'),
+              ),
+            ),
         ],
       ),
     ];

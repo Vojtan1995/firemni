@@ -5,6 +5,7 @@
 
 export type LogEntityType =
   | 'seal'
+  | 'seal_repair'
   | 'job'
   | 'job_floor'
   | 'worksheet'
@@ -65,6 +66,9 @@ export function describeActivity(log: ActivityLike): { title: string; entity: En
       return { title: 'Umístil/přesunul značku na výkresu', entity };
     case 'seal:seal_marker_delete':
       return { title: 'Odstranil značku z výkresu', entity };
+
+    case 'seal_repair:create':
+      return { title: 'Vytvořil opravu ucpávky', entity };
 
     case 'job:create':
       return { title: 'Vytvořil zakázku', entity };

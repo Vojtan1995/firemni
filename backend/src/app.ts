@@ -11,6 +11,7 @@ import authRoutes from './routes/auth.routes.js';
 import jobsRoutes from './routes/jobs.routes.js';
 import floorsRoutes from './routes/floors.routes.js';
 import sealsRoutes from './routes/seals.routes.js';
+import repairsRoutes from './routes/repairs.routes.js';
 import photosRoutes from './routes/photos.routes.js';
 import syncRoutes from './routes/sync.routes.js';
 import reportsRoutes from './routes/reports.routes.js';
@@ -65,6 +66,7 @@ export function createApp() {
   app.use('/api/jobs', jobsRoutes);
   app.use('/api/jobs/:jobId/floors', floorsRoutes);
   app.use('/api/seals', sealsRoutes);
+  app.use('/api/repairs', repairsRoutes);
   app.use('/api', photosRoutes);
   app.use('/api/sync', syncRoutes);
   app.use('/api/reports', reportsRoutes);

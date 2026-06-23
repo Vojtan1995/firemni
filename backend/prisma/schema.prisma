@@ -71,6 +71,7 @@ model User {
   notifications Notification[]
   floorDrawingsUploaded FloorDrawing[]
   sealMarkersCreated SealMarker[] @relation("SealMarkerCreator")
+  repairsCreated SealRepair[] @relation("SealRepairCreator")
 
   @@map("users")
 }
@@ -107,6 +108,7 @@ model Job {
   seals     Seal[]
   participants JobParticipant[]
   worksheets WorkSheet[]
+  repairs   SealRepair[]
 
   @@index([status])
   @@map("jobs")
@@ -128,6 +130,7 @@ model JobFloor {
   worksheetItems WorkSheetItem[]
   drawing FloorDrawing?
   sealMarkers SealMarker[]
+  repairs SealRepair[]
 
   @@index([jobId])
   @@map("job_floors")
@@ -168,6 +171,7 @@ model Seal {
   photos    SealPhoto[]
   worksheetItems WorkSheetItem[]
   marker    SealMarker?
+  repairs   SealRepair[]
 
   @@index([floorId])
   @@index([jobId, floorId, sealNumber])
@@ -280,6 +284,36 @@ model SealMarker {
   @@index([floorId])
   @@index([updatedAt])
   @@map("seal_markers")
+}
+
+// Oprava existující ucpávky. Samostatný evidenční záznam navázaný na původní
+// ucpávku — vytvoření opravy nikdy nezapisuje do `Seal`. originalSnapshot
+// uchovává hodnoty ucpávky v okamžiku opravy (i kdyby se ucpávka později
+// změnila), repairData jsou nové hodnoty z formuláře opravy.
+model SealRepair {
+  id               String   @id @default(uuid())
+  sealId           String   @map("seal_id")
+  jobId            String   @map("job_id")
+  floorId          String   @map("floor_id")
+  sealNumber       String   @map("seal_number")
+  note             String
+  originalSnapshot Json     @map("original_snapshot")
+  repairData       Json     @map("repair_data")
+  changedFields    Json?    @map("changed_fields")
+  createdById      String   @map("created_by_id")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  seal      Seal     @relation(fields: [sealId], references: [id])
+  job       Job      @relation(fields: [jobId], references: [id])
+  floor     JobFloor @relation(fields: [floorId], references: [id])
+  createdBy User     @relation("SealRepairCreator", fields: [createdById], references: [id])
+
+  @@index([sealId])
+  @@index([jobId])
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("seal_repairs")
 }
 
 model SyncMutation {

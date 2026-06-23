@@ -31,6 +31,9 @@ import '../features/worksheets/worksheets_screen.dart';
 import '../features/worksheets/saved_worksheets_screen.dart';
 import '../features/worksheets/soupisy_screen.dart';
 import '../features/worksheets/worksheet_detail_screen.dart';
+import '../features/repairs/repair_list_screen.dart';
+import '../features/repairs/repair_form_screen.dart';
+import '../features/repairs/repair_detail_screen.dart';
 
 /// Globální klíč pro dialogy nad celou aplikací (např. update checker).
 final rootNavigatorKey = GlobalKey<NavigatorState>();
@@ -99,6 +102,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             state.matchedLocation == '/price-list') {
           return '/';
         }
+        if (!AppPermissions.canViewRepairs(role) &&
+            (state.matchedLocation == '/repairs' ||
+                state.matchedLocation.startsWith('/repairs/'))) {
+          return '/';
+        }
         if (!AppPermissions.canManageJobs(role) &&
             manageOnly.contains(state.matchedLocation)) {
           return '/';
@@ -165,6 +173,17 @@ final routerProvider = Provider<GoRouter>((ref) {
               path: 'seal/:id',
               builder: (c, s) =>
                   SealDetailScreen(sealId: s.pathParameters['id']!)),
+          GoRoute(
+            path: 'seal/:id/repair',
+            builder: (c, s) =>
+                RepairFormScreen(sealId: s.pathParameters['id']!),
+          ),
+          GoRoute(path: 'repairs', builder: (_, __) => const RepairListScreen()),
+          GoRoute(
+            path: 'repairs/:id',
+            builder: (c, s) =>
+                RepairDetailScreen(repairId: s.pathParameters['id']!),
+          ),
           GoRoute(path: 'sync', builder: (_, __) => const SyncScreen()),
           GoRoute(
               path: 'my-jobs',
