@@ -12,10 +12,12 @@ class _LogSection {
   const _LogSection({
     required this.label,
     required this.endpoint,
+    this.queryParameters = const {},
     this.isSystem = false,
   });
   final String label;
   final String endpoint;
+  final Map<String, String> queryParameters;
   final bool isSystem;
 }
 
@@ -47,13 +49,40 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
     final auth = ref.read(authServiceProvider);
     final sections = <_LogSection>[
       if (auth.canViewLogs)
-        const _LogSection(label: 'Historie změn', endpoint: '/api/logs/history'),
+        const _LogSection(
+          label: 'Ucpávky',
+          endpoint: '/api/logs/history',
+          queryParameters: {'entityType': 'seal'},
+        ),
       if (auth.canViewLogs)
         const _LogSection(
-            label: 'Aktivita uživatelů', endpoint: '/api/logs/user-activity'),
+          label: 'Soupisy',
+          endpoint: '/api/logs/history',
+          queryParameters: {'entityType': 'worksheet'},
+        ),
+      if (auth.canViewLogs)
+        const _LogSection(
+          label: 'Zakázky',
+          endpoint: '/api/logs/history',
+          queryParameters: {'entityType': 'job'},
+        ),
+      if (auth.canViewLogs)
+        const _LogSection(
+          label: 'Výkresy',
+          endpoint: '/api/logs/history',
+          queryParameters: {'entityType': 'job_floor'},
+        ),
+      if (auth.canViewLogs)
+        const _LogSection(
+          label: 'Uživatelé/práva',
+          endpoint: '/api/logs/user-activity',
+        ),
       if (auth.isAdmin)
         const _LogSection(
-            label: 'Systém', endpoint: '/api/logs/system', isSystem: true),
+          label: 'Systém/sync',
+          endpoint: '/api/logs/system',
+          isSystem: true,
+        ),
     ];
     setState(() {
       _sections = sections;
@@ -79,10 +108,9 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
       await Future.wait(_sections.map((s) async {
         final res = await dio.get(
           s.endpoint,
-          queryParameters: {'since': since},
+          queryParameters: {'since': since, ...s.queryParameters},
         );
-        _data[s.endpoint] =
-            (res.data as List).cast<Map<String, dynamic>>();
+        _data[s.label] = (res.data as List).cast<Map<String, dynamic>>();
       }));
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
@@ -198,7 +226,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
   }
 
   Widget _sectionView(_LogSection section) {
-    final items = _data[section.endpoint] ?? const [];
+    final items = _data[section.label] ?? const [];
     if (items.isEmpty) {
       return const EmptyState(message: 'Žádné záznamy', icon: Icons.history);
     }
@@ -239,7 +267,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
     final ts = _parseTs(item['timestamp']);
     final time = ts != null ? DateFormat('HH:mm').format(ts) : '';
     final who = user?['displayName'] as String?;
-    final subtitle = [who, time].where((e) => e != null && e.isNotEmpty).join(' · ');
+    final subtitle =
+        [who, time].where((e) => e != null && e.isNotEmpty).join(' · ');
     return AppCard(
       title: item['title'] as String? ?? '',
       subtitle: subtitle.isEmpty ? null : subtitle,

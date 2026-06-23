@@ -1,15 +1,24 @@
-import { WorkSheetStatus, UserRole, SealStatus, Prisma, JobStatus } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { badRequest, forbidden, notFound } from '../lib/errors.js';
-import { hasPermission } from '../lib/permissions.js';
-import { logActivity, logChange } from './audit.service.js';
-import { notifyUsersByRoles, createNotification } from './notification.service.js';
-import { csvWithBom } from '../lib/csv-export.js';
-import { createCzechPdfDocument } from '../lib/pdf-pagination.js';
-import { setCzechPdfBold, setCzechPdfRegular } from '../lib/pdf-fonts.js';
-import { sealTradeLabel } from '../lib/seal-trade.js';
-import { jobAccessDeniedMessage, jobAllowsWrites } from '../lib/job-status.js';
-import { getActivePriceList, lookupPriceItem } from './pricing.service.js';
+import {
+  WorkSheetStatus,
+  UserRole,
+  SealStatus,
+  Prisma,
+  JobStatus,
+} from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { hasPermission } from "../lib/permissions.js";
+import { logActivity, logChange } from "./audit.service.js";
+import {
+  notifyUsersByRoles,
+  createNotification,
+} from "./notification.service.js";
+import { csvWithBom } from "../lib/csv-export.js";
+import { createCzechPdfDocument } from "../lib/pdf-pagination.js";
+import { setCzechPdfBold, setCzechPdfRegular } from "../lib/pdf-fonts.js";
+import { sealTradeLabel } from "../lib/seal-trade.js";
+import { jobAccessDeniedMessage, jobAllowsWrites } from "../lib/job-status.js";
+import { getActivePriceList, lookupPriceItem } from "./pricing.service.js";
 
 /** Vynutí, že se zakázka smí editovat (jen aktivní). Soupisy jdou zakládat,
  *  plnit a měnit jejich stav pouze na aktivní zakázce. */
@@ -21,7 +30,10 @@ function assertJobWritableStatus(status: JobStatus) {
 
 const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
   [WorkSheetStatus.draft]: [WorkSheetStatus.submitted],
-  [WorkSheetStatus.submitted]: [WorkSheetStatus.reviewed, WorkSheetStatus.draft],
+  [WorkSheetStatus.submitted]: [
+    WorkSheetStatus.reviewed,
+    WorkSheetStatus.draft,
+  ],
   // Schválený (reviewed) → lze přímo Fakturovat (invoiced) dle 4-stavového modelu.
   // ready_for_invoice ponechán jako volitelný mezistav kvůli zpětné kompatibilitě.
   [WorkSheetStatus.reviewed]: [
@@ -30,16 +42,22 @@ const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
     WorkSheetStatus.submitted,
     WorkSheetStatus.draft,
   ],
-  [WorkSheetStatus.ready_for_invoice]: [WorkSheetStatus.invoiced, WorkSheetStatus.reviewed],
-  [WorkSheetStatus.invoiced]: [WorkSheetStatus.reviewed, WorkSheetStatus.ready_for_invoice],
+  [WorkSheetStatus.ready_for_invoice]: [
+    WorkSheetStatus.invoiced,
+    WorkSheetStatus.reviewed,
+  ],
+  [WorkSheetStatus.invoiced]: [
+    WorkSheetStatus.reviewed,
+    WorkSheetStatus.ready_for_invoice,
+  ],
 };
 
 const STATUS_LABELS: Record<WorkSheetStatus, string> = {
-  [WorkSheetStatus.draft]: 'Rozpracovaný',
-  [WorkSheetStatus.submitted]: 'Odevzdaný',
-  [WorkSheetStatus.reviewed]: 'Schválený',
-  [WorkSheetStatus.ready_for_invoice]: 'Připravený k fakturaci',
-  [WorkSheetStatus.invoiced]: 'Vyfakturovaný',
+  [WorkSheetStatus.draft]: "Rozpracovaný",
+  [WorkSheetStatus.submitted]: "Odevzdaný",
+  [WorkSheetStatus.reviewed]: "Schválený",
+  [WorkSheetStatus.ready_for_invoice]: "Připravený k fakturaci",
+  [WorkSheetStatus.invoiced]: "Vyfakturovaný",
 };
 
 function assertTransition(current: WorkSheetStatus, next: WorkSheetStatus) {
@@ -54,56 +72,83 @@ function assertCanTransition(
   next: WorkSheetStatus,
 ) {
   if (role === UserRole.worker) {
-    if (current !== WorkSheetStatus.draft || next !== WorkSheetStatus.submitted) {
-      throw forbidden('Worker nemůže měnit stav soupisu po odevzdání');
+    if (
+      current !== WorkSheetStatus.draft ||
+      next !== WorkSheetStatus.submitted
+    ) {
+      throw forbidden("Worker nemůže měnit stav soupisu po odevzdání");
     }
-    if (!hasPermission(role, 'worksheet.submit')) {
-      throw forbidden('Nemáte oprávnění odevzdat soupis');
+    if (!hasPermission(role, "worksheet.submit")) {
+      throw forbidden("Nemáte oprávnění odevzdat soupis");
     }
     return;
   }
 
   if (next === WorkSheetStatus.submitted) {
-    if (!hasPermission(role, 'worksheet.review') && !hasPermission(role, 'worksheet.submit')) {
-      throw forbidden('Nemáte oprávnění měnit stav soupisu');
+    if (
+      !hasPermission(role, "worksheet.review") &&
+      !hasPermission(role, "worksheet.submit")
+    ) {
+      throw forbidden("Nemáte oprávnění měnit stav soupisu");
     }
     return;
   }
   if (next === WorkSheetStatus.reviewed || next === WorkSheetStatus.draft) {
-    if (!hasPermission(role, 'worksheet.review')) {
-      throw forbidden('Nemáte oprávnění zkontrolovat nebo vrátit soupis');
+    if (!hasPermission(role, "worksheet.review")) {
+      throw forbidden("Nemáte oprávnění zkontrolovat nebo vrátit soupis");
     }
     return;
   }
-  if (next === WorkSheetStatus.ready_for_invoice || next === WorkSheetStatus.invoiced) {
-    if (!hasPermission(role, 'worksheet.invoice')) {
-      throw forbidden('Nemáte oprávnění měnit fakturační stav soupisu');
+  if (
+    next === WorkSheetStatus.ready_for_invoice ||
+    next === WorkSheetStatus.invoiced
+  ) {
+    if (!hasPermission(role, "worksheet.invoice")) {
+      throw forbidden("Nemáte oprávnění měnit fakturační stav soupisu");
     }
   }
 }
 
-async function assertWorksheetAccess(worksheetId: string, role: UserRole, userId: string) {
+async function assertWorksheetAccess(
+  worksheetId: string,
+  role: UserRole,
+  userId: string,
+) {
   const ws = await prisma.workSheet.findUnique({
     where: { id: worksheetId },
-    include: { workers: { select: { userId: true } }, job: { select: { status: true } } },
+    include: {
+      workers: { select: { userId: true } },
+      job: { select: { status: true } },
+    },
   });
-  if (!ws) throw notFound('Soupis nenalezen');
-  if (role === UserRole.worker && !ws.workers.some((w) => w.userId === userId)) {
-    throw forbidden('Nemáte přístup k tomuto soupisu');
+  if (!ws) throw notFound("Soupis nenalezen");
+  if (
+    role === UserRole.worker &&
+    !ws.workers.some((w) => w.userId === userId)
+  ) {
+    throw forbidden("Nemáte přístup k tomuto soupisu");
   }
   return ws;
 }
 
 async function getWorksheetStatusHistory(worksheetId: string) {
   return prisma.changeLog.findMany({
-    where: { entityType: 'worksheet', entityId: worksheetId, fieldName: 'status' },
+    where: {
+      entityType: "worksheet",
+      entityId: worksheetId,
+      fieldName: "status",
+    },
     include: { user: { select: { id: true, displayName: true } } },
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
   });
 }
 
 function sumItemTotals(items: { totalPrice: unknown }[]) {
-  return items.reduce((acc, item) => acc + (item.totalPrice != null ? Number(item.totalPrice) : 0), 0);
+  return items.reduce(
+    (acc, item) =>
+      acc + (item.totalPrice != null ? Number(item.totalPrice) : 0),
+    0,
+  );
 }
 
 export type EntryWorksheetMembership = {
@@ -126,7 +171,9 @@ export async function getEntryWorksheetMembership(
     select: {
       sealEntryId: true,
       worksheetId: true,
-      worksheet: { select: { status: true, job: { select: { projectNumber: true } } } },
+      worksheet: {
+        select: { status: true, job: { select: { projectNumber: true } } },
+      },
     },
   });
   return new Map(
@@ -153,7 +200,9 @@ export async function isSealLockedByWorksheet(
     where: { sealId, deletedAt: null },
     select: { id: true },
   });
-  const membership = await getEntryWorksheetMembership(entries.map((e) => e.id));
+  const membership = await getEntryWorksheetMembership(
+    entries.map((e) => e.id),
+  );
   for (const m of membership.values()) {
     if (m.status !== WorkSheetStatus.draft) return m;
   }
@@ -212,26 +261,30 @@ export async function listWorksheets(
     where.workers = { some: { userId: filters.workerId } };
   }
 
-  return prisma.workSheet.findMany({
-    where,
-    include: {
-      job: { select: { projectNumber: true, name: true } },
-      createdBy: { select: { displayName: true } },
-      workers: { include: { user: { select: { id: true, displayName: true } } } },
-      _count: { select: { items: true } },
-      items: { select: { floor: { select: { name: true } } } },
-    },
-    // Nejnovější nahoře: dle data odevzdání (submittedAt), jinak dle data vytvoření.
-    orderBy: [
-      { submittedAt: { sort: 'desc', nulls: 'last' } },
-      { createdAt: 'desc' },
-    ],
-  }).then((worksheets) =>
-    worksheets.map(({ items, ...ws }) => ({
-      ...ws,
-      floorNames: [...new Set(items.map((i) => i.floor.name))].sort(),
-    })),
-  );
+  return prisma.workSheet
+    .findMany({
+      where,
+      include: {
+        job: { select: { projectNumber: true, name: true } },
+        createdBy: { select: { displayName: true } },
+        workers: {
+          include: { user: { select: { id: true, displayName: true } } },
+        },
+        _count: { select: { items: true } },
+        items: { select: { floor: { select: { name: true } } } },
+      },
+      // Nejnovější nahoře: dle data odevzdání (submittedAt), jinak dle data vytvoření.
+      orderBy: [
+        { submittedAt: { sort: "desc", nulls: "last" } },
+        { createdAt: "desc" },
+      ],
+    })
+    .then((worksheets) =>
+      worksheets.map(({ items, ...ws }) => ({
+        ...ws,
+        floorNames: [...new Set(items.map((i) => i.floor.name))].sort(),
+      })),
+    );
 }
 
 export async function createWorksheet(
@@ -245,18 +298,20 @@ export async function createWorksheet(
     note?: string;
   },
 ) {
-  const job = await prisma.job.findFirst({ where: { id: data.jobId, deletedAt: null } });
-  if (!job) throw notFound('Zakázka nenalezena');
+  const job = await prisma.job.findFirst({
+    where: { id: data.jobId, deletedAt: null },
+  });
+  if (!job) throw notFound("Zakázka nenalezena");
   assertJobWritableStatus(job.status);
 
   let workerIds = data.workerIds ?? [];
   if (role === UserRole.worker) {
     if (workerIds.some((id) => id !== userId)) {
-      throw forbidden('Worker může vytvořit soupis pouze za sebe');
+      throw forbidden("Worker může vytvořit soupis pouze za sebe");
     }
     workerIds = [userId];
   } else if (workerIds.length === 0) {
-    throw badRequest('Vyberte alespoň jednoho pracovníka');
+    throw badRequest("Vyberte alespoň jednoho pracovníka");
   }
 
   const worksheet = await prisma.workSheet.create({
@@ -272,11 +327,13 @@ export async function createWorksheet(
     },
     include: {
       job: { select: { projectNumber: true, name: true } },
-      workers: { include: { user: { select: { id: true, displayName: true } } } },
+      workers: {
+        include: { user: { select: { id: true, displayName: true } } },
+      },
     },
   });
 
-  await logActivity(userId, 'worksheet_create', 'worksheet', worksheet.id);
+  await logActivity(userId, "worksheet_create", "worksheet", worksheet.id);
   return worksheet;
 }
 
@@ -286,16 +343,20 @@ export async function getWorksheet(id: string, role: UserRole, userId: string) {
   const worksheet = await prisma.workSheet.findUnique({
     where: { id },
     include: {
-      job: { select: { projectNumber: true, name: true, address: true } },
+      job: {
+        select: { id: true, projectNumber: true, name: true, address: true },
+      },
       createdBy: { select: { displayName: true } },
-      workers: { include: { user: { select: { id: true, displayName: true } } } },
+      workers: {
+        include: { user: { select: { id: true, displayName: true } } },
+      },
       items: {
-        orderBy: { sortOrder: 'asc' },
+        orderBy: { sortOrder: "asc" },
         include: { floor: { select: { name: true } } },
       },
     },
   });
-  if (!worksheet) throw notFound('Soupis nenalezen');
+  if (!worksheet) throw notFound("Soupis nenalezen");
 
   const statusHistory = await getWorksheetStatusHistory(id);
   const totalValue = sumItemTotals(worksheet.items);
@@ -317,20 +378,28 @@ export async function getWorksheet(id: string, role: UserRole, userId: string) {
  * ani audit (WorkSheetItem referencuje Seal, ne naopak). Worker je omezen na
  * vlastní/účastnický soupis přes assertWorksheetAccess.
  */
-export async function deleteWorksheet(id: string, role: UserRole, userId: string) {
+export async function deleteWorksheet(
+  id: string,
+  role: UserRole,
+  userId: string,
+) {
   const ws = await assertWorksheetAccess(id, role, userId);
   if (ws.status !== WorkSheetStatus.draft) {
-    throw badRequest('Smazat lze jen rozpracovaný soupis');
+    throw badRequest("Smazat lze jen rozpracovaný soupis");
   }
   await prisma.workSheet.delete({ where: { id } });
-  await logActivity(userId, 'worksheet_delete', 'worksheet', id);
+  await logActivity(userId, "worksheet_delete", "worksheet", id);
   return { id };
 }
 
-async function assertWorksheetEditable(worksheetId: string, role: UserRole, userId: string) {
+async function assertWorksheetEditable(
+  worksheetId: string,
+  role: UserRole,
+  userId: string,
+) {
   const ws = await assertWorksheetAccess(worksheetId, role, userId);
   if (ws.status !== WorkSheetStatus.draft) {
-    throw badRequest('Upravit lze pouze rozpracovaný soupis');
+    throw badRequest("Upravit lze pouze rozpracovaný soupis");
   }
   return ws;
 }
@@ -347,7 +416,7 @@ export async function addWorksheetItems(
   const entries = await prisma.sealEntry.findMany({
     where: { id: { in: sealEntryIds }, deletedAt: null },
     include: {
-      materials: { orderBy: { sortOrder: 'asc' } },
+      materials: { orderBy: { sortOrder: "asc" } },
       seal: {
         include: {
           floor: { select: { id: true, name: true } },
@@ -357,7 +426,7 @@ export async function addWorksheetItems(
   });
 
   if (entries.length !== sealEntryIds.length) {
-    throw badRequest('Některé položky nebyly nalezeny');
+    throw badRequest("Některé položky nebyly nalezeny");
   }
 
   const existingItems = await prisma.workSheetItem.findMany({
@@ -365,28 +434,30 @@ export async function addWorksheetItems(
     select: { sealEntryId: true, worksheetId: true },
   });
   if (existingItems.some((item) => item.worksheetId !== worksheetId)) {
-    throw badRequest('Některé položky jsou již v jiném soupisu');
+    throw badRequest("Některé položky jsou již v jiném soupisu");
   }
   if (existingItems.some((item) => item.worksheetId === worksheetId)) {
-    throw badRequest('Některé položky jsou již v tomto soupisu');
+    throw badRequest("Některé položky jsou již v tomto soupisu");
   }
 
   for (const entry of entries) {
     if (entry.seal.jobId !== ws.jobId) {
-      throw badRequest('Všechny položky musí patřit ke stejné zakázce');
+      throw badRequest("Všechny položky musí patřit ke stejné zakázce");
     }
     if (entry.seal.deletedAt) {
-      throw badRequest('Ucpávka byla smazána');
+      throw badRequest("Ucpávka byla smazána");
     }
     if (entry.seal.status === SealStatus.invoiced) {
-      throw badRequest('Vyfakturovanou ucpávku nelze přidat do soupisu');
+      throw badRequest("Vyfakturovanou ucpávku nelze přidat do soupisu");
     }
     if (role === UserRole.worker && entry.seal.createdById !== userId) {
-      throw forbidden('Worker může přidat pouze vlastní položky');
+      throw forbidden("Worker může přidat pouze vlastní položky");
     }
   }
 
-  const existingCount = await prisma.workSheetItem.count({ where: { worksheetId } });
+  const existingCount = await prisma.workSheetItem.count({
+    where: { worksheetId },
+  });
 
   // Cena se počítá až při vytvoření soupisu – z AKTUÁLNÍHO ceníku – a uloží se
   // jako snapshot do položky soupisu (Task 7). Pozdější změna ceníku už soupis nemění.
@@ -394,8 +465,8 @@ export async function addWorksheetItems(
   const itemData = await Promise.all(
     entries.map(async (entry, i) => {
       const quantity = entry.quantity;
-      const unit = entry.unit ?? 'kus';
-      const preferredUnit = unit !== 'kus' ? (unit as 'm2' | 'mb') : undefined;
+      const unit = entry.unit ?? "kus";
+      const preferredUnit = unit !== "kus" ? (unit as "m2" | "mb") : undefined;
       const match = activePriceList
         ? await lookupPriceItem(
             {
@@ -409,8 +480,9 @@ export async function addWorksheetItems(
           )
         : null;
       const unitPrice = match ? Number(match.item.priceWithMaterial) : null;
-      const totalPrice = unitPrice != null ? unitPrice * Number(quantity) : null;
-      const catalogId = entry.materials.map((m) => m.material).join(', ');
+      const totalPrice =
+        unitPrice != null ? unitPrice * Number(quantity) : null;
+      const catalogId = entry.materials.map((m) => m.material).join(", ");
       return {
         worksheetId,
         sealId: entry.sealId,
@@ -441,13 +513,16 @@ export async function addWorksheetItems(
   const created = await prisma
     .$transaction(itemData.map((data) => prisma.workSheetItem.create({ data })))
     .catch((e) => {
-      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === 'P2002') {
-        throw badRequest('Některé položky jsou již v jiném soupisu');
+      if (
+        e instanceof Prisma.PrismaClientKnownRequestError &&
+        e.code === "P2002"
+      ) {
+        throw badRequest("Některé položky jsou již v jiném soupisu");
       }
       throw e;
     });
 
-  await logActivity(userId, 'worksheet_add_items', 'worksheet', worksheetId, {
+  await logActivity(userId, "worksheet_add_items", "worksheet", worksheetId, {
     count: created.length,
   });
   return created;
@@ -466,9 +541,12 @@ export async function changeWorksheetStatus(
   assertTransition(ws.status, nextStatus);
   assertCanTransition(role, ws.status, nextStatus);
 
-  if (nextStatus === WorkSheetStatus.draft && ws.status !== WorkSheetStatus.draft) {
+  if (
+    nextStatus === WorkSheetStatus.draft &&
+    ws.status !== WorkSheetStatus.draft
+  ) {
     if (role !== UserRole.worker && !comment?.trim()) {
-      throw badRequest('Při vrácení soupisu je povinný důvod');
+      throw badRequest("Při vrácení soupisu je povinný důvod");
     }
   }
 
@@ -476,7 +554,8 @@ export async function changeWorksheetStatus(
   const timestamps: Record<string, Date | null> = {};
   if (nextStatus === WorkSheetStatus.submitted) timestamps.submittedAt = now;
   if (nextStatus === WorkSheetStatus.reviewed) timestamps.reviewedAt = now;
-  if (nextStatus === WorkSheetStatus.ready_for_invoice) timestamps.readyForInvoiceAt = now;
+  if (nextStatus === WorkSheetStatus.ready_for_invoice)
+    timestamps.readyForInvoiceAt = now;
   if (nextStatus === WorkSheetStatus.invoiced) timestamps.invoicedAt = now;
 
   if (nextStatus === WorkSheetStatus.draft) {
@@ -505,33 +584,44 @@ export async function changeWorksheetStatus(
     },
   });
 
-  await logActivity(userId, 'worksheet_status', 'worksheet', worksheetId, {
+  await logActivity(userId, "worksheet_status", "worksheet", worksheetId, {
     from: ws.status,
     to: nextStatus,
     comment: comment ?? null,
   });
 
-  await logChange(userId, 'worksheet', worksheetId, 'status', ws.status, nextStatus, {
-    comment: comment ?? null,
-  });
+  await logChange(
+    userId,
+    "worksheet",
+    worksheetId,
+    "status",
+    ws.status,
+    nextStatus,
+    {
+      comment: comment ?? null,
+    },
+  );
 
   if (nextStatus === WorkSheetStatus.submitted) {
     await notifyUsersByRoles([UserRole.vedeni, UserRole.admin], {
-      type: 'worksheet_submitted',
-      title: 'Nový soupis k odsouhlasení',
+      type: "worksheet_submitted",
+      title: "Nový soupis k odsouhlasení",
       body: `Soupis byl odevzdán (${updated.job.projectNumber})`,
-      entityType: 'worksheet',
+      entityType: "worksheet",
       entityId: worksheetId,
     });
   }
-  if (nextStatus === WorkSheetStatus.draft && ws.status !== WorkSheetStatus.draft) {
+  if (
+    nextStatus === WorkSheetStatus.draft &&
+    ws.status !== WorkSheetStatus.draft
+  ) {
     for (const w of updated.workers) {
       await createNotification({
         userId: w.userId,
-        type: 'worksheet_returned',
-        title: 'Soupis vrácen k opravě',
-        body: comment?.trim() || 'Soupis byl vrácen k opravě',
-        entityType: 'worksheet',
+        type: "worksheet_returned",
+        title: "Soupis vrácen k opravě",
+        body: comment?.trim() || "Soupis byl vrácen k opravě",
+        entityType: "worksheet",
         entityId: worksheetId,
       });
     }
@@ -540,10 +630,10 @@ export async function changeWorksheetStatus(
     for (const w of updated.workers) {
       await createNotification({
         userId: w.userId,
-        type: 'worksheet_approved',
-        title: 'Soupis schválen',
+        type: "worksheet_approved",
+        title: "Soupis schválen",
         body: `Soupis ${updated.job.projectNumber} byl schválen`,
-        entityType: 'worksheet',
+        entityType: "worksheet",
         entityId: worksheetId,
       });
     }
@@ -567,7 +657,10 @@ export async function populateWorksheetFromFilters(
 ) {
   const ws = await assertWorksheetEditable(worksheetId, role, userId);
   const workerIds = (
-    await prisma.workSheetWorker.findMany({ where: { worksheetId }, select: { userId: true } })
+    await prisma.workSheetWorker.findMany({
+      where: { worksheetId },
+      select: { userId: true },
+    })
   ).map((w) => w.userId);
 
   const sealWhere: Record<string, unknown> = {
@@ -583,8 +676,12 @@ export async function populateWorksheetFromFilters(
   }
   if (filters.from || filters.to) {
     sealWhere.createdAt = {};
-    if (filters.from) (sealWhere.createdAt as Record<string, Date>).gte = new Date(filters.from);
-    if (filters.to) (sealWhere.createdAt as Record<string, Date>).lte = new Date(filters.to);
+    if (filters.from)
+      (sealWhere.createdAt as Record<string, Date>).gte = new Date(
+        filters.from,
+      );
+    if (filters.to)
+      (sealWhere.createdAt as Record<string, Date>).lte = new Date(filters.to);
   }
 
   // Vynech prostupy, které už jsou v jakémkoliv soupisu – jinak by jediná zabraná
@@ -611,10 +708,18 @@ export async function populateWorksheetFromFilters(
     entries.map((e) => e.id),
   );
 
-  return { items: created, requestedCount: entries.length, addedCount: created.length };
+  return {
+    items: created,
+    requestedCount: entries.length,
+    addedCount: created.length,
+  };
 }
 
-async function loadWorksheetExportData(id: string, role: UserRole, userId: string) {
+async function loadWorksheetExportData(
+  id: string,
+  role: UserRole,
+  userId: string,
+) {
   await assertWorksheetAccess(id, role, userId);
 
   const worksheet = await prisma.workSheet.findUnique({
@@ -623,10 +728,10 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
       job: true,
       createdBy: { select: { displayName: true } },
       workers: { include: { user: { select: { displayName: true } } } },
-      items: { orderBy: { sortOrder: 'asc' } },
+      items: { orderBy: { sortOrder: "asc" } },
     },
   });
-  if (!worksheet) throw notFound('Soupis nenalezen');
+  if (!worksheet) throw notFound("Soupis nenalezen");
 
   const floorIds = [...new Set(worksheet.items.map((i) => i.floorId))];
   const floors = floorIds.length
@@ -635,7 +740,9 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
         select: { id: true, name: true },
       })
     : [];
-  const floorMap = new Map(floors.map((f: { id: string; name: string }) => [f.id, f.name]));
+  const floorMap = new Map(
+    floors.map((f: { id: string; name: string }) => [f.id, f.name]),
+  );
 
   const workerIds = [...new Set(worksheet.items.map((i) => i.workerId))];
   const workers = workerIds.length
@@ -666,30 +773,35 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
     patro: String(floorMap.get(item.floorId) ?? item.floorId),
     prostup: item.sealNumber,
     remeslo: sealTradeLabel(item.trade),
-    system: item.system ?? '',
-    katalogId: item.catalogId ?? '',
+    system: item.system ?? "",
+    katalogId: item.catalogId ?? "",
     typ: item.entryType,
     rozmer: item.dimension,
     pocet: Number(item.quantity),
-    izolace: item.insulation ?? '',
-    umisteni: item.location ?? '',
-    provedl: workerMap.get(item.workerId) ?? '',
+    izolace: item.insulation ?? "",
+    umisteni: item.location ?? "",
+    provedl: workerMap.get(item.workerId) ?? "",
     jednotkovaCena: item.unitPrice != null ? Number(item.unitPrice) : null,
     cenaCelkem: item.totalPrice != null ? Number(item.totalPrice) : null,
   }));
 
   // Řazení uvnitř exportu: Podlaží → Prostup → Typ položky.
   rows.sort((a, b) => {
-    if (a.patro !== b.patro) return a.patro.localeCompare(b.patro, 'cs');
+    if (a.patro !== b.patro) return a.patro.localeCompare(b.patro, "cs");
     const pa = parseInt(a.prostup, 10);
     const pb = parseInt(b.prostup, 10);
     if (Number.isFinite(pa) && Number.isFinite(pb) && pa !== pb) return pa - pb;
-    if (a.prostup !== b.prostup) return a.prostup.localeCompare(b.prostup, 'cs');
-    return a.typ.localeCompare(b.typ, 'cs');
+    if (a.prostup !== b.prostup)
+      return a.prostup.localeCompare(b.prostup, "cs");
+    return a.typ.localeCompare(b.typ, "cs");
   });
 
   // Seskupení podle podlaží (v pořadí dle seřazených řádků) + součet za podlaží.
-  const floorGroups: { floorName: string; rows: ExportItemRow[]; floorTotal: number }[] = [];
+  const floorGroups: {
+    floorName: string;
+    rows: ExportItemRow[];
+    floorTotal: number;
+  }[] = [];
   for (const row of rows) {
     let group = floorGroups.find((g) => g.floorName === row.patro);
     if (!group) {
@@ -700,38 +812,74 @@ async function loadWorksheetExportData(id: string, role: UserRole, userId: strin
     group.floorTotal += row.cenaCelkem ?? 0;
   }
 
-  return { worksheet, rows, floorGroups, total: sumItemTotals(worksheet.items) };
+  return {
+    worksheet,
+    rows,
+    floorGroups,
+    total: sumItemTotals(worksheet.items),
+  };
 }
 
 // Pořadí sloupců dle PDF vzoru (Task 9). Řemeslo je nový sloupec.
 const EXPORT_COLUMNS = [
-  { key: 'patro', label: 'Podlaží', width: 46, align: 'center' as const },
-  { key: 'prostup', label: 'Prostup', width: 46, align: 'center' as const },
-  { key: 'remeslo', label: 'Řemeslo', width: 68, align: 'left' as const },
-  { key: 'system', label: 'Systém', width: 60, align: 'left' as const },
-  { key: 'katalogId', label: 'Katalog ID', width: 92, align: 'left' as const, wrap: true },
-  { key: 'typ', label: 'Typ', width: 52, align: 'left' as const, wrap: true },
-  { key: 'rozmer', label: 'Rozměr', width: 66, align: 'left' as const },
-  { key: 'pocet', label: 'Počet', width: 40, align: 'center' as const },
-  { key: 'izolace', label: 'Izolace', width: 58, align: 'left' as const },
-  { key: 'umisteni', label: 'Umístění v PÚ', width: 66, align: 'left' as const },
-  { key: 'provedl', label: 'Provedl', width: 70, align: 'left' as const },
-  { key: 'jednotkovaCena', label: 'Jednotková cena', width: 60, align: 'right' as const, money: true },
-  { key: 'cenaCelkem', label: 'Cena celkem', width: 60, align: 'right' as const, money: true },
+  { key: "patro", label: "Podlaží", width: 46, align: "center" as const },
+  { key: "prostup", label: "Prostup", width: 46, align: "center" as const },
+  { key: "remeslo", label: "Řemeslo", width: 68, align: "left" as const },
+  { key: "system", label: "Systém", width: 60, align: "left" as const },
+  {
+    key: "katalogId",
+    label: "Katalog ID",
+    width: 92,
+    align: "left" as const,
+    wrap: true,
+  },
+  { key: "typ", label: "Typ", width: 52, align: "left" as const, wrap: true },
+  { key: "rozmer", label: "Rozměr", width: 66, align: "left" as const },
+  { key: "pocet", label: "Počet", width: 40, align: "center" as const },
+  { key: "izolace", label: "Izolace", width: 58, align: "left" as const },
+  {
+    key: "umisteni",
+    label: "Umístění v PÚ",
+    width: 66,
+    align: "left" as const,
+  },
+  { key: "provedl", label: "Provedl", width: 70, align: "left" as const },
+  {
+    key: "jednotkovaCena",
+    label: "Jednotková cena",
+    width: 60,
+    align: "right" as const,
+    money: true,
+  },
+  {
+    key: "cenaCelkem",
+    label: "Cena celkem",
+    width: 60,
+    align: "right" as const,
+    money: true,
+  },
 ];
 
 function csvCell(value: unknown): string {
-  return `"${String(value ?? '').replace(/"/g, '""')}"`;
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
 }
 
 function money(value: number | null | undefined): string {
-  return value != null ? `${Number(value).toFixed(2)} Kč` : '';
+  return value != null ? `${Number(value).toFixed(2)} Kč` : "";
 }
 
-export async function exportWorksheetCsv(id: string, role: UserRole, userId: string) {
-  const { worksheet, floorGroups, total } = await loadWorksheetExportData(id, role, userId);
+export async function exportWorksheetCsv(
+  id: string,
+  role: UserRole,
+  userId: string,
+) {
+  const { worksheet, floorGroups, total } = await loadWorksheetExportData(
+    id,
+    role,
+    userId,
+  );
   const colCount = EXPORT_COLUMNS.length;
-  const header = EXPORT_COLUMNS.map((c) => csvCell(c.label)).join(';');
+  const header = EXPORT_COLUMNS.map((c) => csvCell(c.label)).join(";");
   const lines: string[] = [header];
 
   for (const group of floorGroups) {
@@ -740,23 +888,25 @@ export async function exportWorksheetCsv(id: string, role: UserRole, userId: str
         EXPORT_COLUMNS.map((c) => {
           const v = (row as Record<string, unknown>)[c.key];
           return csvCell(c.money ? money(v as number | null) : v);
-        }).join(';'),
+        }).join(";"),
       );
     }
     // Řádek "Cena za podlaží" – součet v posledním sloupci.
     const floorTotalCells = new Array(colCount).fill('""');
     floorTotalCells[0] = csvCell(`Cena za podlaží – ${group.floorName}`);
     floorTotalCells[colCount - 1] = csvCell(money(group.floorTotal));
-    lines.push(floorTotalCells.join(';'));
+    lines.push(floorTotalCells.join(";"));
   }
 
   const totalCells = new Array(colCount).fill('""');
-  totalCells[0] = csvCell('Cena celkem bez DPH');
+  totalCells[0] = csvCell("Cena celkem bez DPH");
   totalCells[colCount - 1] = csvCell(money(total));
-  lines.push(totalCells.join(';'));
-  lines.push(`${csvCell('Datum')};${csvCell(new Date().toISOString().split('T')[0])}`);
+  lines.push(totalCells.join(";"));
+  lines.push(
+    `${csvCell("Datum")};${csvCell(new Date().toISOString().split("T")[0])}`,
+  );
 
-  const csv = csvWithBom(lines.join('\n'));
+  const csv = csvWithBom(lines.join("\n"));
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.csv`;
   return { csv, filename };
 }
@@ -765,17 +915,25 @@ export async function exportWorksheetPdf(
   id: string,
   role: UserRole,
   userId: string,
-  res: import('express').Response,
+  res: import("express").Response,
 ) {
-  const { worksheet, floorGroups, total } = await loadWorksheetExportData(id, role, userId);
+  const { worksheet, floorGroups, total } = await loadWorksheetExportData(
+    id,
+    role,
+    userId,
+  );
 
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.pdf`;
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
   // PDF vždy na šířku (landscape).
   const margin = 28;
-  const doc = createCzechPdfDocument({ margin, size: 'A4', layout: 'landscape' });
+  const doc = createCzechPdfDocument({
+    margin,
+    size: "A4",
+    layout: "landscape",
+  });
   doc.pipe(res);
 
   const pageRight = doc.page.width - margin;
@@ -784,25 +942,29 @@ export async function exportWorksheetPdf(
   const colWidths = EXPORT_COLUMNS.map((c) => c.width * scale);
   const bottomY = doc.page.height - margin - 60;
 
-  const periodFrom = worksheet.periodFrom?.toISOString().split('T')[0] ?? '—';
-  const periodTo = worksheet.periodTo?.toISOString().split('T')[0] ?? '—';
-  const workerNames = worksheet.workers.map((w) => w.user.displayName).join(', ');
+  const periodFrom = worksheet.periodFrom?.toISOString().split("T")[0] ?? "—";
+  const periodTo = worksheet.periodTo?.toISOString().split("T")[0] ?? "—";
+  const workerNames = worksheet.workers
+    .map((w) => w.user.displayName)
+    .join(", ");
   const itemCount = floorGroups.reduce((s, g) => s + g.rows.length, 0);
 
   // Hlavička soupisu.
-  doc.fontSize(15).text('Soupis práce', { underline: true });
+  doc.fontSize(15).text("Soupis práce", { underline: true });
   doc.moveDown(0.3);
   doc.fontSize(9);
   doc.text(`Zakázka: ${worksheet.job.projectNumber} – ${worksheet.job.name}`);
-  doc.text(`Stav: ${STATUS_LABELS[worksheet.status]}    Období: ${periodFrom} – ${periodTo}`);
-  doc.text(`Pracovníci: ${workerNames || '—'}    Počet položek: ${itemCount}`);
+  doc.text(
+    `Stav: ${STATUS_LABELS[worksheet.status]}    Období: ${periodFrom} – ${periodTo}`,
+  );
+  doc.text(`Pracovníci: ${workerNames || "—"}    Počet položek: ${itemCount}`);
   // Horní souhrnná fakturační tabulka + odsouhlasovací text.
   doc.text(`Celková cena bez DPH: ${money(total)}`);
   doc.moveDown(0.3);
   doc
     .fontSize(8)
     .text(
-      'Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu a cenách.',
+      "Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu a cenách.",
     );
   doc.moveDown(0.5);
 
@@ -810,23 +972,31 @@ export async function exportWorksheetPdf(
   const headerFontSize = 8;
   const bodyFontSize = 7.5;
 
-  function cellText(col: (typeof EXPORT_COLUMNS)[number], row: ExportRowLike): string {
+  function cellText(
+    col: (typeof EXPORT_COLUMNS)[number],
+    row: ExportRowLike,
+  ): string {
     const v = (row as Record<string, unknown>)[col.key];
     if (col.money) return money(v as number | null);
-    return String(v ?? '');
+    return String(v ?? "");
   }
 
   function rowHeight(cells: string[]): number {
     let max = 14;
     EXPORT_COLUMNS.forEach((col, i) => {
       const h =
-        doc.heightOfString(cells[i] ?? '', { width: colWidths[i] - rowPadX * 2 }) + 6;
+        doc.heightOfString(cells[i] ?? "", {
+          width: colWidths[i] - rowPadX * 2,
+        }) + 6;
       if (h > max) max = h;
     });
     return max;
   }
 
-  function drawRow(cells: string[], opts: { header?: boolean; bold?: boolean }) {
+  function drawRow(
+    cells: string[],
+    opts: { header?: boolean; bold?: boolean },
+  ) {
     const h = rowHeight(cells);
     if (doc.y + h > bottomY) {
       doc.addPage();
@@ -840,7 +1010,7 @@ export async function exportWorksheetPdf(
       const w = colWidths[i];
       doc.rect(x, y, w, h).stroke();
       doc.fontSize(opts.header ? headerFontSize : bodyFontSize);
-      doc.text(cells[i] ?? '', x + rowPadX, y + 3, {
+      doc.text(cells[i] ?? "", x + rowPadX, y + 3, {
         width: w - rowPadX * 2,
         align: col.align,
       });
@@ -866,7 +1036,7 @@ export async function exportWorksheetPdf(
       );
     }
     // Součet za podlaží (tučně, cena vpravo).
-    const floorTotalCells = EXPORT_COLUMNS.map(() => '');
+    const floorTotalCells = EXPORT_COLUMNS.map(() => "");
     floorTotalCells[0] = `Cena za podlaží – ${group.floorName}`;
     floorTotalCells[EXPORT_COLUMNS.length - 1] = money(group.floorTotal);
     drawRow(floorTotalCells, { bold: true });
@@ -876,7 +1046,7 @@ export async function exportWorksheetPdf(
   setCzechPdfBold(doc);
   doc.fontSize(11).text(`Cena celkem bez DPH: ${money(total)}`);
   setCzechPdfRegular(doc);
-  doc.fontSize(9).text(`Datum: ${new Date().toISOString().split('T')[0]}`);
+  doc.fontSize(9).text(`Datum: ${new Date().toISOString().split("T")[0]}`);
   doc.end();
 }
 

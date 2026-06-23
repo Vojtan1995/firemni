@@ -1,7 +1,12 @@
-import { SealStatus, UserRole, WorkSheetStatus, JobStatus } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { forbidden, badRequest } from '../lib/errors.js';
-import { assertJobReadable } from './authorization.service.js';
+import {
+  SealStatus,
+  UserRole,
+  WorkSheetStatus,
+  JobStatus,
+} from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import { forbidden, badRequest } from "../lib/errors.js";
+import { assertJobReadable } from "./authorization.service.js";
 
 export type StatsFilters = {
   jobId?: string;
@@ -32,7 +37,10 @@ function buildSealWhere(
   scopeUserId?: string,
   filters?: StatsFilters,
 ) {
-  const where: Record<string, unknown> = { deletedAt: null };
+  const where: Record<string, unknown> = {
+    deletedAt: null,
+    job: { deletedAt: null, status: JobStatus.active },
+  };
 
   if (role === UserRole.worker) {
     where.createdById = userId;
@@ -46,9 +54,14 @@ function buildSealWhere(
   return where;
 }
 
-async function sealCounts(where: Record<string, unknown>, statusFilter?: SealStatus) {
+async function sealCounts(
+  where: Record<string, unknown>,
+  statusFilter?: SealStatus,
+) {
   if (statusFilter) {
-    const count = await prisma.seal.count({ where: { ...where, deletedAt: null } });
+    const count = await prisma.seal.count({
+      where: { ...where, deletedAt: null },
+    });
     return {
       total: count,
       draft: statusFilter === SealStatus.draft ? count : 0,
@@ -58,9 +71,15 @@ async function sealCounts(where: Record<string, unknown>, statusFilter?: SealSta
   }
   const [total, draft, checked, invoiced] = await Promise.all([
     prisma.seal.count({ where: { ...where, deletedAt: null } }),
-    prisma.seal.count({ where: { ...where, deletedAt: null, status: SealStatus.draft } }),
-    prisma.seal.count({ where: { ...where, deletedAt: null, status: SealStatus.checked } }),
-    prisma.seal.count({ where: { ...where, deletedAt: null, status: SealStatus.invoiced } }),
+    prisma.seal.count({
+      where: { ...where, deletedAt: null, status: SealStatus.draft },
+    }),
+    prisma.seal.count({
+      where: { ...where, deletedAt: null, status: SealStatus.checked },
+    }),
+    prisma.seal.count({
+      where: { ...where, deletedAt: null, status: SealStatus.invoiced },
+    }),
   ]);
   return { total, draft, checked, invoiced };
 }
@@ -79,13 +98,13 @@ async function missingPhotoCount(where: Record<string, unknown>) {
 
 async function returnedSealCount(where: Record<string, unknown>) {
   return prisma.seal.count({
-    where: { ...where, deletedAt: null, reviewStatus: 'returned' },
+    where: { ...where, deletedAt: null, reviewStatus: "returned" },
   });
 }
 
 async function sealsByJob(where: Record<string, unknown>) {
   const groups = await prisma.seal.groupBy({
-    by: ['jobId'],
+    by: ["jobId"],
     where: { ...where, deletedAt: null },
     _count: { id: true },
   });
@@ -96,15 +115,15 @@ async function sealsByJob(where: Record<string, unknown>) {
   const jobMap = new Map(jobs.map((j) => [j.id, j]));
   return groups.map((g) => ({
     jobId: g.jobId,
-    projectNumber: jobMap.get(g.jobId)?.projectNumber ?? '',
-    name: jobMap.get(g.jobId)?.name ?? '',
+    projectNumber: jobMap.get(g.jobId)?.projectNumber ?? "",
+    name: jobMap.get(g.jobId)?.name ?? "",
     count: g._count.id,
   }));
 }
 
 async function sealsByJobDetailed(where: Record<string, unknown>) {
   const groups = await prisma.seal.groupBy({
-    by: ['jobId', 'status'],
+    by: ["jobId", "status"],
     where: { ...where, deletedAt: null },
     _count: { id: true },
   });
@@ -116,13 +135,13 @@ async function sealsByJobDetailed(where: Record<string, unknown>) {
       select: { id: true, projectNumber: true, name: true },
     }),
     prisma.seal.groupBy({
-      by: ['jobId'],
+      by: ["jobId"],
       where: { ...where, deletedAt: null, photos: { none: {} } },
       _count: { id: true },
     }),
     prisma.seal.groupBy({
-      by: ['jobId'],
-      where: { ...where, deletedAt: null, reviewStatus: 'returned' },
+      by: ["jobId"],
+      where: { ...where, deletedAt: null, reviewStatus: "returned" },
       _count: { id: true },
     }),
   ]);
@@ -149,8 +168,8 @@ async function sealsByJobDetailed(where: Record<string, unknown>) {
   for (const g of groups) {
     const existing = byJob.get(g.jobId) ?? {
       jobId: g.jobId,
-      projectNumber: jobMap.get(g.jobId)?.projectNumber ?? '',
-      name: jobMap.get(g.jobId)?.name ?? '',
+      projectNumber: jobMap.get(g.jobId)?.projectNumber ?? "",
+      name: jobMap.get(g.jobId)?.name ?? "",
       total: 0,
       draft: 0,
       checked: 0,
@@ -172,7 +191,7 @@ async function sealsByJobDetailed(where: Record<string, unknown>) {
 
 async function sealsByWorker(where: Record<string, unknown>) {
   const groups = await prisma.seal.groupBy({
-    by: ['createdById'],
+    by: ["createdById"],
     where: { ...where, deletedAt: null },
     _count: { id: true },
   });
@@ -184,14 +203,14 @@ async function sealsByWorker(where: Record<string, unknown>) {
   return groups.map((g) => ({
     userId: g.createdById,
     workerId: g.createdById,
-    displayName: userMap.get(g.createdById)?.displayName ?? '',
+    displayName: userMap.get(g.createdById)?.displayName ?? "",
     count: g._count.id,
   }));
 }
 
 async function sealsByWorkerDetailed(where: Record<string, unknown>) {
   const groups = await prisma.seal.groupBy({
-    by: ['createdById', 'status'],
+    by: ["createdById", "status"],
     where: { ...where, deletedAt: null },
     _count: { id: true },
   });
@@ -220,7 +239,7 @@ async function sealsByWorkerDetailed(where: Record<string, unknown>) {
     const existing = byWorker.get(g.createdById) ?? {
       userId: g.createdById,
       workerId: g.createdById,
-      displayName: userMap.get(g.createdById)?.displayName ?? '',
+      displayName: userMap.get(g.createdById)?.displayName ?? "",
       total: 0,
       draft: 0,
       checked: 0,
@@ -238,7 +257,11 @@ async function sealsByWorkerDetailed(where: Record<string, unknown>) {
 
 async function estimatedValue(where: Record<string, unknown>) {
   const result = await prisma.sealEntry.aggregate({
-    where: { deletedAt: null, seal: { ...where, deletedAt: null }, totalPrice: { not: null } },
+    where: {
+      deletedAt: null,
+      seal: { ...where, deletedAt: null },
+      totalPrice: { not: null },
+    },
     _sum: { totalPrice: true },
   });
   return Number(result._sum.totalPrice ?? 0);
@@ -248,7 +271,7 @@ async function syncPendingStats() {
   const [total, byUser] = await Promise.all([
     prisma.syncMutation.count({ where: { processedAt: null } }),
     prisma.syncMutation.groupBy({
-      by: ['userId'],
+      by: ["userId"],
       where: { processedAt: null },
       _count: { id: true },
     }),
@@ -265,7 +288,7 @@ async function syncPendingStats() {
     syncPendingByUser: byUser
       .map((g) => ({
         userId: g.userId,
-        displayName: userMap.get(g.userId)?.displayName ?? '',
+        displayName: userMap.get(g.userId)?.displayName ?? "",
         count: g._count.id,
       }))
       .sort((a, b) => b.count - a.count),
@@ -284,7 +307,7 @@ export async function getStatsOverview(
   filters?: StatsFilters,
 ) {
   if (role === UserRole.worker && scopeUserId && scopeUserId !== userId) {
-    throw forbidden('Worker může vidět pouze své statistiky');
+    throw forbidden("Worker může vidět pouze své statistiky");
   }
 
   const parsedFilters = parseStatsFilters(filters);
@@ -295,7 +318,7 @@ export async function getStatsOverview(
     parsedFilters?.status &&
     !Object.values(SealStatus).includes(parsedFilters.status)
   ) {
-    throw badRequest('Neplatný filtr status');
+    throw badRequest("Neplatný filtr status");
   }
 
   const baseWhere = buildSealWhere(role, userId, scopeUserId, parsedFilters);
@@ -308,25 +331,36 @@ export async function getStatsOverview(
   if (role === UserRole.worker) {
     const worksheetWhere = {
       workers: { some: { userId } },
+      job: { deletedAt: null, status: JobStatus.active },
       ...(parsedFilters?.jobId ? { jobId: parsedFilters.jobId } : {}),
     };
 
-    const [today, week, month, counts, photos, missingPhotos, returned, worksheets, byJob, estimated] =
-      await Promise.all([
-        prisma.seal.count({ where: { ...todayWhere, deletedAt: null } }),
-        prisma.seal.count({ where: { ...weekWhere, deletedAt: null } }),
-        prisma.seal.count({ where: { ...monthWhere, deletedAt: null } }),
-        sealCounts(baseWhere, parsedFilters?.status),
-        photoCount(baseWhere),
-        missingPhotoCount(baseWhere),
-        returnedSealCount(baseWhere),
-        prisma.workSheet.count({ where: worksheetWhere }),
-        sealsByJob(baseWhere),
-        estimatedValue(baseWhere),
-      ]);
+    const [
+      today,
+      week,
+      month,
+      counts,
+      photos,
+      missingPhotos,
+      returned,
+      worksheets,
+      byJob,
+      estimated,
+    ] = await Promise.all([
+      prisma.seal.count({ where: { ...todayWhere, deletedAt: null } }),
+      prisma.seal.count({ where: { ...weekWhere, deletedAt: null } }),
+      prisma.seal.count({ where: { ...monthWhere, deletedAt: null } }),
+      sealCounts(baseWhere, parsedFilters?.status),
+      photoCount(baseWhere),
+      missingPhotoCount(baseWhere),
+      returnedSealCount(baseWhere),
+      prisma.workSheet.count({ where: worksheetWhere }),
+      sealsByJob(baseWhere),
+      estimatedValue(baseWhere),
+    ]);
 
     return {
-      role: 'worker',
+      role: "worker",
       filters: parsedFilters ?? null,
       sealsToday: today,
       sealsThisWeek: week,
@@ -345,7 +379,11 @@ export async function getStatsOverview(
 
   const inactiveJobsWhere = parsedFilters?.jobId
     ? { id: parsedFilters.jobId, deletedAt: null, status: JobStatus.active }
-    : { deletedAt: null, status: JobStatus.active, seals: { none: { deletedAt: null } } };
+    : {
+        deletedAt: null,
+        status: JobStatus.active,
+        seals: { none: { deletedAt: null } },
+      };
 
   const [
     counts,
@@ -369,21 +407,32 @@ export async function getStatsOverview(
     missingPhotoCount(baseWhere),
     returnedSealCount(baseWhere),
     parsedFilters?.jobId
-      ? prisma.workSheet.count({ where: { jobId: parsedFilters.jobId } })
-      : prisma.workSheet.count(),
+      ? prisma.workSheet.count({
+          where: {
+            jobId: parsedFilters.jobId,
+            job: { deletedAt: null, status: JobStatus.active },
+          },
+        })
+      : prisma.workSheet.count({
+          where: { job: { deletedAt: null, status: JobStatus.active } },
+        }),
     prisma.workSheet.count({
       where: {
+        job: { deletedAt: null, status: JobStatus.active },
         ...(parsedFilters?.jobId ? { jobId: parsedFilters.jobId } : {}),
         status: WorkSheetStatus.ready_for_invoice,
       },
     }),
     prisma.workSheet.count({
       where: {
+        job: { deletedAt: null, status: JobStatus.active },
         ...(parsedFilters?.jobId ? { jobId: parsedFilters.jobId } : {}),
         status: WorkSheetStatus.invoiced,
       },
     }),
-    prisma.seal.count({ where: { ...baseWhere, deletedAt: null, status: SealStatus.draft } }),
+    prisma.seal.count({
+      where: { ...baseWhere, deletedAt: null, status: SealStatus.draft },
+    }),
     prisma.seal.count({
       where: {
         ...baseWhere,
@@ -400,7 +449,7 @@ export async function getStatsOverview(
   ]);
 
   return {
-    role: role === UserRole.admin ? 'admin' : 'vedeni',
+    role: role === UserRole.admin ? "admin" : "vedeni",
     filters: parsedFilters ?? null,
     totalSeals: counts.total,
     draft: counts.draft,

@@ -2,11 +2,13 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import '../reports/export_service.dart';
 
 class SavedWorksheetsScreen extends ConsumerStatefulWidget {
   const SavedWorksheetsScreen({super.key});
@@ -21,6 +23,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
   List<Map<String, dynamic>> _jobs = [];
   List<Map<String, dynamic>> _workers = [];
   bool _loading = true;
+  String? _exportingWorksheetId;
   String? _statusFilter;
   String? _jobIdFilter;
   String? _workerIdFilter;
@@ -92,25 +95,91 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
 
   String _workersLabel(Map<String, dynamic> ws) {
     final workers = (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
-    if (workers.isEmpty) return ws['createdBy']?['displayName'] as String? ?? '—';
+    if (workers.isEmpty) {
+      return ws['createdBy']?['displayName'] as String? ?? '—';
+    }
     return workers
         .map((w) => (w['user'] as Map?)?['displayName'] ?? '')
         .where((s) => s.toString().isNotEmpty)
         .join(', ');
   }
 
+  Future<void> _exportWorksheet(
+    Map<String, dynamic> ws, {
+    required String extension,
+  }) async {
+    final id = ws['id'] as String?;
+    if (id == null || id.isEmpty) return;
+    setState(() => _exportingWorksheetId = id);
+    try {
+      final res = await ref.read(dioProvider).get(
+            '/api/worksheets/$id/export/$extension',
+            options: Options(responseType: ResponseType.bytes),
+          );
+      final label = extension.toUpperCase();
+      final bytes = normalizeExportBytes(res.data, exportLabel: label);
+      final job = ws['job'] as Map<String, dynamic>?;
+      final project = job?['projectNumber'] ?? 'soupis';
+      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final filePath = await saveExportFile(
+        bytes: bytes,
+        fileName: 'soupis_${project}_$date.$extension',
+        extension: extension,
+        exportLabel: label,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('$label uloženo: $filePath')),
+      );
+    } on ExportSaveCancelled {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Uložení zrušeno')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Export selhal'))),
+      );
+    } finally {
+      if (mounted) setState(() => _exportingWorksheetId = null);
+    }
+  }
+
   Widget _worksheetCard(Map<String, dynamic> ws) {
     final job = ws['job'] as Map<String, dynamic>?;
     final status = ws['status'] as String? ?? 'draft';
     final count = ws['_count']?['items'] ?? 0;
+    final exporting = _exportingWorksheetId == ws['id'];
     return AppCard(
       title: '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'.trim(),
       subtitle:
           '${_floorsLabel(ws)} · ${_workersLabel(ws)} · ${_periodLabel(ws)} · $count položek',
-      trailing: StatusBadge(
-        status: status,
-        label: _statusLabels[status] ?? status,
-        compact: true,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StatusBadge(
+            status: status,
+            label: _statusLabels[status] ?? status,
+            compact: true,
+          ),
+          const SizedBox(width: AppSpacing.xs),
+          exporting
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : PopupMenuButton<String>(
+                  tooltip: 'Export',
+                  icon: const Icon(Icons.download_outlined),
+                  onSelected: (value) => _exportWorksheet(ws, extension: value),
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(value: 'pdf', child: Text('Export PDF')),
+                    PopupMenuItem(value: 'csv', child: Text('Export CSV')),
+                  ],
+                ),
+        ],
       ),
       onTap: () => context.push('/worksheets/${ws['id']}'),
     );
@@ -129,7 +198,8 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     // Soupis s více pracovníky se objeví u každého z nich.
     final byWorker = <String, _WorkerGroup>{};
     for (final ws in _worksheets) {
-      final workers = (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
+      final workers =
+          (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
       if (workers.isEmpty) {
         final name = ws['createdBy']?['displayName'] as String? ?? '—';
         (byWorker[name] ??= _WorkerGroup(name)).add(ws);
@@ -154,8 +224,8 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
           child: ExpansionTile(
             leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-            title:
-                Text(g.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+            title: Text(g.name,
+                style: const TextStyle(fontWeight: FontWeight.w600)),
             subtitle: Text(g.summaryLabel),
             initiallyExpanded: groups.length == 1,
             childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -172,8 +242,9 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title:
-            Text(auth.isWorker ? 'Moje uložené soupisy' : 'Soupisy podle pracovníků'),
+        title: Text(auth.isWorker
+            ? 'Moje uložené soupisy'
+            : 'Soupisy podle pracovníků'),
         actions: [
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -241,7 +312,8 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                     dropdownMenuEntries: const [
                       DropdownMenuEntry(value: null, label: 'Vše'),
                       DropdownMenuEntry(value: 'true', label: 'Vyfakturované'),
-                      DropdownMenuEntry(value: 'false', label: 'Nevyfakturované'),
+                      DropdownMenuEntry(
+                          value: 'false', label: 'Nevyfakturované'),
                     ],
                     onSelected: (v) {
                       _invoicedFilter = v;

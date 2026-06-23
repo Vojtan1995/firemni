@@ -888,7 +888,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   title: const Text('Patro'),
                   subtitle: Text(_floorName!),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
               ],
               TextField(
                 controller: _numberCtrl,
@@ -902,7 +902,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 ),
                 keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ChipSelector(
                 label: 'Řemeslo *',
                 options: sealTrades,
@@ -913,7 +913,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ChipSelector(
                 label: 'Systém *',
                 options: sealSystems,
@@ -923,7 +923,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
               const SectionHeader(
                 title: 'Hlavní prostup',
                 subtitle: 'Technické údaje',
@@ -942,7 +942,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   },
                 ),
               if (_entries.length > 1) ...[
-                const SizedBox(height: 8),
+                const SizedBox(height: 12),
                 const SectionHeader(
                   title: 'Další prostupy',
                   style: SectionHeaderStyle.h3,
@@ -970,7 +970,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 icon: const Icon(Icons.add),
                 label: const Text('Přidat prostup'),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
               const SectionHeader(
                 title: 'Umístění',
                 style: SectionHeaderStyle.h3,
@@ -984,7 +984,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ChipSelector(
                 label: 'Umístění *',
                 options: locations,
@@ -994,7 +994,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               ChipSelector(
                 label: 'Požární odolnost *',
                 options: fireRatings,
@@ -1004,11 +1004,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
               const SectionHeader(
                   title: 'Značka ve výkresu', style: SectionHeaderStyle.h3),
               _drawingSection(),
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
               const SectionHeader(
                   title: 'Foto a poznámka', style: SectionHeaderStyle.h3),
               if (!widget.isEdit) ...[
@@ -1016,7 +1016,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 const SizedBox(height: 12),
               ],
               ..._noteFields(ref.read(authServiceProvider).role),
-              const SizedBox(height: 16),
+              const SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _saving ? null : _save,
                 child: _saving
@@ -1348,9 +1348,9 @@ class _EntryEditorState extends State<_EntryEditor> {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: 12),
       child: Padding(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

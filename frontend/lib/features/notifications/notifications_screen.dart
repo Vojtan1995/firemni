@@ -9,7 +9,8 @@ class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
 
   @override
-  ConsumerState<NotificationsScreen> createState() => _NotificationsScreenState();
+  ConsumerState<NotificationsScreen> createState() =>
+      _NotificationsScreenState();
 }
 
 class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
@@ -97,7 +98,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
           if (_hasUnread)
             TextButton(
               onPressed: _markAllRead,
-              child: const Text('Označit vše'),
+              child: const Text('Označit vše jako přečtené'),
             ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -115,13 +116,18 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                     final id = n['id'] as String;
                     return ListTile(
                       leading: Icon(
-                        unread ? Icons.notifications_active : Icons.notifications_none,
-                        color: unread ? AppColors.warning : AppColors.textSecondary,
+                        unread
+                            ? Icons.notifications_active
+                            : Icons.notifications_none,
+                        color: unread
+                            ? AppColors.warning
+                            : AppColors.textSecondary,
                       ),
                       title: Text(
                         n['title'] as String? ?? '',
                         style: TextStyle(
-                          fontWeight: unread ? FontWeight.w600 : FontWeight.normal,
+                          fontWeight:
+                              unread ? FontWeight.w600 : FontWeight.normal,
                           color: unread ? null : AppColors.textSecondary,
                         ),
                       ),
@@ -136,9 +142,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
                         message: 'Zobrazeno',
                         child: Checkbox(
                           value: !unread,
-                          onChanged: unread
-                              ? (_) => _markRead(id)
-                              : null,
+                          onChanged: unread ? (_) => _markRead(id) : null,
                         ),
                       ),
                     );

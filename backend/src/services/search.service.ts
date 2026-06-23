@@ -1,14 +1,23 @@
-import { Prisma, UserRole, WorkSheetStatus, SealTrade, JobStatus } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { badRequest } from '../lib/errors.js';
+import {
+  Prisma,
+  UserRole,
+  WorkSheetStatus,
+  SealTrade,
+  JobStatus,
+} from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import { badRequest } from "../lib/errors.js";
 import {
   applyPostSealFilters,
   buildSealFilterWhere,
   needsEntryInclude,
   parseSealFilters,
   type SealProblemFilter,
-} from '../lib/seal-list-filters.js';
-import { bypassesJobParticipantCheck, getParticipantJobIds } from './authorization.service.js';
+} from "../lib/seal-list-filters.js";
+import {
+  bypassesJobParticipantCheck,
+  getParticipantJobIds,
+} from "./authorization.service.js";
 
 const MIN_QUERY_LEN = 2;
 const DEFAULT_LIMIT = 25;
@@ -38,7 +47,10 @@ function clampLimit(limit?: number) {
   return Math.min(Math.max(1, n), MAX_LIMIT);
 }
 
-async function jobScopeWhere(role: UserRole, userId: string): Promise<Prisma.SealWhereInput> {
+async function jobScopeWhere(
+  role: UserRole,
+  userId: string,
+): Promise<Prisma.SealWhereInput> {
   if (bypassesJobParticipantCheck(role)) return {};
   const jobIds = await getParticipantJobIds(userId);
   // Worker nesmí vidět ucpávky z archivovaných/dokončených zakázek – sjednoceno
@@ -49,27 +61,27 @@ async function jobScopeWhere(role: UserRole, userId: string): Promise<Prisma.Sea
 function textSearchWhere(q: string, role: UserRole): Prisma.SealWhereInput {
   const term = q.trim();
   const or: Prisma.SealWhereInput[] = [
-    { sealNumber: { contains: term, mode: 'insensitive' } },
-    { system: { contains: term, mode: 'insensitive' } },
-    { construction: { contains: term, mode: 'insensitive' } },
-    { location: { contains: term, mode: 'insensitive' } },
-    { fireRating: { contains: term, mode: 'insensitive' } },
-    { job: { name: { contains: term, mode: 'insensitive' } } },
-    { job: { projectNumber: { contains: term, mode: 'insensitive' } } },
-    { floor: { name: { contains: term, mode: 'insensitive' } } },
-    { createdBy: { displayName: { contains: term, mode: 'insensitive' } } },
-    { createdBy: { username: { contains: term, mode: 'insensitive' } } },
+    { sealNumber: { contains: term, mode: "insensitive" } },
+    { system: { contains: term, mode: "insensitive" } },
+    { construction: { contains: term, mode: "insensitive" } },
+    { location: { contains: term, mode: "insensitive" } },
+    { fireRating: { contains: term, mode: "insensitive" } },
+    { job: { name: { contains: term, mode: "insensitive" } } },
+    { job: { projectNumber: { contains: term, mode: "insensitive" } } },
+    { floor: { name: { contains: term, mode: "insensitive" } } },
+    { createdBy: { displayName: { contains: term, mode: "insensitive" } } },
+    { createdBy: { username: { contains: term, mode: "insensitive" } } },
     {
       entries: {
         some: {
           deletedAt: null,
           OR: [
-            { entryType: { contains: term, mode: 'insensitive' } },
-            { insulation: { contains: term, mode: 'insensitive' } },
-            { dimension: { contains: term, mode: 'insensitive' } },
+            { entryType: { contains: term, mode: "insensitive" } },
+            { insulation: { contains: term, mode: "insensitive" } },
+            { dimension: { contains: term, mode: "insensitive" } },
             {
               materials: {
-                some: { material: { contains: term, mode: 'insensitive' } },
+                some: { material: { contains: term, mode: "insensitive" } },
               },
             },
           ],
@@ -79,10 +91,10 @@ function textSearchWhere(q: string, role: UserRole): Prisma.SealWhereInput {
   ];
 
   if (role === UserRole.worker) {
-    or.push({ internalNote: { contains: term, mode: 'insensitive' } });
+    or.push({ internalNote: { contains: term, mode: "insensitive" } });
   } else {
-    or.push({ note: { contains: term, mode: 'insensitive' } });
-    or.push({ internalNote: { contains: term, mode: 'insensitive' } });
+    or.push({ note: { contains: term, mode: "insensitive" } });
+    or.push({ internalNote: { contains: term, mode: "insensitive" } });
   }
 
   return { OR: or };
@@ -103,6 +115,7 @@ const sealSelect = (includeEntries: boolean) =>
     floorId: true,
     job: { select: { name: true, projectNumber: true } },
     floor: { select: { name: true } },
+    createdById: true,
     createdBy: { select: { displayName: true } },
     _count: { select: { photos: true } },
     ...(includeEntries
@@ -122,9 +135,15 @@ const sealSelect = (includeEntries: boolean) =>
 
 function mapSealHit(
   s: Prisma.SealGetPayload<{ select: ReturnType<typeof sealSelect> }>,
+  role: UserRole,
+  userId: string,
 ) {
+  const showWorkerName =
+    role === UserRole.vedeni ||
+    role === UserRole.admin ||
+    s.createdById === userId;
   return {
-    type: 'seal' as const,
+    type: "seal" as const,
     id: s.id,
     sealNumber: s.sealNumber,
     system: s.system,
@@ -135,14 +154,14 @@ function mapSealHit(
     projectNumber: s.job.projectNumber,
     floorId: s.floorId,
     floorName: s.floor.name,
-    workerName: s.createdBy.displayName,
+    workerName: showWorkerName ? s.createdBy.displayName : null,
     photoCount: s._count.photos,
     updatedAt: s.updatedAt,
   };
 }
 
 export async function searchApp(params: SearchParams) {
-  const q = (params.q ?? '').trim();
+  const q = (params.q ?? "").trim();
   const filters = parseSealFilters(params.filters);
   const limit = clampLimit(params.limit);
   const offset = Math.max(0, params.offset ?? 0);
@@ -151,7 +170,7 @@ export async function searchApp(params: SearchParams) {
     throw badRequest(`Dotaz musí mít alespoň ${MIN_QUERY_LEN} znaky`);
   }
   if (q.length === 0 && filters.length === 0) {
-    throw badRequest('Zadejte hledaný text nebo vyberte filtr');
+    throw badRequest("Zadejte hledaný text nebo vyberte filtr");
   }
 
   const scope = await jobScopeWhere(params.role, params.userId);
@@ -161,6 +180,9 @@ export async function searchApp(params: SearchParams) {
   const where: Prisma.SealWhereInput = {
     deletedAt: null,
     ...scope,
+    ...(filters.length > 0
+      ? { job: { deletedAt: null, status: JobStatus.active } }
+      : {}),
     ...(params.jobId ? { jobId: params.jobId } : {}),
     ...(params.floorId ? { floorId: params.floorId } : {}),
     ...(q.length > 0 ? textSearchWhere(q, params.role) : {}),
@@ -170,7 +192,7 @@ export async function searchApp(params: SearchParams) {
   const rows = await prisma.seal.findMany({
     where,
     select: sealSelect(includeEntries),
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { updatedAt: "desc" },
     take: limit + offset + 50,
   });
 
@@ -187,8 +209,8 @@ export async function searchApp(params: SearchParams) {
     const jobWhere: Prisma.JobWhereInput = {
       deletedAt: null,
       OR: [
-        { name: { contains: q, mode: 'insensitive' } },
-        { projectNumber: { contains: q, mode: 'insensitive' } },
+        { name: { contains: q, mode: "insensitive" } },
+        { projectNumber: { contains: q, mode: "insensitive" } },
       ],
     };
     if (params.role === UserRole.worker) {
@@ -211,13 +233,13 @@ export async function searchApp(params: SearchParams) {
   return {
     items: [
       ...jobHits.map((j) => ({
-        type: 'job' as const,
+        type: "job" as const,
         id: j.id,
         jobName: j.name,
         projectNumber: j.projectNumber,
         isArchived: j.isArchived,
       })),
-      ...slice.map(mapSealHit),
+      ...slice.map((s) => mapSealHit(s, params.role, params.userId)),
     ],
     sealTotal: filtered.length,
     limit,
@@ -234,7 +256,11 @@ export async function listFloorSealsFiltered(options: {
   trade?: SealTrade;
 }) {
   const includeEntries = needsEntryInclude(options.filters);
-  const filterWhere = buildSealFilterWhere(options.filters, options.role, options.userId);
+  const filterWhere = buildSealFilterWhere(
+    options.filters,
+    options.role,
+    options.userId,
+  );
 
   const rows = await prisma.seal.findMany({
     where: {
@@ -246,6 +272,7 @@ export async function listFloorSealsFiltered(options: {
     select: {
       id: true,
       sealNumber: true,
+      createdById: true,
       trade: true,
       system: true,
       status: true,
@@ -276,7 +303,7 @@ export async function listFloorSealsFiltered(options: {
           }
         : {}),
     },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { updatedAt: "desc" },
   });
 
   // Doplň „nejpokročilejší" stav soupisu, v němž ucpávka figuruje, pro badge v seznamu.
@@ -290,7 +317,10 @@ export async function listFloorSealsFiltered(options: {
   const worksheetStatusBySeal = new Map<string, WorkSheetStatus>();
   for (const i of items) {
     const prev = worksheetStatusBySeal.get(i.sealId);
-    if (prev === undefined || WORKSHEET_STATUS_RANK[i.worksheet.status] > WORKSHEET_STATUS_RANK[prev]) {
+    if (
+      prev === undefined ||
+      WORKSHEET_STATUS_RANK[i.worksheet.status] > WORKSHEET_STATUS_RANK[prev]
+    ) {
       worksheetStatusBySeal.set(i.sealId, i.worksheet.status);
     }
   }

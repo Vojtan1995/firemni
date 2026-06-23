@@ -138,6 +138,36 @@ Ověření: `GET /api/app/release?platform=android` → JSON s `updateAvailable:
 
 ---
 
+## 5c. Kandidat release notes pro stabilizacni varku
+
+Tato sekce je priprava vydani, ne bump verze ani build artefaktu. Aktualni
+`frontend/pubspec.yaml` zustava `1.0.2+3`; pro dalsi vydani je doporuceno
+`1.0.3+4`, pokud nepribude dalsi funkcni zmena.
+
+Kandidatni `APP_RELEASE_NOTES`:
+
+```text
+- Zpresnene filtrovani aktivnich zakazek v dashboardu, upozornenich a sekci Vyzaduje akci.
+- Lepsi ochrana viditelnosti jmen pracovniku a informaci o soupisu u ucpavek.
+- Soupisy maji export centralizovany v seznamu a rozpracovane soupisy lze doplnovat o dalsi polozky.
+- Prehlednejsi logy, notifikace a formular ucpavky.
+```
+
+Doporucene env po skutecnem buildu Android artefaktu:
+
+```text
+APP_RELEASE_VERSION_NAME=1.0.3
+APP_RELEASE_BUILD=4
+APP_RELEASE_MIN_BUILD=3
+APP_RELEASE_APK_URL=https://<release-host>/ucpavky-1.0.3+4.apk
+APP_RELEASE_NOTES=<text vyse>
+```
+
+Pro vynucenou aktualizaci nastavit `APP_RELEASE_MIN_BUILD=4`. Do te doby
+ponechat `APP_RELEASE_MIN_BUILD=3`, aby build `1.0.2+3` nebyl blokovany.
+
+---
+
 ## 6. Checklist před spuštěním interní bety
 
 ### Infrastruktura

@@ -18,7 +18,6 @@ import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 import 'seal_constants.dart';
 import '../jobs/work_context_service.dart';
-import '../worksheets/worksheet_status_labels.dart';
 import '../sync/sync_retry.dart';
 import '../sync/sync_service.dart';
 import 'seal_photo_storage.dart';
@@ -120,8 +119,9 @@ Future<void> cacheSealDetailFromApi(
             sealNumber: seal['sealNumber'] as String,
             x: (marker['x'] as num).toDouble(),
             y: (marker['y'] as num).toDouble(),
-            updatedAt: DateTime.tryParse(marker['updatedAt'] as String? ?? '') ??
-                DateTime.now(),
+            updatedAt:
+                DateTime.tryParse(marker['updatedAt'] as String? ?? '') ??
+                    DateTime.now(),
           ),
         );
   }
@@ -347,7 +347,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             maxLines: 3,
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Zrušit')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('Potvrdit'),
@@ -358,7 +360,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       if (comment == null || comment.isEmpty) return;
     }
     try {
-      await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/review', data: {
+      await ref
+          .read(dioProvider)
+          .patch('/api/seals/${widget.sealId}/review', data: {
         'action': action,
         if (comment != null) 'comment': comment,
       });
@@ -385,7 +389,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               child: Text(formatSealValidationIssues(issues)),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
             ],
           ),
         );
@@ -402,11 +407,14 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             title: const Text('Vrátit k opravě'),
             content: TextField(
               controller: ctrl,
-              decoration: const InputDecoration(labelText: 'Komentář (povinný)'),
+              decoration:
+                  const InputDecoration(labelText: 'Komentář (povinný)'),
               maxLines: 3,
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Zrušit')),
               FilledButton(
                 onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
                 child: const Text('Potvrdit'),
@@ -418,7 +426,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       if (comment == null || comment.isEmpty) return;
     }
     try {
-      await ref.read(dioProvider).patch('/api/seals/${widget.sealId}/status', data: {
+      await ref
+          .read(dioProvider)
+          .patch('/api/seals/${widget.sealId}/status', data: {
         'status': status,
         if (comment != null) 'comment': comment,
       });
@@ -430,7 +440,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Změna stavu selhala'))),
+        SnackBar(
+            content: Text(apiErrorMessage(e, fallback: 'Změna stavu selhala'))),
       );
     }
   }
@@ -449,7 +460,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               child: Text(formatSealValidationIssues(issues)),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
             ],
           ),
         );
@@ -468,7 +480,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     final auth = ref.read(authServiceProvider);
     if (!auth.canViewSealHistory) return;
     try {
-      final res = await ref.read(dioProvider).get('/api/seals/${widget.sealId}/history');
+      final res = await ref
+          .read(dioProvider)
+          .get('/api/seals/${widget.sealId}/history');
       if (!mounted) return;
       setState(() {
         _history = (res.data as List).cast<Map<String, dynamic>>();
@@ -783,8 +797,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             .join(', ');
     final unit = (m['unit'] as String?) ?? 'kus';
     final qty = m['quantity'];
-    final qtyNum =
-        qty is num ? qty.toDouble() : double.tryParse(qty?.toString() ?? '') ?? 1;
+    final qtyNum = qty is num
+        ? qty.toDouble()
+        : double.tryParse(qty?.toString() ?? '') ?? 1;
 
     String qtyDisplay() {
       if (unit == 'm2') return '${formatArea(qtyNum)} ${unitLabel(unit)}';
@@ -807,14 +822,14 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),
-                if (m['worksheet'] is Map<String, dynamic>)
-                  _entryWorksheetChip(m['worksheet'] as Map<String, dynamic>),
               ],
             ),
             Text('${qtyDisplay()}, ${m['insulation']}'),
             if (m['entryType'] == 'OCEL' && m['steelInsulated'] != null)
-              Text('Doizolováno: ${m['steelInsulated'] == true ? 'Ano' : 'Ne'}'),
-            if (m['entryType'] == 'EL.V.' && m['electroInstallationType'] != null)
+              Text(
+                  'Doizolováno: ${m['steelInsulated'] == true ? 'Ano' : 'Ne'}'),
+            if (m['entryType'] == 'EL.V.' &&
+                m['electroInstallationType'] != null)
               Text('Elektro instalace: ${m['electroInstallationType']}'),
             if (matText.isNotEmpty) Text('Materiály: $matText'),
             if (m['calculatedAreaM2'] != null)
@@ -833,38 +848,6 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             // Cena se u ucpávky nezobrazuje – je pouze v soupisu a exportu (Task 6).
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _entryWorksheetChip(Map<String, dynamic> ws) {
-    final st = ws['status'] as String?;
-    final id = ws['worksheetId'] as String?;
-    final color = worksheetStatusColor(st);
-    return InkWell(
-      onTap: id != null ? () => context.push('/worksheets/$id') : null,
-      borderRadius: AppRadius.smAll,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: AppRadius.smAll,
-          border: Border.all(color: color.withValues(alpha: 0.4)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.assignment_outlined, size: 13, color: color),
-            const SizedBox(width: 4),
-            Text(
-              'Soupis: ${worksheetStatusLabel(st)}',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: color, fontWeight: FontWeight.w600),
-            ),
           ],
         ),
       ),
@@ -964,7 +947,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           if (offline)
             const Padding(
               padding: EdgeInsets.only(right: AppSpacing.sm),
-              child: Center(child: OfflineIndicator(label: 'Offline data', compact: true)),
+              child: Center(
+                  child:
+                      OfflineIndicator(label: 'Offline data', compact: true)),
             ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
@@ -1019,16 +1004,6 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
     final entries = (seal['entries'] as List? ?? []);
 
-    String? lockedWorksheetStatus;
-    for (final e in entries) {
-      final ws = (e as Map<String, dynamic>)['worksheet'] as Map<String, dynamic>?;
-      final st = ws?['status'] as String?;
-      if (st != null && st != 'draft') {
-        lockedWorksheetStatus = st;
-        break;
-      }
-    }
-
     return [
       if (offline)
         Container(
@@ -1081,7 +1056,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.sm),
-            _KvRow(label: 'Řemeslo', value: sealTradeLabel(seal['trade'] as String?)),
+            _KvRow(
+                label: 'Řemeslo',
+                value: sealTradeLabel(seal['trade'] as String?)),
             _KvRow(label: 'Systém', value: _valueOr(seal['system'])),
             if (floorName != 'Neuvedeno')
               _KvRow(label: 'Patro', value: floorName),
@@ -1116,7 +1093,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                   ),
                 ],
               ),
-              if ((seal['reviewComment'] as String?)?.trim().isNotEmpty == true) ...[
+              if ((seal['reviewComment'] as String?)?.trim().isNotEmpty ==
+                  true) ...[
                 const SizedBox(height: AppSpacing.sm),
                 Text(
                   'Co opravit: ${(seal['reviewComment'] as String).trim()}',
@@ -1134,37 +1112,14 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           decoration: BoxDecoration(
             color: AppColors.warning.withValues(alpha: 0.12),
             borderRadius: AppRadius.mdAll,
-            border: Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
+            border:
+                Border.all(color: AppColors.warning.withValues(alpha: 0.35)),
           ),
           child: const Row(
             children: [
               Icon(Icons.lock, size: 18, color: AppColors.warning),
               SizedBox(width: AppSpacing.sm),
               Expanded(child: Text('Uzamčeno — fakturováno')),
-            ],
-          ),
-        ),
-
-      if (lockedWorksheetStatus != null)
-        Container(
-          margin: const EdgeInsets.only(bottom: AppSpacing.md),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.info.withValues(alpha: 0.12),
-            borderRadius: AppRadius.mdAll,
-            border: Border.all(color: AppColors.info.withValues(alpha: 0.35)),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.assignment_outlined,
-                  size: 18, color: AppColors.info),
-              const SizedBox(width: AppSpacing.sm),
-              Expanded(
-                child: Text(
-                  'Tato ucpávka je součástí soupisu (${worksheetStatusLabel(lockedWorksheetStatus)}) – '
-                  'úpravy prostupů nejsou možné.',
-                ),
-              ),
             ],
           ),
         ),
@@ -1192,8 +1147,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           _KvRow(label: 'Umístění', value: _valueOr(seal['location'])),
           _KvRow(
               label: 'Požární odolnost', value: _valueOr(seal['fireRating'])),
-          if (seal['openingLengthMm'] != null &&
-              seal['openingWidthMm'] != null)
+          if (seal['openingLengthMm'] != null && seal['openingWidthMm'] != null)
             _KvRow(
               label: 'Rozměr prostupu',
               value:
@@ -1311,8 +1265,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               dense: true,
               contentPadding: EdgeInsets.zero,
               leading: const Icon(Icons.history, size: 18),
-              title:
-                  Text(_formatHistoryEntry(h), style: const TextStyle(fontSize: 13)),
+              title: Text(_formatHistoryEntry(h),
+                  style: const TextStyle(fontSize: 13)),
               subtitle: Text(
                 '${_formatDate(ts)} · ${editor?['displayName'] ?? ''}',
                 style: const TextStyle(fontSize: 11),

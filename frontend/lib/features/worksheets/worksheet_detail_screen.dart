@@ -8,7 +8,6 @@ import '../../core/design_tokens.dart';
 import '../../core/parse_utils.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
-import '../reports/export_service.dart';
 import '../seals/seal_constants.dart';
 
 class WorksheetDetailScreen extends ConsumerStatefulWidget {
@@ -16,13 +15,13 @@ class WorksheetDetailScreen extends ConsumerStatefulWidget {
   final String worksheetId;
 
   @override
-  ConsumerState<WorksheetDetailScreen> createState() => _WorksheetDetailScreenState();
+  ConsumerState<WorksheetDetailScreen> createState() =>
+      _WorksheetDetailScreenState();
 }
 
 class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
   Map<String, dynamic>? _worksheet;
   bool _loading = true;
-  bool _exporting = false;
   String? _error;
 
   static const _statusLabels = {
@@ -45,7 +44,9 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
       _error = null;
     });
     try {
-      final res = await ref.read(dioProvider).get('/api/worksheets/${widget.worksheetId}');
+      final res = await ref
+          .read(dioProvider)
+          .get('/api/worksheets/${widget.worksheetId}');
       if (!mounted) return;
       setState(() {
         _worksheet = res.data as Map<String, dynamic>;
@@ -74,43 +75,6 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     return DateFormat('dd.MM.yyyy HH:mm').format(dt.toLocal());
   }
 
-  Future<void> _exportFile({required String path, required String extension}) async {
-    setState(() => _exporting = true);
-    try {
-      final res = await ref.read(dioProvider).get(
-            path,
-            options: Options(responseType: ResponseType.bytes),
-          );
-      final label = extension.toUpperCase();
-      final bytes = normalizeExportBytes(res.data, exportLabel: label);
-      final job = _worksheet?['job'] as Map<String, dynamic>?;
-      final project = job?['projectNumber'] ?? 'soupis';
-      final date = DateFormat('yyyy-MM-dd').format(DateTime.now());
-      final filePath = await saveExportFile(
-        bytes: bytes,
-        fileName: 'soupis_${project}_$date.$extension',
-        extension: extension,
-        exportLabel: label,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$label uloženo: $filePath')),
-      );
-    } on ExportSaveCancelled {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Uložení zrušeno')),
-      );
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Export selhal'))),
-      );
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
-
   Future<void> _deleteWorksheet() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -120,7 +84,9 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           'Rozpracovaný soupis bude odstraněn. Tuto akci nelze v aplikaci běžně vrátit zpět.',
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zrušit')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(ctx, true),
@@ -131,7 +97,9 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     );
     if (confirmed != true) return;
     try {
-      await ref.read(dioProvider).delete('/api/worksheets/${widget.worksheetId}');
+      await ref
+          .read(dioProvider)
+          .delete('/api/worksheets/${widget.worksheetId}');
       if (!mounted) return;
       Navigator.of(context).pop(true);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -140,7 +108,9 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Nepodařilo se smazat soupis'))),
+        SnackBar(
+            content: Text(
+                apiErrorMessage(e, fallback: 'Nepodařilo se smazat soupis'))),
       );
     }
   }
@@ -159,7 +129,9 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
             maxLines: 3,
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Zrušit')),
             FilledButton(
               onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
               child: const Text('Potvrdit'),
@@ -170,19 +142,23 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
       if (comment == null || comment.isEmpty) return;
     }
     try {
-      await ref.read(dioProvider).patch('/api/worksheets/${widget.worksheetId}/status', data: {
+      await ref
+          .read(dioProvider)
+          .patch('/api/worksheets/${widget.worksheetId}/status', data: {
         'status': status,
         if (comment != null) 'comment': comment,
       });
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Stav změněn na ${_statusLabels[status] ?? status}')),
+        SnackBar(
+            content: Text('Stav změněn na ${_statusLabels[status] ?? status}')),
       );
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
+        SnackBar(
+            content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
       );
     }
   }
@@ -243,7 +219,8 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     if (allowed.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Pro tuto roli není dostupná změna stavu')),
+        const SnackBar(
+            content: Text('Pro tuto roli není dostupná změna stavu')),
       );
       return;
     }
@@ -290,8 +267,12 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
-            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Uložit')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Zrušit')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Uložit')),
           ],
         ),
       ),
@@ -300,19 +281,25 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     if (confirmed != true || selected == null) return;
 
     try {
-      await ref.read(dioProvider).patch('/api/worksheets/${widget.worksheetId}/status', data: {
+      await ref
+          .read(dioProvider)
+          .patch('/api/worksheets/${widget.worksheetId}/status', data: {
         'status': selected,
-        if (commentCtrl.text.trim().isNotEmpty) 'comment': commentCtrl.text.trim(),
+        if (commentCtrl.text.trim().isNotEmpty)
+          'comment': commentCtrl.text.trim(),
       });
       await _load();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Stav změněn na ${_statusLabels[selected] ?? selected}')),
+        SnackBar(
+            content:
+                Text('Stav změněn na ${_statusLabels[selected] ?? selected}')),
       );
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
+        SnackBar(
+            content: Text(apiErrorMessage(e, fallback: 'Chyba změny stavu'))),
       );
     } finally {
       commentCtrl.dispose();
@@ -325,6 +312,106 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
         (auth.canSubmitWorksheet ||
             auth.canReviewWorksheet ||
             auth.canInvoiceWorksheet);
+  }
+
+  Future<void> _addItemsToDraft() async {
+    final ws = _worksheet;
+    final job = ws?['job'] as Map<String, dynamic>?;
+    final jobId = job?['id'] as String?;
+    if (jobId == null || jobId.isEmpty) return;
+
+    List<Map<String, dynamic>> floors = [];
+    try {
+      final res = await ref.read(dioProvider).get('/api/jobs/$jobId/floors');
+      floors = (res.data as List).cast<Map<String, dynamic>>();
+    } catch (_) {}
+
+    if (!mounted) return;
+
+    String? floorId;
+    String? status;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Přidat položky'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                DropdownButtonFormField<String?>(
+                  initialValue: floorId,
+                  decoration: const InputDecoration(labelText: 'Patro'),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('Všechna patra'),
+                    ),
+                    ...floors.map(
+                      (f) => DropdownMenuItem(
+                        value: f['id'] as String,
+                        child: Text(f['name'] as String? ?? ''),
+                      ),
+                    ),
+                  ],
+                  onChanged: (v) => setDialog(() => floorId = v),
+                ),
+                const SizedBox(height: AppSpacing.md),
+                DropdownButtonFormField<String?>(
+                  initialValue: status,
+                  decoration: const InputDecoration(labelText: 'Stav ucpávky'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: null,
+                      child: Text('Rozpracované a zkontrolované'),
+                    ),
+                    DropdownMenuItem(
+                        value: 'draft', child: Text('Rozpracované')),
+                    DropdownMenuItem(
+                        value: 'checked', child: Text('Zkontrolované')),
+                  ],
+                  onChanged: (v) => setDialog(() => status = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zrušit'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Přidat'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final res = await ref.read(dioProvider).post(
+        '/api/worksheets/${widget.worksheetId}/populate',
+        data: {
+          if (floorId != null) 'floorIds': [floorId],
+          if (status != null) 'status': status,
+        },
+      );
+      await _load();
+      if (!mounted) return;
+      final added = (res.data as Map?)?['addedCount'] ?? 0;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Přidáno položek: $added')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content:
+                Text(apiErrorMessage(e, fallback: 'Přidání položek selhalo'))),
+      );
+    }
   }
 
   @override
@@ -362,9 +449,11 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
   Widget _buildContent(AuthService auth) {
     final ws = _worksheet!;
     final job = ws['job'] as Map<String, dynamic>?;
-    final workers = (ws['workers'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final workers =
+        (ws['workers'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final items = (ws['items'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    final history = (ws['statusHistory'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final history =
+        (ws['statusHistory'] as List?)?.cast<Map<String, dynamic>>() ?? [];
     final status = ws['status'] as String? ?? 'draft';
     final totalValue = ws['totalValue'];
     final itemCount = ws['itemCount'] ?? items.length;
@@ -392,15 +481,19 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
               _infoRow('Vytvořeno', Text(_formatDateTime(ws['createdAt']))),
               _infoRow(
                 'Období',
-                Text('${_formatDate(ws['periodFrom'])} – ${_formatDate(ws['periodTo'])}'),
+                Text(
+                    '${_formatDate(ws['periodFrom'])} – ${_formatDate(ws['periodTo'])}'),
               ),
               _infoRow(
                 'Pracovníci',
-                Text(workers.map((w) => (w['user'] as Map?)?['displayName'] ?? '').join(', ')),
+                Text(workers
+                    .map((w) => (w['user'] as Map?)?['displayName'] ?? '')
+                    .join(', ')),
               ),
               _infoRow('Počet položek', Text('$itemCount')),
               if (totalValue != null)
-                _infoRow('Celková hodnota', Text('${parseNum(totalValue).toStringAsFixed(2)} Kč')),
+                _infoRow('Celková hodnota',
+                    Text('${parseNum(totalValue).toStringAsFixed(2)} Kč')),
               if ((ws['note'] as String?)?.isNotEmpty == true)
                 _infoRow('Poznámka', Text(ws['note'] as String)),
             ],
@@ -411,30 +504,14 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           spacing: AppSpacing.sm,
           runSpacing: AppSpacing.sm,
           children: [
-            AppPrimaryButton(
-              label: 'Stáhnout PDF',
-              icon: Icons.picture_as_pdf,
-              loading: _exporting,
-              fullWidth: false,
-              onPressed: _exporting
-                  ? null
-                  : () => _exportFile(
-                        path: '/api/worksheets/${widget.worksheetId}/export/pdf',
-                        extension: 'pdf',
-                      ),
-            ),
-            AppSecondaryButton(
-              label: 'Stáhnout CSV',
-              icon: Icons.table_chart,
-              fullWidth: false,
-              onPressed: _exporting
-                  ? null
-                  : () => _exportFile(
-                        path: '/api/worksheets/${widget.worksheetId}/export/csv',
-                        extension: 'csv',
-                      ),
-            ),
             ..._workflowButtons(auth, status),
+            if (status == 'draft' && auth.canCreateWorksheet)
+              AppSecondaryButton(
+                label: 'Přidat položky',
+                icon: Icons.playlist_add,
+                fullWidth: false,
+                onPressed: _addItemsToDraft,
+              ),
             if (status == 'draft' && auth.canDeleteWorksheet)
               AppSecondaryButton(
                 label: 'Smazat',
@@ -445,7 +522,8 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           ],
         ),
         const SizedBox(height: AppSpacing.xl),
-        const SectionHeader(title: 'Položky soupisu', style: SectionHeaderStyle.h3),
+        const SectionHeader(
+            title: 'Položky soupisu', style: SectionHeaderStyle.h3),
         if (items.isEmpty)
           const EmptyState(
             message: 'Soupis neobsahuje položky',
@@ -454,7 +532,8 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
         else
           ...items.map(_buildItemCard),
         const SizedBox(height: AppSpacing.xl),
-        const SectionHeader(title: 'Historie stavu', style: SectionHeaderStyle.h3),
+        const SectionHeader(
+            title: 'Historie stavu', style: SectionHeaderStyle.h3),
         if (history.isEmpty)
           const EmptyState(
             message: 'Zatím bez záznamů',
@@ -534,18 +613,23 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           _itemLine('Řemeslo', _tradesLabel(item)),
           _itemLine('Systém', _orDash(item['system'])),
           _itemLine('Typ', _orDash(item['entryType'])),
-          _itemLine('Materiál / katalogová položka', _orDash(item['catalogId'])),
+          _itemLine(
+              'Materiál / katalogová položka', _orDash(item['catalogId'])),
           _itemLine('Izolace', _orDash(item['insulation'])),
           _itemLine('Umístění', _orDash(item['location'])),
           _itemLine('Rozměr', _orDash(item['dimension'])),
           _itemLine('Množství', '${_orDash(item['quantity'])} $unitLabel'),
           _itemLine(
             'Jedn. cena',
-            unitVal != null ? '${unitVal.toStringAsFixed(2)} Kč/$unitLabel' : '—',
+            unitVal != null
+                ? '${unitVal.toStringAsFixed(2)} Kč/$unitLabel'
+                : '—',
           ),
           _itemLine(
             'Cena celkem',
-            computedTotal != null ? '${computedTotal.toStringAsFixed(2)} Kč' : '—',
+            computedTotal != null
+                ? '${computedTotal.toStringAsFixed(2)} Kč'
+                : '—',
             bold: true,
           ),
           if (note != null && note.isNotEmpty) _itemLine('Poznámka', note),

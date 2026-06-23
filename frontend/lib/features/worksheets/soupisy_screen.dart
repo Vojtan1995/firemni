@@ -89,8 +89,6 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
       final populateBody = <String, dynamic>{
         if (filters.floorId != null) 'floorIds': [filters.floorId],
         if (filters.status != null) 'status': filters.status,
-        if (filters.system != null) 'system': filters.system,
-        if (filters.entryType != null) 'entryType': filters.entryType,
         if (filters.from != null) 'from': _dateParam(filters.from!),
         if (filters.to != null) 'to': _dateParam(filters.to!),
       };
@@ -148,7 +146,7 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   const SectionHeader(
-                    title: 'Export a vytvoření soupisu',
+                    title: 'Vytvoření soupisu',
                     style: SectionHeaderStyle.h3,
                   ),
                   ReportsScreen(

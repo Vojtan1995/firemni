@@ -159,20 +159,27 @@ export async function getFloorDrawingBundle(
           fileUrl: `/api/jobs/${floor.jobId}/floors/${floorId}/drawing/file`,
         }
       : null,
-    markers: markers.map((m) => ({
-      id: m.id,
-      sealId: m.sealId,
-      floorId: m.floorId,
-      x: m.x,
-      y: m.y,
-      sealNumber: m.seal.sealNumber,
-      status: m.seal.status,
-      reviewStatus: m.seal.reviewStatus,
-      createdById: m.seal.createdById,
-      createdByName:
-        m.seal.createdBy.displayName ?? m.seal.createdBy.username ?? null,
-      updatedAt: m.updatedAt,
-    })),
+    markers: markers.map((m) => {
+      const canSeeOwner =
+        role === UserRole.vedeni ||
+        role === UserRole.admin ||
+        m.seal.createdById === userId;
+      return {
+        id: m.id,
+        sealId: m.sealId,
+        floorId: m.floorId,
+        x: m.x,
+        y: m.y,
+        sealNumber: m.seal.sealNumber,
+        status: m.seal.status,
+        reviewStatus: m.seal.reviewStatus,
+        createdById: m.seal.createdById,
+        createdByName: canSeeOwner
+          ? (m.seal.createdBy.displayName ?? m.seal.createdBy.username ?? null)
+          : null,
+        updatedAt: m.updatedAt,
+      };
+    }),
   };
 }
 

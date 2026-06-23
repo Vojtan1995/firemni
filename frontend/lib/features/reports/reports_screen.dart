@@ -365,123 +365,127 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
               _loadFloorsForJob(v);
             },
           ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
-            isExpanded: true,
-            initialValue: _filterFloorId,
-            decoration: const InputDecoration(
-              labelText: 'Patro',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              DropdownMenuItem<String?>(
-                value: null,
-                child: _dropdownLabel('Všechna patra'),
-              ),
-              ..._floors.map(
-                (f) => DropdownMenuItem<String?>(
-                  value: f['id'] as String,
-                  child: _dropdownLabel(f['name'] as String),
-                ),
-              ),
-            ],
-            onChanged: _filterJobId == null
-                ? null
-                : (v) => setState(() => _filterFloorId = v),
-          ),
-          if (!isWorker) ...[
+          if (!widget.compact) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(
-              key: ValueKey('filter-worker-$_filterWorkerId'),
+              key: ValueKey('filter-floor-$_filterFloorId-$_filterJobId'),
               isExpanded: true,
-              initialValue: _filterWorkerId,
+              initialValue: _filterFloorId,
               decoration: const InputDecoration(
-                labelText: 'Pracovník',
+                labelText: 'Patro',
                 border: OutlineInputBorder(),
               ),
               items: [
                 DropdownMenuItem<String?>(
                   value: null,
-                  child: _dropdownLabel('Všichni pracovníci'),
+                  child: _dropdownLabel('Všechna patra'),
                 ),
-                ..._workers.map(
-                  (w) => DropdownMenuItem<String?>(
-                    value: w['id'] as String,
-                    child: _dropdownLabel(
-                      w['displayName'] as String? ?? w['username'] as String,
-                    ),
+                ..._floors.map(
+                  (f) => DropdownMenuItem<String?>(
+                    value: f['id'] as String,
+                    child: _dropdownLabel(f['name'] as String),
                   ),
                 ),
               ],
-              onChanged: (v) => setState(() => _filterWorkerId = v),
+              onChanged: _filterJobId == null
+                  ? null
+                  : (v) => setState(() => _filterFloorId = v),
+            ),
+            if (!isWorker) ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String?>(
+                key: ValueKey('filter-worker-$_filterWorkerId'),
+                isExpanded: true,
+                initialValue: _filterWorkerId,
+                decoration: const InputDecoration(
+                  labelText: 'Pracovník',
+                  border: OutlineInputBorder(),
+                ),
+                items: [
+                  DropdownMenuItem<String?>(
+                    value: null,
+                    child: _dropdownLabel('Všichni pracovníci'),
+                  ),
+                  ..._workers.map(
+                    (w) => DropdownMenuItem<String?>(
+                      value: w['id'] as String,
+                      child: _dropdownLabel(
+                        w['displayName'] as String? ?? w['username'] as String,
+                      ),
+                    ),
+                  ),
+                ],
+                onChanged: (v) => setState(() => _filterWorkerId = v),
+              ),
+            ],
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              key: ValueKey('filter-status-$_filterStatus'),
+              isExpanded: true,
+              initialValue: _filterStatus,
+              decoration: const InputDecoration(
+                labelText: 'Status',
+                border: OutlineInputBorder(),
+              ),
+              items: _statusOptions.entries
+                  .map(
+                    (e) => DropdownMenuItem<String?>(
+                      value: e.key,
+                      child: _dropdownLabel(e.value),
+                    ),
+                  )
+                  .toList(),
+              onChanged: (v) => setState(() => _filterStatus = v),
             ),
           ],
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('filter-status-$_filterStatus'),
-            isExpanded: true,
-            initialValue: _filterStatus,
-            decoration: const InputDecoration(
-              labelText: 'Status',
-              border: OutlineInputBorder(),
-            ),
-            items: _statusOptions.entries
-                .map(
-                  (e) => DropdownMenuItem<String?>(
-                    value: e.key,
-                    child: _dropdownLabel(e.value),
+          if (!widget.compact) ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              key: ValueKey('filter-system-$_filterSystem'),
+              isExpanded: true,
+              initialValue: _filterSystem,
+              decoration: const InputDecoration(
+                labelText: 'Systém',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: _dropdownLabel('Všechny systémy'),
+                ),
+                ...sealSystems.map(
+                  (s) => DropdownMenuItem<String?>(
+                    value: s,
+                    child: _dropdownLabel(s),
                   ),
-                )
-                .toList(),
-            onChanged: (v) => setState(() => _filterStatus = v),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('filter-system-$_filterSystem'),
-            isExpanded: true,
-            initialValue: _filterSystem,
-            decoration: const InputDecoration(
-              labelText: 'Systém',
-              border: OutlineInputBorder(),
-            ),
-            items: [
-              DropdownMenuItem<String?>(
-                value: null,
-                child: _dropdownLabel('Všechny systémy'),
-              ),
-              ...sealSystems.map(
-                (s) => DropdownMenuItem<String?>(
-                  value: s,
-                  child: _dropdownLabel(s),
                 ),
-              ),
-            ],
-            onChanged: (v) => setState(() => _filterSystem = v),
-          ),
-          const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            key: ValueKey('filter-entry-$_filterEntryType'),
-            isExpanded: true,
-            initialValue: _filterEntryType,
-            decoration: const InputDecoration(
-              labelText: 'Typ prostupu',
-              border: OutlineInputBorder(),
+              ],
+              onChanged: (v) => setState(() => _filterSystem = v),
             ),
-            items: [
-              DropdownMenuItem<String?>(
-                value: null,
-                child: _dropdownLabel('Všechny typy'),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              key: ValueKey('filter-entry-$_filterEntryType'),
+              isExpanded: true,
+              initialValue: _filterEntryType,
+              decoration: const InputDecoration(
+                labelText: 'Typ prostupu',
+                border: OutlineInputBorder(),
               ),
-              ...entryTypes.map(
-                (t) => DropdownMenuItem<String?>(
-                  value: t,
-                  child: _dropdownLabel(t),
+              items: [
+                DropdownMenuItem<String?>(
+                  value: null,
+                  child: _dropdownLabel('Všechny typy'),
                 ),
-              ),
-            ],
-            onChanged: (v) => setState(() => _filterEntryType = v),
-          ),
+                ...entryTypes.map(
+                  (t) => DropdownMenuItem<String?>(
+                    value: t,
+                    child: _dropdownLabel(t),
+                  ),
+                ),
+              ],
+              onChanged: (v) => setState(() => _filterEntryType = v),
+            ),
+          ],
           const SizedBox(height: 12),
           Row(
             children: [
@@ -528,38 +532,40 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
               ),
             ),
           ],
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _exporting ? null : _exportCsv,
-                  icon: _exporting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.download),
-                  label: const Text('Export CSV'),
+          if (!widget.compact) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _exporting ? null : _exportCsv,
+                    icon: _exporting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.download),
+                    label: const Text('Export CSV'),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton.icon(
-                  onPressed: _exporting ? null : _exportPdf,
-                  icon: _exporting
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.picture_as_pdf),
-                  label: const Text('Export PDF'),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _exporting ? null : _exportPdf,
+                    icon: _exporting
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.picture_as_pdf),
+                    label: const Text('Export PDF'),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
           if (widget.onCreateWorksheet != null) ...[
             const SizedBox(height: 8),
             SizedBox(
