@@ -885,7 +885,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               if (_floorName != null) ...[
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: const Text('Patro'),
+                  title: Text(
+                    'Patro',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
                   subtitle: Text(_floorName!),
                 ),
                 const SizedBox(height: 12),

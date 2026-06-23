@@ -1055,13 +1055,10 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 StatusBadge(status: status),
               ],
             ),
-            const SizedBox(height: AppSpacing.sm),
-            _KvRow(
-                label: 'Řemeslo',
-                value: sealTradeLabel(seal['trade'] as String?)),
-            _KvRow(label: 'Systém', value: _valueOr(seal['system'])),
-            if (floorName != 'Neuvedeno')
+            if (floorName != 'Neuvedeno') ...[
+              const SizedBox(height: AppSpacing.sm),
               _KvRow(label: 'Patro', value: floorName),
+            ],
           ],
         ),
       ),
@@ -1139,10 +1136,14 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           ),
         ),
 
-      // ZÁKLADNÍ ÚDAJE
+      // ZÁKLADNÍ ÚDAJE (řemeslo, systém a konstrukční detaily pohromadě)
       _DetailSection(
         title: 'Základní údaje',
         children: [
+          _KvRow(
+              label: 'Řemeslo',
+              value: sealTradeLabel(seal['trade'] as String?)),
+          _KvRow(label: 'Systém', value: _valueOr(seal['system'])),
           _KvRow(label: 'Konstrukce', value: _valueOr(seal['construction'])),
           _KvRow(label: 'Umístění', value: _valueOr(seal['location'])),
           _KvRow(

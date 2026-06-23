@@ -299,6 +299,12 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             accent: AppColors.accent,
             onTap: () => _goSoupisy(status: 'ready_for_invoice'),
           ),
+          _kpi(
+            'Celkem dokončeno/archivováno',
+            s['completedArchivedJobs'],
+            icon: Icons.archive_outlined,
+            accent: AppColors.textMuted,
+          ),
         ]),
         if (s['byJobDetailed'] is List &&
             (s['byJobDetailed'] as List).isNotEmpty) ...[

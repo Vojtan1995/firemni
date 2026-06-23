@@ -399,6 +399,7 @@ export async function getStatsOverview(
     uninvoicedSeals,
     inactiveJobs,
     syncStats,
+    completedArchivedJobs,
   ] = await Promise.all([
     sealCounts(baseWhere, parsedFilters?.status),
     sealsByJob(baseWhere),
@@ -446,6 +447,14 @@ export async function getStatsOverview(
       take: 20,
     }),
     syncPendingStats(),
+    // Souhrnný počet dokončených/archivovaných zakázek – jediná výjimka, kdy
+    // dashboard smí ukázat neaktivní zakázky (jen v této explicitní statistice).
+    prisma.job.count({
+      where: {
+        deletedAt: null,
+        status: { in: [JobStatus.completed, JobStatus.archived] },
+      },
+    }),
   ]);
 
   return {
@@ -466,6 +475,7 @@ export async function getStatsOverview(
     uncheckedSeals: unchecked,
     uninvoicedWork: uninvoicedSeals,
     jobsWithoutActivity: inactiveJobs,
+    completedArchivedJobs,
     syncPending: syncStats.syncPending,
     syncPendingByUser: syncStats.syncPendingByUser,
   };

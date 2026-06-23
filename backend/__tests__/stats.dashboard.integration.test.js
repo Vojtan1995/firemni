@@ -230,6 +230,19 @@ describe("Management dashboard stats (task 5.2)", () => {
     );
   });
 
+  it("management overview exposes completedArchivedJobs as the explicit exception KPI", async () => {
+    const res = await request(app)
+      .get("/api/stats/overview")
+      .set("Authorization", `Bearer ${managementToken}`);
+
+    expect(res.status).toBe(200);
+    const expectedCount = await prisma.job.count({
+      where: { deletedAt: null, status: { in: ["completed", "archived"] } },
+    });
+    expect(res.body.completedArchivedJobs).toBe(expectedCount);
+    expect(res.body.completedArchivedJobs).toBeGreaterThanOrEqual(1);
+  });
+
   it("filters by jobId reduce totals", async () => {
     const all = await request(app)
       .get("/api/stats/overview")
