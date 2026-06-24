@@ -1,11 +1,12 @@
 name: DB Backup
 
 on:
-  # Plánované zálohy jsou VYPNUTÉ, dokud nejsou nastavené BACKUP_S3_* secrets
-  # (jinak upload na R2/S3 padá a workflow svítí červeně). Po doplnění secrets
-  # stačí cron níže odkomentovat.
-  # schedule:
-  #   - cron: '0 2 * * *'   # každý den 2:00 UTC (4:00 Prague letní čas)
+  # Denní off-site záloha do R2. Vyžaduje nastavené secrets:
+  #   PROD_DATABASE_URL, BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT,
+  #   BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY
+  #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (alert při selhání)
+  schedule:
+    - cron: '0 2 * * *'   # každý den 2:00 UTC (4:00 Prague letní čas)
   workflow_dispatch:
     # Umožní ruční spuštění z GitHub Actions UI
 
@@ -17,35 +18,39 @@ jobs:
 
     steps:
       - name: Check backup storage configured
-        id: cfg
         run: |
-          if [ -z "${{ secrets.BACKUP_S3_BUCKET }}" ] || [ -z "${{ secrets.BACKUP_S3_ENDPOINT }}" ]; then
-            echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::BACKUP_S3_* secrets nejsou nastavené — upload zálohy přeskočen. Nastav je a odkomentuj cron v backup.yml."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+          missing=""
+          [ -z "${{ secrets.PROD_DATABASE_URL }}" ] && missing="${missing} PROD_DATABASE_URL"
+          [ -z "${{ secrets.BACKUP_S3_BUCKET }}" ] && missing="${missing} BACKUP_S3_BUCKET"
+          [ -z "${{ secrets.BACKUP_S3_ENDPOINT }}" ] && missing="${missing} BACKUP_S3_ENDPOINT"
+          [ -z "${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}" ] && missing="${missing} BACKUP_S3_ACCESS_KEY_ID"
+          [ -z "${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}" ] && missing="${missing} BACKUP_S3_SECRET_ACCESS_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Chybí secrets pro zálohu:${missing}. Doplň je v Settings → Secrets → Actions."
+            exit 1
           fi
 
       - name: Install postgresql-client
-        if: steps.cfg.outputs.configured == 'true'
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client
 
       - name: Run pg_dump
-        if: steps.cfg.outputs.configured == 'true'
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
         run: |
+          set -o pipefail
           TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
           FILENAME="ucpavky_${TIMESTAMP}.sql.gz"
           echo "BACKUP_FILENAME=${FILENAME}" >> $GITHUB_ENV
           pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
+          # Ověření integrity gzipu — poškozený dump zachytíme hned, ne až při obnově
+          gunzip -t "${FILENAME}"
           SIZE=$(du -sh "${FILENAME}" | cut -f1)
           echo "Backup hotov: ${FILENAME} (${SIZE})"
+          echo "✅ Záloha **${FILENAME}** (${SIZE}) — gzip integrita OK" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload to Cloudflare R2
-        if: steps.cfg.outputs.configured == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
@@ -59,7 +64,6 @@ jobs:
           echo "Upload hotov: s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}"
 
       - name: Prune backups older than 30 days
-        if: steps.cfg.outputs.configured == 'true'
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
@@ -85,3 +89,20 @@ jobs:
       - name: Cleanup local dump
         if: always()
         run: rm -f "${BACKUP_FILENAME}"
+
+      - name: Telegram alert on failure
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "::warning::TELEGRAM_* secrets nenastavené — alert přeskočen."
+            exit 0
+          fi
+          MSG=$(printf '🔴 UNIFAST záloha DB SELHALA (run %s)\n%s' "${{ github.run_id }}" "${RUN_URL}")
+          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MSG}" \
+            > /dev/null
