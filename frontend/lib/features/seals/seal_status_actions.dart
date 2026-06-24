@@ -3,26 +3,24 @@ import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 
-/// Stavově podmíněné akce pro detail ucpávky (vedení / admin).
+enum _SealStatusMenuAction { checked, invoiced, revertToDraft }
+
+/// Jedno tlačítko se stavovou nabídkou akcí pro detail ucpávky (vedení / admin).
 class SealStatusActions extends StatelessWidget {
   const SealStatusActions({
     super.key,
     required this.auth,
     required this.status,
-    required this.reviewStatus,
     required this.offline,
     required this.onApprove,
-    required this.onReturnForRepair,
     required this.onInvoice,
     required this.onRevertToDraft,
   });
 
   final AuthService auth;
   final String status;
-  final String? reviewStatus;
   final bool offline;
   final VoidCallback onApprove;
-  final VoidCallback onReturnForRepair;
   final VoidCallback onInvoice;
   final VoidCallback onRevertToDraft;
 
@@ -31,54 +29,63 @@ class SealStatusActions extends StatelessWidget {
     if (offline) return const SizedBox.shrink();
     if (status == 'invoiced') return const SizedBox.shrink();
 
-    final children = <Widget>[];
+    final items = <PopupMenuEntry<_SealStatusMenuAction>>[];
 
-    if (auth.canReviewSeal && (status == 'draft' || reviewStatus == 'returned')) {
-      children.add(
-        AppPrimaryButton(
-          label: 'Schválit',
-          fullWidth: false,
-          onPressed: onApprove,
-        ),
-      );
-      children.add(
-        AppSecondaryButton(
-          label: 'Vrátit k opravě',
-          fullWidth: false,
-          onPressed: onReturnForRepair,
+    if (status == 'draft' && auth.canReviewSeal) {
+      items.add(
+        const PopupMenuItem(
+          value: _SealStatusMenuAction.checked,
+          child: Text('Zkontrolováno'),
         ),
       );
     }
 
     if (status == 'checked') {
       if (auth.canInvoiceSeal) {
-        children.add(
-          AppPrimaryButton(
-            label: 'Fakturovat',
-            fullWidth: false,
-            onPressed: onInvoice,
+        items.add(
+          const PopupMenuItem(
+            value: _SealStatusMenuAction.invoiced,
+            child: Text('Fakturováno'),
           ),
         );
       }
       if (auth.canReviewSeal) {
-        children.add(
-          AppSecondaryButton(
-            label: 'Vrátit na rozpracováno',
-            fullWidth: false,
-            onPressed: onRevertToDraft,
+        items.add(
+          const PopupMenuItem(
+            value: _SealStatusMenuAction.revertToDraft,
+            child: Text('Vrátit na rozpracováno'),
           ),
         );
       }
     }
 
-    if (children.isEmpty) return const SizedBox.shrink();
+    if (items.isEmpty) return const SizedBox.shrink();
 
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.md),
-      child: Wrap(
-        spacing: AppSpacing.sm,
-        runSpacing: AppSpacing.sm,
-        children: children,
+      child: PopupMenuButton<_SealStatusMenuAction>(
+        itemBuilder: (context) => items,
+        onSelected: (action) {
+          switch (action) {
+            case _SealStatusMenuAction.checked:
+              onApprove();
+              break;
+            case _SealStatusMenuAction.invoiced:
+              onInvoice();
+              break;
+            case _SealStatusMenuAction.revertToDraft:
+              onRevertToDraft();
+              break;
+          }
+        },
+        child: AbsorbPointer(
+          child: AppPrimaryButton(
+            label: 'Změnit stav',
+            icon: Icons.expand_more,
+            fullWidth: false,
+            onPressed: () {},
+          ),
+        ),
       ),
     );
   }

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/design_tokens.dart';
 import '../../core/theme.dart';
 import '../../widgets/widgets.dart';
-import '../worksheets/worksheet_status_labels.dart';
 import 'seal_constants.dart';
 import 'seal_list_helpers.dart';
 
@@ -32,19 +31,16 @@ class SealListRow extends StatelessWidget {
     final status = seal['status'] as String? ?? 'draft';
     final photoCount = seal['photoCount'] as int? ?? 0;
     final hasNote = sealHasNoteForList(seal, isWorker: isWorker);
-    final reviewStatus = seal['reviewStatus'] as String?;
-    final isReturned = reviewStatus == 'returned';
     final pendingSync = seal['isSynced'] == false;
     final placementPending = seal['markerPlacementPending'] == true;
     final unplaced = !placementPending && seal['hasMarker'] == false;
     final number = seal['sealNumber'] as String? ?? '?';
     final trade = sealTradeLabel(seal['trade'] as String?);
-    final worksheetStatus = seal['worksheetStatus'] as String?;
 
     return AppCard(
       borderColor: selected
           ? AppColors.accent.withValues(alpha: 0.5)
-          : hasConflict || isReturned
+          : hasConflict
               ? AppColors.error.withValues(alpha: 0.4)
               : null,
       showChevron: false,
@@ -85,32 +81,6 @@ class SealListRow extends StatelessWidget {
           if (photoCount > 0)
             _iconBadge(Icons.photo_camera_outlined, AppColors.textMuted),
           if (hasNote) _iconBadge(Icons.sticky_note_2_outlined, AppColors.textMuted),
-          if (isReturned) ...[
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.sm),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(Icons.replay, size: 13, color: AppColors.error),
-                    const SizedBox(width: 3),
-                    Text(
-                      'Vráceno',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: AppColors.error,
-                            fontWeight: FontWeight.w600,
-                          ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
           if (pendingSync)
             _iconBadge(Icons.cloud_upload_outlined, AppColors.warning),
           if (placementPending)
@@ -124,18 +94,6 @@ class SealListRow extends StatelessWidget {
             ),
           if (unplaced)
             _iconBadge(Icons.place_outlined, AppColors.warning),
-          if (worksheetStatus != null)
-            Padding(
-              padding: const EdgeInsets.only(right: AppSpacing.sm),
-              child: Tooltip(
-                message: 'V soupisu: ${worksheetStatusLabel(worksheetStatus)}',
-                child: Icon(
-                  Icons.assignment_outlined,
-                  size: 16,
-                  color: worksheetStatusColor(worksheetStatus),
-                ),
-              ),
-            ),
           StatusBadge(
             status: status,
             conflict: hasConflict,

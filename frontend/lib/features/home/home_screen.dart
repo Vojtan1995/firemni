@@ -76,13 +76,6 @@ class HomeScreen extends ConsumerWidget {
               title: auth.isWorker ? 'Moje soupisy' : 'Soupisy práce',
               onTap: () => context.push('/soupisy'),
             ),
-          if (auth.canViewRepairs)
-            _MenuTile(
-              icon: Icons.build_outlined,
-              title: 'Opravy',
-              onTap: () => context.push('/repairs'),
-            ),
-
           // --- Přehledy ---
           if (auth.canViewStats || auth.canViewPriceList) ...[
             const SectionHeader(

@@ -148,9 +148,7 @@ export async function lookupPriceItem(
   const items = list.items.filter((i) => i.category === category);
 
   if (input.preferredUnit === 'm2') {
-    const m2Item =
-      items.find((i) => i.unit === 'm2' && i.sizeLabel === 'Plocha') ??
-      items.find((i) => i.unit === 'm2' && !/dilata/i.test(i.sizeLabel));
+    const m2Item = items.find((i) => i.unit === 'm2');
     if (m2Item) return { item: m2Item, priceList: list };
   }
 

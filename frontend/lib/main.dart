@@ -7,6 +7,7 @@ import 'core/theme.dart';
 import 'core/api/api_client.dart';
 import 'core/app_update_service.dart';
 import 'features/auth/auth_provider.dart';
+import 'features/sync/sync_conflict_watcher.dart';
 import 'features/sync/sync_retry_scheduler.dart';
 import 'widgets/app_update_dialog.dart';
 
@@ -82,8 +83,9 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
       title: 'Ucpávky',
       theme: AppTheme.dark,
       routerConfig: router,
-      builder: (context, child) =>
-          DesktopEscScope(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => DesktopEscScope(
+        child: SyncConflictWatcher(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

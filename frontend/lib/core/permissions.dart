@@ -26,9 +26,6 @@ class AppPermissions {
     'worksheet.review': ['vedeni', 'admin'],
     'worksheet.invoice': ['vedeni', 'admin'],
     'stats.view': ['worker', 'vedeni', 'admin'],
-    'repair.create': ['worker', 'vedeni', 'admin'],
-    'repair.view': ['worker', 'vedeni', 'admin'],
-    'repair.export': ['vedeni', 'admin'],
   };
 
   static bool has(String? role, String permission) {
@@ -74,12 +71,6 @@ class AppPermissions {
   static bool canDeleteWorksheet(String? role) => has(role, 'worksheet.delete');
 
   static bool canInvoiceWorksheet(String? role) => has(role, 'worksheet.invoice');
-
-  static bool canCreateRepair(String? role) => has(role, 'repair.create');
-
-  static bool canViewRepairs(String? role) => has(role, 'repair.view');
-
-  static bool canExportRepairs(String? role) => has(role, 'repair.export');
 
   static String roleLabel(String? role) {
     switch (role) {

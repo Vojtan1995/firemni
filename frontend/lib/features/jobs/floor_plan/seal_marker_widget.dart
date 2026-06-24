@@ -51,7 +51,6 @@ class SealMarkerWidget extends StatelessWidget {
     super.key,
     required this.sealNumber,
     required this.status,
-    this.reviewStatus,
     this.scale = 1,
     this.highlighted = false,
     this.onTap,
@@ -59,15 +58,13 @@ class SealMarkerWidget extends StatelessWidget {
 
   final String sealNumber;
   final String status;
-  final String? reviewStatus;
   final double scale;
   final bool highlighted;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final color =
-        markerColorForSeal(status: status, reviewStatus: reviewStatus);
+    final color = markerColorForSeal(status: status);
     final dims = sealMarkerDimensions(scale, highlighted: highlighted);
 
     return GestureDetector(

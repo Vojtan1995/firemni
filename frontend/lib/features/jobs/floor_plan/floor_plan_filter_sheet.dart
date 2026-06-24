@@ -170,7 +170,6 @@ class _FloorPlanFilterSheetState extends State<FloorPlanFilterSheet> {
         DropdownMenuItem(value: 'draft', child: Text('Rozpracované')),
         DropdownMenuItem(value: 'checked', child: Text('Zkontrolované')),
         DropdownMenuItem(value: 'invoiced', child: Text('Fakturované')),
-        DropdownMenuItem(value: 'returned', child: Text('Vrácené k opravě')),
       ],
       onChanged: (v) => setState(() => _status = v),
     );

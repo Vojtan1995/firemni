@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/design_tokens.dart';
@@ -57,6 +58,29 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
               keyboardType: TextInputType.number,
               autofocus: true,
             ),
+            const SizedBox(height: AppSpacing.md),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.sm),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.12),
+                borderRadius: AppRadius.smAll,
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.camera_alt_outlined,
+                      size: 18, color: AppColors.warning),
+                  const SizedBox(width: AppSpacing.sm),
+                  Expanded(
+                    child: Text(
+                      'Na štítku je staré číslo — doporučujeme pořídit '
+                      'novou fotografii ucpávky se správným číslem.',
+                      style: Theme.of(ctx).textTheme.bodySmall,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
         actions: [
@@ -64,6 +88,14 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
             onPressed: () => Navigator.pop(ctx),
             child: const Text('Zrušit'),
           ),
+          if (conflict.sealId != null)
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                context.push('/seal/${conflict.sealId}');
+              },
+              child: const Text('Vyfotit znovu'),
+            ),
           FilledButton(
             onPressed: () => Navigator.pop(ctx, controller.text.trim()),
             child: const Text('Uložit a synchronizovat'),

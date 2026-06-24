@@ -137,13 +137,13 @@ describe("Worksheet membership + seal lock", () => {
     expect(entry.worksheet.status).toBe("draft");
   });
 
-  it("GET seal hides owner and worksheet membership from another worker", async () => {
+  it("GET seal exposes owner but hides worksheet membership from another worker", async () => {
     const res = await request(app)
       .get(`/api/seals/${sealId}`)
       .set("Authorization", `Bearer ${worker2Token}`);
 
     expect(res.status).toBe(200);
-    expect(res.body.createdBy).toBeUndefined();
+    expect(res.body.createdBy).toBeTruthy();
     expect(res.body.entries[0].worksheet).toBeNull();
   });
 

@@ -29,6 +29,7 @@ export type Permission =
   | 'worksheet.submit'
   | 'worksheet.review'
   | 'worksheet.invoice'
+  | 'worksheet.archive'
   | 'stats.view'
   | 'repair.create'
   | 'repair.view'
@@ -63,6 +64,7 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'worksheet.submit': [UserRole.worker, UserRole.admin],
   'worksheet.review': [UserRole.vedeni, UserRole.admin],
   'worksheet.invoice': [UserRole.vedeni, UserRole.admin],
+  'worksheet.archive': [UserRole.vedeni, UserRole.admin],
   'stats.view': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'repair.create': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   // Worker je v service vrstvě navíc omezen na opravy svých zakázek (assertJobReadable).

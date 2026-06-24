@@ -6,6 +6,7 @@ import { requirePermission } from '../lib/permissions.js';
 import { paramId } from '../lib/params.js';
 import {
   addWorksheetItems,
+  bulkChangeWorksheetStatus,
   changeWorksheetStatus,
   createWorksheet,
   deleteWorksheet,
@@ -61,6 +62,37 @@ router.post('/', requirePermission('worksheet.create'), async (req, res, next) =
     next(e);
   }
 });
+
+router.post(
+  '/bulk-status',
+  requirePermission('worksheet.archive', 'worksheet.invoice', 'worksheet.review'),
+  async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          ids: z.array(z.string().uuid()).min(1),
+          status: z.nativeEnum(WorkSheetStatus),
+          comment: z.string().max(500).optional(),
+        })
+        .parse(req.body);
+      const { succeeded, failed } = await bulkChangeWorksheetStatus(
+        body.ids,
+        body.status,
+        req.user!.role,
+        req.user!.id,
+        body.comment,
+      );
+      res.json({
+        updated: succeeded.length,
+        failed: failed.length,
+        worksheets: succeeded,
+        errors: failed,
+      });
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.get('/:id/export/csv', async (req, res, next) => {
   try {

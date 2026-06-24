@@ -35,7 +35,12 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     'reviewed': 'Zkontrolovaný',
     'ready_for_invoice': 'Připravený k fakturaci',
     'invoiced': 'Vyfakturovaný',
+    'archived': 'Archivovaný',
   };
+
+  bool _selectionMode = false;
+  final Set<String> _selectedIds = {};
+  bool _bulkBusy = false;
 
   @override
   void initState() {
@@ -146,15 +151,30 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     }
   }
 
-  Widget _worksheetCard(Map<String, dynamic> ws) {
+  Widget _worksheetCard(Map<String, dynamic> ws, {bool canSelect = false}) {
+    final id = ws['id'] as String? ?? '';
     final job = ws['job'] as Map<String, dynamic>?;
     final status = ws['status'] as String? ?? 'draft';
     final count = ws['_count']?['items'] ?? 0;
     final exporting = _exportingWorksheetId == ws['id'];
+    final selected = _selectedIds.contains(id);
     return AppCard(
       title: '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'.trim(),
       subtitle:
           '${_floorsLabel(ws)} · ${_workersLabel(ws)} · ${_periodLabel(ws)} · $count položek',
+      borderColor: selected ? AppColors.accent.withValues(alpha: 0.5) : null,
+      leading: canSelect && _selectionMode
+          ? Checkbox(
+              value: selected,
+              onChanged: (_) => setState(() {
+                if (selected) {
+                  _selectedIds.remove(id);
+                } else {
+                  _selectedIds.add(id);
+                }
+              }),
+            )
+          : null,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -181,23 +201,89 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                 ),
         ],
       ),
-      onTap: () => context.push('/worksheets/${ws['id']}'),
+      onTap: _selectionMode && canSelect
+          ? () => setState(() {
+                if (selected) {
+                  _selectedIds.remove(id);
+                } else {
+                  _selectedIds.add(id);
+                }
+              })
+          : () => context.push('/worksheets/${ws['id']}'),
     );
+  }
+
+  Future<void> _bulkChangeStatus(String status) async {
+    if (_selectedIds.isEmpty) return;
+    final count = _selectedIds.length;
+    final label = _statusLabels[status] ?? status;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(status == 'archived' ? 'Archivovat soupisy' : 'Změnit stav'),
+        content: Text('Označit $count soupisů jako "$label"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Zrušit'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Potvrdit'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _bulkBusy = true);
+    try {
+      final res = await ref.read(dioProvider).post('/api/worksheets/bulk-status', data: {
+        'ids': _selectedIds.toList(),
+        'status': status,
+      });
+      final data = res.data as Map<String, dynamic>?;
+      final updated = data?['updated'] as int? ?? 0;
+      final failed = data?['failed'] as int? ?? 0;
+      setState(() {
+        _selectedIds.clear();
+        _selectionMode = false;
+      });
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Upraveno: $updated · Selhalo: $failed')),
+      );
+    } on DioException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Hromadná akce selhala'))),
+      );
+    } finally {
+      if (mounted) setState(() => _bulkBusy = false);
+    }
   }
 
   Widget _buildWorksheetList(AuthService auth) {
     if (auth.isWorker) {
+      final active =
+          _worksheets.where((ws) => ws['status'] != 'archived').toList();
       return ListView.builder(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        itemCount: _worksheets.length,
-        itemBuilder: (_, i) => _worksheetCard(_worksheets[i]),
+        itemCount: active.length,
+        itemBuilder: (_, i) => _worksheetCard(active[i]),
       );
     }
 
     // Vedení: seznam pracovníků, po rozkliknutí jeho soupisy.
-    // Soupis s více pracovníky se objeví u každého z nich.
+    // Soupis s více pracovníky se objeví u každého z nich. Archivované jdou
+    // do samostatné složky „Archiv" mimo seznam pracovníků.
+    final active = _worksheets.where((ws) => ws['status'] != 'archived');
+    final archived =
+        _worksheets.where((ws) => ws['status'] == 'archived').toList();
+
     final byWorker = <String, _WorkerGroup>{};
-    for (final ws in _worksheets) {
+    for (final ws in active) {
       final workers =
           (ws['workers'] as List? ?? []).cast<Map<String, dynamic>>();
       if (workers.isEmpty) {
@@ -215,24 +301,38 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     final groups = byWorker.values.toList()
       ..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
-      itemCount: groups.length,
-      itemBuilder: (_, i) {
-        final g = groups[i];
-        return Card(
-          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-          child: ExpansionTile(
-            leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-            title: Text(g.name,
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(g.summaryLabel),
-            initiallyExpanded: groups.length == 1,
-            childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
-            children: g.worksheets.map(_worksheetCard).toList(),
+      children: [
+        for (final g in groups)
+          Card(
+            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: ExpansionTile(
+              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+              title: Text(g.name,
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: Text(g.summaryLabel),
+              initiallyExpanded: groups.length == 1,
+              childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              children: g.worksheets
+                  .map((ws) => _worksheetCard(ws, canSelect: true))
+                  .toList(),
+            ),
           ),
-        );
-      },
+        if (archived.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: ExpansionTile(
+              leading: const Icon(Icons.archive_outlined),
+              title: Text('Archiv (${archived.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              children: archived
+                  .map((ws) => _worksheetCard(ws, canSelect: true))
+                  .toList(),
+            ),
+          ),
+      ],
     );
   }
 
@@ -246,6 +346,15 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
             ? 'Moje uložené soupisy'
             : 'Soupisy podle pracovníků'),
         actions: [
+          if (!auth.isWorker)
+            IconButton(
+              icon: Icon(_selectionMode ? Icons.close : Icons.checklist),
+              tooltip: _selectionMode ? 'Zrušit výběr' : 'Vybrat soupisy',
+              onPressed: () => setState(() {
+                _selectionMode = !_selectionMode;
+                if (!_selectionMode) _selectedIds.clear();
+              }),
+            ),
           IconButton(icon: const Icon(Icons.refresh), onPressed: _load),
         ],
       ),
@@ -333,6 +442,58 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                       )
                     : _buildWorksheetList(auth),
           ),
+          if (_selectionMode && _selectedIds.isNotEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.lg,
+                vertical: AppSpacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.bgSecondary,
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(child: Text('Vybráno: ${_selectedIds.length}')),
+                  if (_bulkBusy)
+                    const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  else
+                    PopupMenuButton<String>(
+                      tooltip: 'Akce',
+                      child: const Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text('Akce'),
+                          Icon(Icons.expand_more),
+                        ],
+                      ),
+                      onSelected: _bulkChangeStatus,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: 'archived',
+                          child: Text('Archivovat'),
+                        ),
+                        PopupMenuItem(
+                          value: 'reviewed',
+                          child: Text('Nastavit: Zkontrolovaný'),
+                        ),
+                        PopupMenuItem(
+                          value: 'ready_for_invoice',
+                          child: Text('Nastavit: Připravený k fakturaci'),
+                        ),
+                        PopupMenuItem(
+                          value: 'invoiced',
+                          child: Text('Nastavit: Vyfakturovaný'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
         ],
       ),
     );

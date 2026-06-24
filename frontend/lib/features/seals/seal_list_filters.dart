@@ -6,7 +6,6 @@ enum SealProblemFilter {
   noPhoto('no_photo', 'Bez fotky'),
   onePhoto('one_photo', '1 fotka'),
   awaitingReview('awaiting_review', 'Čeká kontrolu'),
-  returned('returned', 'Vráceno'),
   pendingSync('pending_sync', 'Čeká sync'),
   hasNote('has_note', 'Má poznámku'),
   missingData('missing_data', 'Nedokončené'),
@@ -46,7 +45,6 @@ bool sealMatchesFilters(
 
   final photoCount = seal['photoCount'] as int? ?? 0;
   final status = seal['status'] as String? ?? 'draft';
-  final reviewStatus = seal['reviewStatus'] as String?;
   final isSynced = seal['isSynced'] as bool? ?? true;
 
   for (final f in filters) {
@@ -57,8 +55,6 @@ bool sealMatchesFilters(
         if (photoCount != 1) return false;
       case SealProblemFilter.awaitingReview:
         if (status != 'draft') return false;
-      case SealProblemFilter.returned:
-        if (reviewStatus != 'returned') return false;
       case SealProblemFilter.pendingSync:
         if (isSynced) return false;
       case SealProblemFilter.hasNote:
@@ -78,11 +74,10 @@ bool sealMatchesFilters(
       case SealProblemFilter.statusInvoiced:
         if (status != 'invoiced') return false;
       case SealProblemFilter.attention:
-        // „K řešení": vrácené NEBO nedokončené.
-        final isReturned = reviewStatus == 'returned';
+        // „K řešení": nedokončené.
         final hasMissing =
             validateSealForChecked(_sealForValidation(seal)).isNotEmpty;
-        if (!isReturned && !hasMissing) return false;
+        if (!hasMissing) return false;
     }
   }
   return true;

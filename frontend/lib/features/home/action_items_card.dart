@@ -66,13 +66,6 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
     if (role == 'worker') {
       return [
         _ActionItem(
-          label: 'Vrácené k opravě',
-          count: _n('returnedForFix'),
-          icon: Icons.assignment_return_outlined,
-          color: AppColors.error,
-          onTap: () => context.push(actionSearchRoute('returned')),
-        ),
-        _ActionItem(
           label: 'Bez fotky',
           count: _n('missingPhotos'),
           icon: Icons.photo_camera_outlined,

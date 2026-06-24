@@ -91,8 +91,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
               subtitle: '${user['username']} · $role',
             ),
             const SizedBox(height: AppSpacing.xl),
-            ProfileWorksheetsSection(role: role),
-            const SizedBox(height: AppSpacing.xl),
+            if (role == 'worker') ...[
+              ProfileWorksheetsSection(role: role),
+              const SizedBox(height: AppSpacing.xl),
+            ],
             const ProfileActivitySection(),
             const SectionHeader(title: 'Změna PINu', style: SectionHeaderStyle.h3),
             Text(

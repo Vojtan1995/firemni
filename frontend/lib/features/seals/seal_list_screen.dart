@@ -577,7 +577,6 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     SealProblemFilter.statusDraft,
     SealProblemFilter.statusChecked,
     SealProblemFilter.statusInvoiced,
-    SealProblemFilter.returned,
     SealProblemFilter.missingData,
     SealProblemFilter.attention,
   ];

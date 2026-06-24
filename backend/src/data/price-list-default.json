@@ -37,8 +37,7 @@
     { "name": "mb", "price": 180, "unit": "mb" }
   ],
   "PROSTUPY": [
-    { "name": "Dilatační", "price": 990, "unit": "m2" },
-    { "name": "Plocha", "price": 980, "unit": "m2" }
+    { "name": "Dilatační", "price": 990, "unit": "m2" }
   ],
   "PVC": [
     { "name": "≤ Ø 40", "price": 130 },

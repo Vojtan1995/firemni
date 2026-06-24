@@ -6,7 +6,7 @@ import {
   JobStatus,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
-import { badRequest, forbidden, notFound } from "../lib/errors.js";
+import { AppError, badRequest, forbidden, notFound } from "../lib/errors.js";
 import { hasPermission } from "../lib/permissions.js";
 import { logActivity, logChange } from "./audit.service.js";
 import {
@@ -29,10 +29,14 @@ function assertJobWritableStatus(status: JobStatus) {
 }
 
 const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
-  [WorkSheetStatus.draft]: [WorkSheetStatus.submitted],
+  [WorkSheetStatus.draft]: [
+    WorkSheetStatus.submitted,
+    WorkSheetStatus.archived,
+  ],
   [WorkSheetStatus.submitted]: [
     WorkSheetStatus.reviewed,
     WorkSheetStatus.draft,
+    WorkSheetStatus.archived,
   ],
   // Schválený (reviewed) → lze přímo Fakturovat (invoiced) dle 4-stavového modelu.
   // ready_for_invoice ponechán jako volitelný mezistav kvůli zpětné kompatibilitě.
@@ -41,15 +45,19 @@ const STATUS_TRANSITIONS: Record<WorkSheetStatus, WorkSheetStatus[]> = {
     WorkSheetStatus.ready_for_invoice,
     WorkSheetStatus.submitted,
     WorkSheetStatus.draft,
+    WorkSheetStatus.archived,
   ],
   [WorkSheetStatus.ready_for_invoice]: [
     WorkSheetStatus.invoiced,
     WorkSheetStatus.reviewed,
+    WorkSheetStatus.archived,
   ],
   [WorkSheetStatus.invoiced]: [
     WorkSheetStatus.reviewed,
     WorkSheetStatus.ready_for_invoice,
+    WorkSheetStatus.archived,
   ],
+  [WorkSheetStatus.archived]: [],
 };
 
 const STATUS_LABELS: Record<WorkSheetStatus, string> = {
@@ -58,6 +66,7 @@ const STATUS_LABELS: Record<WorkSheetStatus, string> = {
   [WorkSheetStatus.reviewed]: "Schválený",
   [WorkSheetStatus.ready_for_invoice]: "Připravený k fakturaci",
   [WorkSheetStatus.invoiced]: "Vyfakturovaný",
+  [WorkSheetStatus.archived]: "Archivovaný",
 };
 
 function assertTransition(current: WorkSheetStatus, next: WorkSheetStatus) {
@@ -105,6 +114,12 @@ function assertCanTransition(
   ) {
     if (!hasPermission(role, "worksheet.invoice")) {
       throw forbidden("Nemáte oprávnění měnit fakturační stav soupisu");
+    }
+    return;
+  }
+  if (next === WorkSheetStatus.archived) {
+    if (!hasPermission(role, "worksheet.archive")) {
+      throw forbidden("Nemáte oprávnění archivovat soupis");
     }
   }
 }
@@ -640,6 +655,40 @@ export async function changeWorksheetStatus(
   }
 
   return updated;
+}
+
+export type BulkItemError = { id: string; message: string };
+
+function bulkErrorMessage(e: unknown): string {
+  if (e instanceof AppError) return e.message;
+  if (e instanceof Error) return e.message;
+  return "Chyba";
+}
+
+export async function bulkChangeWorksheetStatus(
+  worksheetIds: string[],
+  newStatus: WorkSheetStatus,
+  role: UserRole,
+  userId: string,
+  comment?: string,
+) {
+  const succeeded = [];
+  const failed: BulkItemError[] = [];
+  for (const worksheetId of worksheetIds) {
+    try {
+      const updated = await changeWorksheetStatus(
+        worksheetId,
+        newStatus,
+        role,
+        userId,
+        comment,
+      );
+      succeeded.push(updated);
+    } catch (e) {
+      failed.push({ id: worksheetId, message: bulkErrorMessage(e) });
+    }
+  }
+  return { succeeded, failed };
 }
 
 export async function populateWorksheetFromFilters(

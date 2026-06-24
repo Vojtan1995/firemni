@@ -189,7 +189,6 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                               child: SealMarkerWidget(
                                 sealNumber: m['sealNumber'] as String? ?? '',
                                 status: m['status'] as String? ?? 'draft',
-                                reviewStatus: m['reviewStatus'] as String?,
                                 scale: markerScale,
                                 highlighted: highlighted,
                                 onTap: widget.onMarkerTap != null && !pending

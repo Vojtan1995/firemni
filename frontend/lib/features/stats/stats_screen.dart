@@ -182,11 +182,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           _kpi('Rozpracované', s['draft'], accent: AppColors.info),
           _kpi('Zkontrolované', s['checked'], accent: AppColors.success),
           _kpi(
-            'Vrácené k opravě',
-            s['returnedForFix'],
-            accent: AppColors.error,
-          ),
-          _kpi(
             'Bez fotky',
             s['missingPhotos'],
             accent: AppColors.warning,
@@ -264,12 +259,6 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
           _kpi('Zkontrolované', s['checked'], accent: AppColors.success),
           _kpi('Fakturované', s['invoiced'], accent: AppColors.textMuted),
           _kpi(
-            'Vrácené',
-            s['returnedSeals'],
-            accent: AppColors.error,
-            onTap: () => context.push(actionSearchRoute('returned')),
-          ),
-          _kpi(
             'Bez fotky',
             s['missingPhotos'],
             accent: AppColors.warning,
@@ -333,10 +322,9 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
                           color: AppColors.textMuted,
                         ),
                   ),
-                  if (parseNum(m['missingPhotos']) > 0 ||
-                      parseNum(m['returned']) > 0)
+                  if (parseNum(m['missingPhotos']) > 0)
                     Text(
-                      'Bez fotky: ${m['missingPhotos']} · Vrácené: ${m['returned']}',
+                      'Bez fotky: ${m['missingPhotos']}',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: AppColors.warning,
                           ),

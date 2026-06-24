@@ -9,6 +9,7 @@ String worksheetStatusLabel(String? status) => switch (status) {
       'reviewed' => 'Schválený',
       'ready_for_invoice' => 'Připravený k fakturaci',
       'invoiced' => 'Vyfakturovaný',
+      'archived' => 'Archivovaný',
       _ => status ?? '',
     };
 
@@ -18,5 +19,6 @@ Color worksheetStatusColor(String? status) => switch (status) {
       'reviewed' => AppColors.success,
       'ready_for_invoice' => AppColors.accent,
       'invoiced' => AppColors.textMuted,
+      'archived' => AppColors.textMuted,
       _ => AppColors.textMuted,
     };

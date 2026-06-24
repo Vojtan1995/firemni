@@ -35,6 +35,7 @@ enum WorkSheetStatus {
   reviewed
   ready_for_invoice
   invoiced
+  archived
 }
 
 enum JobStatus {

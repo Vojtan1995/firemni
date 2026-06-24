@@ -9,7 +9,6 @@ enum FloorPlanMarkerFilter {
   draftOnly,
   checkedOnly,
   invoicedOnly,
-  returnedOnly,
 }
 
 class FloorPlanWorkerOption {
@@ -72,7 +71,6 @@ class FloorPlanFilterState {
   }) {
     final sealId = marker['sealId'] as String;
     final status = marker['status'] as String? ?? 'draft';
-    final reviewStatus = marker['reviewStatus'] as String?;
 
     switch (mode) {
       case FloorPlanMarkerFilter.all:
@@ -83,8 +81,7 @@ class FloorPlanFilterState {
         return workerId != null && createdById == workerId;
       case FloorPlanMarkerFilter.byStatus:
         if (this.status == null) return false;
-        if (this.status == 'returned') return reviewStatus == 'returned';
-        return status == this.status && reviewStatus != 'returned';
+        return status == this.status;
       case FloorPlanMarkerFilter.selected:
         return selectedSealIds.contains(sealId);
       case FloorPlanMarkerFilter.placedOnly:
@@ -92,13 +89,11 @@ class FloorPlanFilterState {
       case FloorPlanMarkerFilter.unplacedOnly:
         return false;
       case FloorPlanMarkerFilter.draftOnly:
-        return status == 'draft' && reviewStatus != 'returned';
+        return status == 'draft';
       case FloorPlanMarkerFilter.checkedOnly:
         return status == 'checked';
       case FloorPlanMarkerFilter.invoicedOnly:
         return status == 'invoiced';
-      case FloorPlanMarkerFilter.returnedOnly:
-        return reviewStatus == 'returned';
     }
   }
 
@@ -109,7 +104,6 @@ class FloorPlanFilterState {
     if (mode != FloorPlanMarkerFilter.unplacedOnly &&
         mode != FloorPlanMarkerFilter.all) {
       final status = seal['status'] as String? ?? 'draft';
-      final reviewStatus = seal['reviewStatus'] as String?;
       final createdById = seal['createdById'] as String?;
       switch (mode) {
         case FloorPlanMarkerFilter.mine:
@@ -119,24 +113,16 @@ class FloorPlanFilterState {
           if (workerId == null || createdById != workerId) return false;
           break;
         case FloorPlanMarkerFilter.byStatus:
-          if (this.status == null) return false;
-          if (this.status == 'returned') {
-            if (reviewStatus != 'returned') return false;
-          } else if (status != this.status || reviewStatus == 'returned') {
-            return false;
-          }
+          if (this.status == null || status != this.status) return false;
           break;
         case FloorPlanMarkerFilter.draftOnly:
-          if (status != 'draft' || reviewStatus == 'returned') return false;
+          if (status != 'draft') return false;
           break;
         case FloorPlanMarkerFilter.checkedOnly:
           if (status != 'checked') return false;
           break;
         case FloorPlanMarkerFilter.invoicedOnly:
           if (status != 'invoiced') return false;
-          break;
-        case FloorPlanMarkerFilter.returnedOnly:
-          if (reviewStatus != 'returned') return false;
           break;
         default:
           break;
@@ -167,8 +153,6 @@ class FloorPlanFilterState {
         return 'Zkontrolované';
       case FloorPlanMarkerFilter.invoicedOnly:
         return 'Fakturované';
-      case FloorPlanMarkerFilter.returnedOnly:
-        return 'Vrácené k opravě';
     }
   }
 
@@ -204,8 +188,6 @@ class FloorPlanFilterState {
         return 'Zkontrolované';
       case 'invoiced':
         return 'Fakturované';
-      case 'returned':
-        return 'Vrácené k opravě';
       default:
         return status;
     }
@@ -285,7 +267,6 @@ class FloorPlanFilterState {
         return {'workerId': workerId!};
       case FloorPlanMarkerFilter.byStatus:
         if (status == null) return {};
-        if (status == 'returned') return {'reviewStatus': 'returned'};
         return {'status': status!};
       case FloorPlanMarkerFilter.draftOnly:
         return {'status': 'draft'};
@@ -293,8 +274,6 @@ class FloorPlanFilterState {
         return {'status': 'checked'};
       case FloorPlanMarkerFilter.invoicedOnly:
         return {'status': 'invoiced'};
-      case FloorPlanMarkerFilter.returnedOnly:
-        return {'reviewStatus': 'returned'};
       case FloorPlanMarkerFilter.selected:
         if (selectedSealIds.isEmpty) return {};
         return {'sealIds': selectedSealIds.join(',')};

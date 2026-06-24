@@ -3,9 +3,7 @@ import '../../../core/design_tokens.dart';
 
 Color markerColorForSeal({
   required String status,
-  String? reviewStatus,
 }) {
-  if (reviewStatus == 'returned') return AppColors.warning;
   switch (status) {
     case 'draft':
       return AppColors.error;
@@ -20,9 +18,7 @@ Color markerColorForSeal({
 
 String markerStatusLabel({
   required String status,
-  String? reviewStatus,
 }) {
-  if (reviewStatus == 'returned') return 'Vráceno k opravě';
   switch (status) {
     case 'draft':
       return 'Rozpracováno';

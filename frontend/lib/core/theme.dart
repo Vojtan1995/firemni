@@ -202,6 +202,8 @@ class AppTheme {
         return AppColors.textMuted;
       case 'ready_for_invoice':
         return AppColors.warning;
+      case 'archived':
+        return AppColors.textMuted;
       default:
         return AppColors.textMuted;
     }
@@ -221,6 +223,8 @@ class AppTheme {
         return 'Fakturováno';
       case 'ready_for_invoice':
         return 'Připraveno k fakturaci';
+      case 'archived':
+        return 'Archivováno';
       default:
         return status;
     }

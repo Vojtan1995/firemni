@@ -27,6 +27,7 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
     'reviewed': 'Zkontrolovaný',
     'ready_for_invoice': 'Připravený k fakturaci',
     'invoiced': 'Vyfakturovaný',
+    'archived': 'Archivovaný',
   };
 
   @override

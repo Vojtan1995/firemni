@@ -727,7 +727,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
               title: Text('Ucpávka #${marker['sealNumber']}'),
               subtitle: Text(markerStatusLabel(
                 status: marker['status'] as String? ?? 'draft',
-                reviewStatus: marker['reviewStatus'] as String?,
               )),
             ),
             ListTile(
@@ -1032,6 +1031,9 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                     placed: _placed,
                     unplaced: _unplaced,
                     onShowUnplaced: _unplaced > 0 ? _showUnplaced : null,
+                    onOk: () => context.go(
+                      '/seals/${widget.floorId}?jobId=${widget.jobId}',
+                    ),
                   ),
                   if (_filter.isActive)
                     Padding(

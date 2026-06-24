@@ -61,25 +61,6 @@ void main() {
       );
     });
 
-    test('byStatus returned uses reviewStatus', () {
-      const filter = FloorPlanFilterState(
-        mode: FloorPlanMarkerFilter.byStatus,
-        status: 'returned',
-      );
-      expect(
-        filter.matchesMarker(
-          marker: {
-            'sealId': 'a',
-            'status': 'draft',
-            'reviewStatus': 'returned',
-          },
-          placedSealIds: {'a'},
-          currentUserId: 'u1',
-          createdById: 'u1',
-        ),
-        isTrue,
-      );
-    });
   });
 
   group('helpers', () {
@@ -119,16 +100,11 @@ void main() {
         {'sealIds': 'a,b'},
       );
       expect(
-        const FloorPlanFilterState(mode: FloorPlanMarkerFilter.returnedOnly)
-            .toExportQueryParams(currentUserId: 'u1'),
-        {'reviewStatus': 'returned'},
-      );
-      expect(
         const FloorPlanFilterState(
           mode: FloorPlanMarkerFilter.byStatus,
           status: 'returned',
         ).toExportQueryParams(currentUserId: 'u1'),
-        {'reviewStatus': 'returned'},
+        {'status': 'returned'},
       );
       expect(
         const FloorPlanFilterState(mode: FloorPlanMarkerFilter.draftOnly)

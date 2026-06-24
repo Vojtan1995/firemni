@@ -9,12 +9,14 @@ class PlacementStatsBanner extends StatelessWidget {
     required this.placed,
     required this.unplaced,
     this.onShowUnplaced,
+    this.onOk,
   });
 
   final int total;
   final int placed;
   final int unplaced;
   final VoidCallback? onShowUnplaced;
+  final VoidCallback? onOk;
 
   @override
   Widget build(BuildContext context) {
@@ -34,6 +36,14 @@ class PlacementStatsBanner extends StatelessWidget {
               label: 'Zobrazit neumístěné',
               fullWidth: false,
               onPressed: onShowUnplaced,
+            ),
+          ],
+          if (onOk != null) ...[
+            const SizedBox(height: AppSpacing.sm),
+            AppSecondaryButton(
+              label: 'OK',
+              fullWidth: false,
+              onPressed: onOk,
             ),
           ],
         ],

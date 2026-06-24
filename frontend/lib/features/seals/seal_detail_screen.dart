@@ -333,48 +333,6 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     }
   }
 
-  Future<void> _reviewSeal(String action) async {
-    String? comment;
-    if (action == 'returned') {
-      final ctrl = TextEditingController();
-      comment = await showDialog<String>(
-        context: context,
-        builder: (ctx) => AlertDialog(
-          title: const Text('Vrátit k opravě'),
-          content: TextField(
-            controller: ctrl,
-            decoration: const InputDecoration(labelText: 'Komentář (povinný)'),
-            maxLines: 3,
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Zrušit')),
-            FilledButton(
-              onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-              child: const Text('Potvrdit'),
-            ),
-          ],
-        ),
-      );
-      if (comment == null || comment.isEmpty) return;
-    }
-    try {
-      await ref
-          .read(dioProvider)
-          .patch('/api/seals/${widget.sealId}/review', data: {
-        'action': action,
-        if (comment != null) 'comment': comment,
-      });
-      await _load();
-    } on DioException catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Revize selhala'))),
-      );
-    }
-  }
-
   Future<void> _changeStatus(String status) async {
     if (_dataSource == SealDetailDataSource.offline) return;
     if (status == 'checked' && _seal != null) {
@@ -468,12 +426,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         return;
       }
     }
-    final status = _seal?['status'] as String? ?? 'draft';
-    if (status == 'draft') {
-      await _changeStatus('checked');
-      return;
-    }
-    await _reviewSeal('approved');
+    await _changeStatus('checked');
   }
 
   Future<void> _loadHistory() async {
@@ -1064,44 +1017,6 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       ),
       const SizedBox(height: AppSpacing.md),
 
-      // Vrácená ucpávka — výrazný banner, aby pracovník hned viděl, co opravit.
-      if (seal['reviewStatus'] == 'returned')
-        Container(
-          margin: const EdgeInsets.only(bottom: AppSpacing.md),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.error.withValues(alpha: 0.1),
-            borderRadius: AppRadius.mdAll,
-            border: Border.all(color: AppColors.error.withValues(alpha: 0.4)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.replay, size: 18, color: AppColors.error),
-                  const SizedBox(width: AppSpacing.sm),
-                  Text(
-                    'Vráceno k opravě',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: AppColors.error,
-                          fontWeight: FontWeight.bold,
-                        ),
-                  ),
-                ],
-              ),
-              if ((seal['reviewComment'] as String?)?.trim().isNotEmpty ==
-                  true) ...[
-                const SizedBox(height: AppSpacing.sm),
-                Text(
-                  'Co opravit: ${(seal['reviewComment'] as String).trim()}',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-              ],
-            ],
-          ),
-        ),
-
       if (status == 'invoiced')
         Container(
           margin: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -1229,31 +1144,29 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         const SizedBox(height: AppSpacing.md),
       ],
 
-      // EVIDENCE (vedení / admin)
-      if (auth.isVedeni || auth.isAdmin) ...[
-        _DetailSection(
-          title: 'Evidence',
-          children: [
-            _KvRow(
-              label: 'Vytvořil',
-              value: _valueOr((seal['createdBy'] as Map?)?['displayName']),
-            ),
-            _KvRow(
-              label: 'Datum vytvoření',
-              value: _formatDate(seal['createdAt'] as String?),
-            ),
-            _KvRow(
-              label: 'Poslední editor',
-              value: _valueOr((seal['updatedBy'] as Map?)?['displayName']),
-            ),
-            _KvRow(
-              label: 'Poslední editace',
-              value: _formatDate(seal['updatedAt'] as String?),
-            ),
-          ],
-        ),
-        const SizedBox(height: AppSpacing.md),
-      ],
+      // EVIDENCE (autor a datum — viditelné pro všechny role)
+      _DetailSection(
+        title: 'Evidence',
+        children: [
+          _KvRow(
+            label: 'Vytvořil',
+            value: _valueOr((seal['createdBy'] as Map?)?['displayName']),
+          ),
+          _KvRow(
+            label: 'Datum vytvoření',
+            value: _formatDate(seal['createdAt'] as String?),
+          ),
+          _KvRow(
+            label: 'Poslední editor',
+            value: _valueOr((seal['updatedBy'] as Map?)?['displayName']),
+          ),
+          _KvRow(
+            label: 'Poslední editace',
+            value: _formatDate(seal['updatedAt'] as String?),
+          ),
+        ],
+      ),
+      const SizedBox(height: AppSpacing.md),
 
       // HISTORIE
       if (auth.canViewSealHistory && _history.isNotEmpty) ...[
@@ -1302,22 +1215,11 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
           SealStatusActions(
             auth: auth,
             status: status,
-            reviewStatus: seal['reviewStatus'] as String?,
             offline: offline,
             onApprove: _approveSeal,
-            onReturnForRepair: () => _reviewSeal('returned'),
             onInvoice: () => _changeStatus('invoiced'),
             onRevertToDraft: () => _changeStatus('draft'),
           ),
-          if (auth.canCreateRepair && !offline)
-            Padding(
-              padding: const EdgeInsets.only(top: AppSpacing.sm),
-              child: AppSecondaryButton(
-                label: 'Opravit',
-                icon: Icons.build_outlined,
-                onPressed: () => context.push('/seal/${widget.sealId}/repair'),
-              ),
-            ),
         ],
       ),
     ];

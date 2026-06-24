@@ -29,6 +29,7 @@ const WORKSHEET_STATUS_RANK: Record<WorkSheetStatus, number> = {
   [WorkSheetStatus.reviewed]: 2,
   [WorkSheetStatus.ready_for_invoice]: 3,
   [WorkSheetStatus.invoiced]: 4,
+  [WorkSheetStatus.archived]: 5,
 };
 
 export type SearchParams = {

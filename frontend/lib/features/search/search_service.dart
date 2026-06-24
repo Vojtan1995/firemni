@@ -214,8 +214,6 @@ bool _matchesLocalFilters(
         if (photoCount > 0) return false;
       case SealProblemFilter.onePhoto:
         if (photoCount != 1) return false;
-      case SealProblemFilter.returned:
-        if (reviewStatus != 'returned') return false;
       case SealProblemFilter.statusDraft:
       case SealProblemFilter.awaitingReview:
         if (row.status != 'draft') return false;
@@ -226,7 +224,7 @@ bool _matchesLocalFilters(
       case SealProblemFilter.mine:
         if (currentUserId == null) return false;
       case SealProblemFilter.attention:
-        if (reviewStatus != 'returned' && !row.markerPlacementPending) {
+        if (!row.markerPlacementPending) {
           return false;
         }
       case SealProblemFilter.pendingSync:

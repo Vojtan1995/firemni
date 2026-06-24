@@ -46,6 +46,7 @@ import {
 import { parseSealFilters } from "../lib/seal-list-filters.js";
 import { listFloorSealsFiltered } from "../services/search.service.js";
 import { getEntryWorksheetMembership } from "../services/worksheet.service.js";
+import { anonymizeOptionalUserForViewer } from "../lib/user-privacy.js";
 
 const router = Router();
 router.use(authMiddleware);
@@ -268,8 +269,12 @@ router.get("/:id", async (req, res, next) => {
     const seal = await prisma.seal.findFirst({
       where: { id: sealId, deletedAt: null },
       include: {
-        createdBy: { select: { id: true, displayName: true, username: true } },
-        updatedBy: { select: { id: true, displayName: true, username: true } },
+        createdBy: {
+          select: { id: true, displayName: true, username: true, role: true },
+        },
+        updatedBy: {
+          select: { id: true, displayName: true, username: true, role: true },
+        },
         entries: {
           where: { deletedAt: null },
           include: { materials: { orderBy: { sortOrder: "asc" } } },
@@ -302,7 +307,8 @@ router.get("/:id", async (req, res, next) => {
       : new Map();
     const sealWithMembership = {
       ...seal,
-      createdBy: showPrivateSealContext ? seal.createdBy : undefined,
+      createdBy: anonymizeOptionalUserForViewer(seal.createdBy, req.user!.role),
+      updatedBy: anonymizeOptionalUserForViewer(seal.updatedBy, req.user!.role),
       entries: seal.entries.map((e) => {
         const m = membership.get(e.id);
         return {
