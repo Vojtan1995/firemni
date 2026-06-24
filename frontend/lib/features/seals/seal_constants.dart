@@ -84,6 +84,13 @@ const systemMaterials = <String, List<String>>{
 
 const constructions = ['Beton/Cihla', 'SDK/PUR'];
 const locations = ['Stěna', 'Strop', 'Podlaha', 'Šachta'];
+
+/// Podkategorie šachty — po výběru „Šachta" se ukládá jako „Šachta – <část>".
+const shaftParts = ['Podlaha', 'Strop', 'Stěna'];
+const shaftLocationPrefix = 'Šachta – ';
+
+/// Složí uloženou hodnotu umístění z části šachty.
+String composeShaftLocation(String part) => '$shaftLocationPrefix$part';
 const fireRatings = ['60 min', '90 min', '120 min'];
 const entryTypes = ['EL.V.', 'PVC', 'VZT', 'PROSTUP', 'OCEL', 'Měď'];
 const insulations = ['žádná', 'hořlavá', 'nehořlavá'];

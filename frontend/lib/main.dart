@@ -25,6 +25,7 @@ class UcpavkyApp extends ConsumerStatefulWidget {
 
 class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
   bool _ready = false;
+  bool _updateDialogShown = false;
 
   @override
   void initState() {
@@ -49,10 +50,13 @@ class _UcpavkyAppState extends ConsumerState<UcpavkyApp> {
   }
 
   Future<void> _checkAppUpdate() async {
+    // Guard: auto-update dialog ukázat max. 1× za běh aplikace.
+    if (_updateDialogShown) return;
     final result = await evaluateAppUpdate(ref.read(dioProvider));
     if (!mounted || result == null) return;
     final navContext = rootNavigatorKey.currentContext;
     if (navContext == null || !navContext.mounted) return;
+    _updateDialogShown = true;
     await showAppUpdateDialog(
       context: navContext,
       release: result.release,

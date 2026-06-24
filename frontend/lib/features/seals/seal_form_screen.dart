@@ -57,6 +57,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   String? _system;
   String? _construction;
   String? _location;
+  String? _shaftPart;
   String? _fireRating;
   final _entries = <SealEntryDraftData>[SealEntryDraftData()];
   final _photoPaths = <String>[];
@@ -160,7 +161,13 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _trade = seal['trade'] as String?;
     _system = seal['system'] as String?;
     _construction = seal['construction'] as String?;
-    _location = seal['location'] as String?;
+    final loadedLocation = seal['location'] as String?;
+    if (loadedLocation != null && loadedLocation.startsWith(shaftLocationPrefix)) {
+      _location = 'Šachta';
+      _shaftPart = loadedLocation.substring(shaftLocationPrefix.length);
+    } else {
+      _location = loadedLocation;
+    }
     _fireRating = seal['fireRating'] as String?;
     _noteCtrl.text = seal['note'] as String? ?? '';
     _internalNoteCtrl.text = seal['internalNote'] as String? ?? '';
@@ -412,13 +419,23 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     );
   }
 
+  /// Výsledná hodnota umístění: u „Šachta" složená jako „Šachta – <část>";
+  /// vrátí null, dokud není vybraná část šachty (→ validace povinného pole).
+  String? get _effectiveLocation {
+    if (_location == null) return null;
+    if (_location == 'Šachta') {
+      return _shaftPart == null ? null : composeShaftLocation(_shaftPart!);
+    }
+    return _location;
+  }
+
   Future<void> _save() async {
     final sealNumber = _numberCtrl.text.trim();
     if (sealNumber.isEmpty ||
         _trade == null ||
         _system == null ||
         _construction == null ||
-        _location == null ||
+        _effectiveLocation == null ||
         _fireRating == null) {
       ScaffoldMessenger.of(context)
           .showSnackBar(const SnackBar(content: Text('Vyplňte povinná pole')));
@@ -603,7 +620,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'trade': _trade,
       'system': _system,
       'construction': _construction,
-      'location': _location,
+      'location': _effectiveLocation,
       'fireRating': _fireRating,
       'markerPlacementPending': markerPlacementPending,
       'entries': entriesPayload,
@@ -629,7 +646,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             trade: Value(_trade!),
             system: _system!,
             construction: _construction!,
-            location: _location!,
+            location: _effectiveLocation!,
             fireRating: _fireRating!,
             note: Value(cols.note),
             internalNote: Value(cols.internalNote),
@@ -759,7 +776,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'trade': _trade,
       'system': _system,
       'construction': _construction,
-      'location': _location,
+      'location': _effectiveLocation,
       'fireRating': _fireRating,
       'entries': entriesPayload,
     };
@@ -785,7 +802,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
           trade: Value(_trade!),
           system: Value(_system!),
           construction: Value(_construction!),
-          location: Value(_location!),
+          location: Value(_effectiveLocation!),
           fireRating: Value(_fireRating!),
           note: Value(cols.note),
           internalNote: Value(cols.internalNote),
@@ -995,10 +1012,26 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 options: locations,
                 selected: _location,
                 onSelected: (v) {
-                  setState(() => _location = v);
+                  setState(() {
+                    _location = v;
+                    // Část šachty má smysl jen u „Šachta".
+                    if (v != 'Šachta') _shaftPart = null;
+                  });
                   _markDirty();
                 },
               ),
+              if (_location == 'Šachta') ...[
+                const SizedBox(height: 12),
+                ChipSelector(
+                  label: 'Část šachty *',
+                  options: shaftParts,
+                  selected: _shaftPart,
+                  onSelected: (v) {
+                    setState(() => _shaftPart = v);
+                    _markDirty();
+                  },
+                ),
+              ],
               const SizedBox(height: 12),
               ChipSelector(
                 label: 'Požární odolnost *',

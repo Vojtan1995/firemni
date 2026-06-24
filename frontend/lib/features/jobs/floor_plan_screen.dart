@@ -665,6 +665,22 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
 
   bool get _draftBlocksPop => _isDraftMode && _draftDirty;
 
+  /// Tlačítko „OK" — vždy přejde na seznam ucpávek daného patra (ne zpět na
+  /// předchozí stránku). jobId vezme z widgetu, případně dohledá z lokálního
+  /// patra, aby cíl nebyl rozbitý při prázdném query parametru.
+  Future<void> _goToSealList() async {
+    var jobId = widget.jobId;
+    if (jobId.isEmpty) {
+      final db = ref.read(databaseProvider);
+      final floor = await (db.select(db.localFloors)
+            ..where((f) => f.id.equals(widget.floorId)))
+          .getSingleOrNull();
+      jobId = floor?.jobId ?? '';
+    }
+    if (!mounted) return;
+    context.go('/seals/${widget.floorId}?jobId=$jobId');
+  }
+
   Future<void> _onTapPlan(Offset local, Size size) async {
     if (size.width <= 0 || size.height <= 0) return;
     final normalized = tapToNormalizedMarker(local, size);
@@ -1031,9 +1047,7 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                     placed: _placed,
                     unplaced: _unplaced,
                     onShowUnplaced: _unplaced > 0 ? _showUnplaced : null,
-                    onOk: () => context.go(
-                      '/seals/${widget.floorId}?jobId=${widget.jobId}',
-                    ),
+                    onOk: _goToSealList,
                   ),
                   if (_filter.isActive)
                     Padding(
