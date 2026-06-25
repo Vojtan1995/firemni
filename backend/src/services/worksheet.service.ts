@@ -311,6 +311,7 @@ export async function createWorksheet(
     periodFrom?: string;
     periodTo?: string;
     note?: string;
+    audience?: "worker" | "customer";
   },
 ) {
   const job = await prisma.job.findFirst({
@@ -336,6 +337,7 @@ export async function createWorksheet(
       periodFrom: data.periodFrom ? new Date(data.periodFrom) : undefined,
       periodTo: data.periodTo ? new Date(data.periodTo) : undefined,
       note: data.note,
+      audience: data.audience ?? "worker",
       workers: {
         create: workerIds.map((wid) => ({ userId: wid })),
       },
@@ -927,30 +929,41 @@ export async function exportWorksheetCsv(
     role,
     userId,
   );
-  const colCount = EXPORT_COLUMNS.length;
-  const header = EXPORT_COLUMNS.map((c) => csvCell(c.label)).join(";");
+  // Zákaznický soupis nesmí obsahovat žádné ceny – ani sloupce, ani souhrnné řádky.
+  const isCustomer = worksheet.audience === "customer";
+  const columns = isCustomer
+    ? EXPORT_COLUMNS.filter((c) => !c.money)
+    : EXPORT_COLUMNS;
+  const colCount = columns.length;
+  const header = columns.map((c) => csvCell(c.label)).join(";");
   const lines: string[] = [header];
 
   for (const group of floorGroups) {
     for (const row of group.rows) {
       lines.push(
-        EXPORT_COLUMNS.map((c) => {
-          const v = (row as Record<string, unknown>)[c.key];
-          return csvCell(c.money ? money(v as number | null) : v);
-        }).join(";"),
+        columns
+          .map((c) => {
+            const v = (row as Record<string, unknown>)[c.key];
+            return csvCell(c.money ? money(v as number | null) : v);
+          })
+          .join(";"),
       );
     }
-    // Řádek "Cena za podlaží" – součet v posledním sloupci.
-    const floorTotalCells = new Array(colCount).fill('""');
-    floorTotalCells[0] = csvCell(`Cena za podlaží – ${group.floorName}`);
-    floorTotalCells[colCount - 1] = csvCell(money(group.floorTotal));
-    lines.push(floorTotalCells.join(";"));
+    if (!isCustomer) {
+      // Řádek "Cena za podlaží" – součet v posledním sloupci.
+      const floorTotalCells = new Array(colCount).fill('""');
+      floorTotalCells[0] = csvCell(`Cena za podlaží – ${group.floorName}`);
+      floorTotalCells[colCount - 1] = csvCell(money(group.floorTotal));
+      lines.push(floorTotalCells.join(";"));
+    }
   }
 
-  const totalCells = new Array(colCount).fill('""');
-  totalCells[0] = csvCell("Cena celkem bez DPH");
-  totalCells[colCount - 1] = csvCell(money(total));
-  lines.push(totalCells.join(";"));
+  if (!isCustomer) {
+    const totalCells = new Array(colCount).fill('""');
+    totalCells[0] = csvCell("Cena celkem bez DPH");
+    totalCells[colCount - 1] = csvCell(money(total));
+    lines.push(totalCells.join(";"));
+  }
   lines.push(
     `${csvCell("Datum")};${csvCell(new Date().toISOString().split("T")[0])}`,
   );
@@ -971,6 +984,11 @@ export async function exportWorksheetPdf(
     role,
     userId,
   );
+  // Zákaznický soupis nesmí obsahovat žádné ceny – ani sloupce, ani souhrnné řádky.
+  const isCustomer = worksheet.audience === "customer";
+  const columns = isCustomer
+    ? EXPORT_COLUMNS.filter((c) => !c.money)
+    : EXPORT_COLUMNS;
 
   const filename = `soupis-${worksheet.job.projectNumber}-${worksheet.id.slice(0, 8)}.pdf`;
   res.setHeader("Content-Type", "application/pdf");
@@ -986,9 +1004,9 @@ export async function exportWorksheetPdf(
   doc.pipe(res);
 
   const pageRight = doc.page.width - margin;
-  const tableWidth = EXPORT_COLUMNS.reduce((s, c) => s + c.width, 0);
+  const tableWidth = columns.reduce((s, c) => s + c.width, 0);
   const scale = (pageRight - margin) / tableWidth;
-  const colWidths = EXPORT_COLUMNS.map((c) => c.width * scale);
+  const colWidths = columns.map((c) => c.width * scale);
   const bottomY = doc.page.height - margin - 60;
 
   const periodFrom = worksheet.periodFrom?.toISOString().split("T")[0] ?? "—";
@@ -1007,13 +1025,17 @@ export async function exportWorksheetPdf(
     `Stav: ${STATUS_LABELS[worksheet.status]}    Období: ${periodFrom} – ${periodTo}`,
   );
   doc.text(`Pracovníci: ${workerNames || "—"}    Počet položek: ${itemCount}`);
-  // Horní souhrnná fakturační tabulka + odsouhlasovací text.
-  doc.text(`Celková cena bez DPH: ${money(total)}`);
+  if (!isCustomer) {
+    // Horní souhrnná fakturační tabulka + odsouhlasovací text.
+    doc.text(`Celková cena bez DPH: ${money(total)}`);
+  }
   doc.moveDown(0.3);
   doc
     .fontSize(8)
     .text(
-      "Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu a cenách.",
+      isCustomer
+        ? "Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu."
+        : "Odsouhlasením tohoto soupisu objednatel potvrzuje provedení uvedených prací v daném rozsahu a cenách.",
     );
   doc.moveDown(0.5);
 
@@ -1021,10 +1043,7 @@ export async function exportWorksheetPdf(
   const headerFontSize = 8;
   const bodyFontSize = 7.5;
 
-  function cellText(
-    col: (typeof EXPORT_COLUMNS)[number],
-    row: ExportRowLike,
-  ): string {
+  function cellText(col: (typeof columns)[number], row: ExportRowLike): string {
     const v = (row as Record<string, unknown>)[col.key];
     if (col.money) return money(v as number | null);
     return String(v ?? "");
@@ -1032,7 +1051,7 @@ export async function exportWorksheetPdf(
 
   function rowHeight(cells: string[]): number {
     let max = 14;
-    EXPORT_COLUMNS.forEach((col, i) => {
+    columns.forEach((col, i) => {
       const h =
         doc.heightOfString(cells[i] ?? "", {
           width: colWidths[i] - rowPadX * 2,
@@ -1055,7 +1074,7 @@ export async function exportWorksheetPdf(
     let x = margin;
     if (opts.header || opts.bold) setCzechPdfBold(doc);
     else setCzechPdfRegular(doc);
-    EXPORT_COLUMNS.forEach((col, i) => {
+    columns.forEach((col, i) => {
       const w = colWidths[i];
       doc.rect(x, y, w, h).stroke();
       doc.fontSize(opts.header ? headerFontSize : bodyFontSize);
@@ -1071,7 +1090,7 @@ export async function exportWorksheetPdf(
 
   function drawHeaderRow() {
     drawRow(
-      EXPORT_COLUMNS.map((c) => c.label),
+      columns.map((c) => c.label),
       { header: true },
     );
   }
@@ -1080,21 +1099,25 @@ export async function exportWorksheetPdf(
   for (const group of floorGroups) {
     for (const row of group.rows) {
       drawRow(
-        EXPORT_COLUMNS.map((c) => cellText(c, row)),
+        columns.map((c) => cellText(c, row)),
         {},
       );
     }
-    // Součet za podlaží (tučně, cena vpravo).
-    const floorTotalCells = EXPORT_COLUMNS.map(() => "");
-    floorTotalCells[0] = `Cena za podlaží – ${group.floorName}`;
-    floorTotalCells[EXPORT_COLUMNS.length - 1] = money(group.floorTotal);
-    drawRow(floorTotalCells, { bold: true });
+    if (!isCustomer) {
+      // Součet za podlaží (tučně, cena vpravo).
+      const floorTotalCells = columns.map(() => "");
+      floorTotalCells[0] = `Cena za podlaží – ${group.floorName}`;
+      floorTotalCells[columns.length - 1] = money(group.floorTotal);
+      drawRow(floorTotalCells, { bold: true });
+    }
   }
 
-  doc.moveDown(0.6);
-  setCzechPdfBold(doc);
-  doc.fontSize(11).text(`Cena celkem bez DPH: ${money(total)}`);
-  setCzechPdfRegular(doc);
+  if (!isCustomer) {
+    doc.moveDown(0.6);
+    setCzechPdfBold(doc);
+    doc.fontSize(11).text(`Cena celkem bez DPH: ${money(total)}`);
+    setCzechPdfRegular(doc);
+  }
   doc.fontSize(9).text(`Datum: ${new Date().toISOString().split("T")[0]}`);
   doc.end();
 }

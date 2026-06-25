@@ -225,13 +225,22 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
     );
   }
 
-  Widget _sectionView(_LogSection section) {
-    final items = _data[section.label] ?? const [];
-    if (items.isEmpty) {
-      return const EmptyState(message: 'Žádné záznamy', icon: Icons.history);
-    }
+  /// Pořadí podkategorií v UI (české, bez syrových názvů akcí).
+  static const _categoryOrder = [
+    'Vytvořené',
+    'Stav',
+    'Úpravy',
+    'Přesuny',
+    'Fotky a výkresy',
+    'Smazání a obnova',
+    'Ceník',
+    'Ostatní',
+  ];
 
-    // Seskupení po dnech.
+  List<Widget> _dayGroupedChildren(
+    List<Map<String, dynamic>> items, {
+    required bool isSystem,
+  }) {
     final groups = <String, List<Map<String, dynamic>>>{};
     for (final item in items) {
       final ts = _parseTs(item['timestamp']);
@@ -248,15 +257,63 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         style: SectionHeaderStyle.h3,
       ));
       for (final item in groups[key]!) {
-        children.add(section.isSystem ? _systemRow(item) : _historyRow(item));
+        children.add(isSystem ? _systemRow(item) : _historyRow(item));
       }
     }
+    return children;
+  }
+
+  Widget _sectionView(_LogSection section) {
+    final items = _data[section.label] ?? const [];
+    if (items.isEmpty) {
+      return const EmptyState(message: 'Žádné záznamy', icon: Icons.history);
+    }
+
+    if (section.isSystem) {
+      return RefreshIndicator(
+        onRefresh: _load,
+        child: ListView(
+          padding: const EdgeInsets.all(AppSpacing.lg),
+          children: _dayGroupedChildren(items, isSystem: true),
+        ),
+      );
+    }
+
+    // Seskupení podle podkategorie (Vytvořené/Stav/Úpravy/Přesuny/…), uvnitř po dnech.
+    final byCategory = <String, List<Map<String, dynamic>>>{};
+    for (final item in items) {
+      final category = item['category'] as String? ?? 'Ostatní';
+      byCategory.putIfAbsent(category, () => []).add(item);
+    }
+    final categories = byCategory.keys.toList()
+      ..sort((a, b) {
+        final ia = _categoryOrder.indexOf(a);
+        final ib = _categoryOrder.indexOf(b);
+        return (ia == -1 ? _categoryOrder.length : ia)
+            .compareTo(ib == -1 ? _categoryOrder.length : ib);
+      });
 
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
         padding: const EdgeInsets.all(AppSpacing.lg),
-        children: children,
+        children: [
+          for (final category in categories)
+            Card(
+              margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+              child: ExpansionTile(
+                title: Text(
+                  category,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Text('${byCategory[category]!.length} záznamů'),
+                initiallyExpanded: categories.length == 1,
+                childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                children:
+                    _dayGroupedChildren(byCategory[category]!, isSystem: false),
+              ),
+            ),
+        ],
       ),
     );
   }

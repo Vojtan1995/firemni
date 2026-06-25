@@ -370,6 +370,8 @@ model WorkSheet {
   id                 String           @id @default(uuid())
   jobId              String           @map("job_id")
   status             WorkSheetStatus  @default(draft)
+  // "worker" (s cenami) nebo "customer" (bez cen v exportu i v appce).
+  audience           String           @default("worker")
   periodFrom         DateTime?        @map("period_from")
   periodTo           DateTime?        @map("period_to")
   note               String?

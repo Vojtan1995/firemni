@@ -54,6 +54,7 @@ router.post('/', requirePermission('worksheet.create'), async (req, res, next) =
         periodFrom: z.string().optional(),
         periodTo: z.string().optional(),
         note: z.string().max(2000).optional(),
+        audience: z.enum(['worker', 'customer']).optional(),
       })
       .parse(req.body);
     const worksheet = await createWorksheet(req.user!.role, req.user!.id, body);

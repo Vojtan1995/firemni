@@ -75,7 +75,10 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
 
     setState(() => _creatingWorksheet = true);
     try {
-      final body = <String, dynamic>{'jobId': filters.jobId};
+      final body = <String, dynamic>{
+        'jobId': filters.jobId,
+        'audience': filters.audience,
+      };
       if (!auth.isWorker) body['workerIds'] = filters.workerIds;
       if (filters.from != null) body['periodFrom'] = _dateParam(filters.from!);
       if (filters.to != null) body['periodTo'] = _dateParam(filters.to!);
@@ -87,7 +90,7 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
       final ws = res.data as Map<String, dynamic>;
 
       final populateBody = <String, dynamic>{
-        if (filters.floorId != null) 'floorIds': [filters.floorId],
+        if (filters.floorIds.isNotEmpty) 'floorIds': filters.floorIds,
         if (filters.status != null) 'status': filters.status,
         if (filters.from != null) 'from': _dateParam(filters.from!),
         if (filters.to != null) 'to': _dateParam(filters.to!),

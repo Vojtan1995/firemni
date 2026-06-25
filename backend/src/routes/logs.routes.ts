@@ -194,6 +194,7 @@ router.get('/history', async (req, res, next) => {
           timestamp: c.createdAt,
           title: d.title,
           entity: d.entity,
+          category: d.category,
           user: anonymizeUserForViewer(c.user, role),
         };
       }),
@@ -206,6 +207,7 @@ router.get('/history', async (req, res, next) => {
             timestamp: a.createdAt,
             title: d.title,
             entity: d.entity,
+            category: d.category,
             user: anonymizeUserForViewer(a.user, role),
           };
         }),
@@ -256,6 +258,7 @@ router.get('/user-activity', requireLogsView, async (req, res, next) => {
           ? 'Přihlásil se'
           : `Neúspěšné přihlášení${l.username ? ` (${l.username})` : ''}`,
         entity: null,
+        category: 'Ostatní' as const,
         user: l.user ? anonymizeUserForViewer(l.user, role) : null,
       })),
       ...activities.map((a) => {
@@ -265,6 +268,7 @@ router.get('/user-activity', requireLogsView, async (req, res, next) => {
           timestamp: a.createdAt,
           title: d.title,
           entity: null,
+          category: d.category,
           user: anonymizeUserForViewer(a.user, role),
         };
       }),
@@ -333,7 +337,13 @@ router.get('/my-activity', async (req, res, next) => {
     });
     const entries = activities.map((a) => {
       const d = describeActivity(a);
-      return { id: a.id, timestamp: a.createdAt, title: d.title, entity: d.entity };
+      return {
+        id: a.id,
+        timestamp: a.createdAt,
+        title: d.title,
+        entity: d.entity,
+        category: d.category,
+      };
     });
     res.json(entries);
   } catch (e) {

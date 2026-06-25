@@ -14,7 +14,17 @@ const _statusLabels = {
   'reviewed': 'Schválený',
   'ready_for_invoice': 'Schválený',
   'invoiced': 'Vyfakturovaný',
+  'archived': 'Archivovaný',
 };
+
+const _statusOrder = [
+  'draft',
+  'submitted',
+  'reviewed',
+  'ready_for_invoice',
+  'invoiced',
+  'archived',
+];
 
 class ProfileWorksheetsSection extends ConsumerStatefulWidget {
   const ProfileWorksheetsSection({super.key, required this.role});
@@ -26,7 +36,8 @@ class ProfileWorksheetsSection extends ConsumerStatefulWidget {
       _ProfileWorksheetsSectionState();
 }
 
-class _ProfileWorksheetsSectionState extends ConsumerState<ProfileWorksheetsSection> {
+class _ProfileWorksheetsSectionState
+    extends ConsumerState<ProfileWorksheetsSection> {
   List<Map<String, dynamic>> _items = [];
   bool _loading = true;
   String? _error;
@@ -64,48 +75,81 @@ class _ProfileWorksheetsSectionState extends ConsumerState<ProfileWorksheetsSect
     }
   }
 
+  Widget _worksheetCard(Map<String, dynamic> ws) {
+    final job = ws['job'] as Map<String, dynamic>?;
+    final status = ws['status'] as String? ?? 'draft';
+    final id = ws['id'] as String;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      child: AppCard(
+        title: job?['name']?.toString() ?? 'Soupis',
+        subtitle: '${job?['projectNumber'] ?? ''}',
+        trailing: StatusBadge(
+          status: status,
+          label: _statusLabels[status] ?? status,
+        ),
+        onTap: () => context.push('/worksheets/$id'),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
+    final byStatus = <String, List<Map<String, dynamic>>>{};
+    for (final ws in _items) {
+      final status = ws['status'] as String? ?? 'draft';
+      byStatus.putIfAbsent(status, () => []).add(ws);
+    }
+    final statuses = byStatus.keys.toList()
+      ..sort(
+        (a, b) => _statusOrder.indexOf(a).compareTo(_statusOrder.indexOf(b)),
+      );
+
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ExpansionTile(
+        title: Row(
           children: [
             const Expanded(
-              child: SectionHeader(title: 'Moje soupisy', style: SectionHeaderStyle.h3),
+              child: Text(
+                'Moje soupisy',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
             IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
           ],
         ),
-        if (_loading)
-          const Padding(
-            padding: EdgeInsets.all(AppSpacing.lg),
-            child: Center(child: CircularProgressIndicator()),
-          )
-        else if (_error != null)
-          Text(_error!, style: const TextStyle(color: AppColors.error))
-        else if (_items.isEmpty)
-          const Text('Zatím nemáte žádné soupisy.')
-        else
-          ..._items.take(20).map((ws) {
-            final job = ws['job'] as Map<String, dynamic>?;
-            final status = ws['status'] as String? ?? 'draft';
-            final id = ws['id'] as String;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              child: AppCard(
-                title: job?['name']?.toString() ?? 'Soupis',
-                subtitle:
-                    '${job?['projectNumber'] ?? ''} · ${_statusLabels[status] ?? status}',
-                trailing: StatusBadge(
-                  status: status,
-                  label: _statusLabels[status] ?? status,
+        subtitle: Text(
+          _loading ? 'Načítání…' : '${_items.length} soupisů',
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(
+          AppSpacing.lg,
+          0,
+          AppSpacing.lg,
+          AppSpacing.sm,
+        ),
+        children: [
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(AppSpacing.lg),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_error != null)
+            Text(_error!, style: const TextStyle(color: AppColors.error))
+          else if (_items.isEmpty)
+            const Text('Zatím nemáte žádné soupisy.')
+          else
+            for (final status in statuses)
+              ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: Text(
+                  '${_statusLabels[status] ?? status} (${byStatus[status]!.length})',
                 ),
-                onTap: () => context.push('/worksheets/$id'),
+                initiallyExpanded: statuses.length == 1,
+                children: byStatus[status]!.map(_worksheetCard).toList(),
               ),
-            );
-          }),
-      ],
+        ],
+      ),
     );
   }
 }

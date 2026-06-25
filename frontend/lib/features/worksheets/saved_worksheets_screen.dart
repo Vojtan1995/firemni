@@ -220,7 +220,8 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: Text(status == 'archived' ? 'Archivovat soupisy' : 'Změnit stav'),
+        title:
+            Text(status == 'archived' ? 'Archivovat soupisy' : 'Změnit stav'),
         content: Text('Označit $count soupisů jako "$label"?'),
         actions: [
           TextButton(
@@ -238,7 +239,9 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
 
     setState(() => _bulkBusy = true);
     try {
-      final res = await ref.read(dioProvider).post('/api/worksheets/bulk-status', data: {
+      final res = await ref
+          .read(dioProvider)
+          .post('/api/worksheets/bulk-status', data: {
         'ids': _selectedIds.toList(),
         'status': status,
       });
@@ -257,11 +260,62 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Hromadná akce selhala'))),
+        SnackBar(
+            content:
+                Text(apiErrorMessage(e, fallback: 'Hromadná akce selhala'))),
       );
     } finally {
       if (mounted) setState(() => _bulkBusy = false);
     }
+  }
+
+  Future<void> _bulkDeleteDrafts() async {
+    if (_selectedIds.isEmpty) return;
+    final count = _selectedIds.length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Smazat soupisy'),
+        content: Text(
+          'Smazat $count vybraných soupisů? Smazat lze jen rozpracované soupisy, ostatní budou přeskočeny.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Zrušit'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Smazat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    setState(() => _bulkBusy = true);
+    var deleted = 0;
+    var failed = 0;
+    final dio = ref.read(dioProvider);
+    for (final id in _selectedIds.toList()) {
+      try {
+        await dio.delete('/api/worksheets/$id');
+        deleted++;
+      } catch (_) {
+        failed++;
+      }
+    }
+    setState(() {
+      _selectedIds.clear();
+      _selectionMode = false;
+      _bulkBusy = false;
+    });
+    await _load();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Smazáno: $deleted · Selhalo: $failed')),
+    );
   }
 
   Widget _buildWorksheetList(AuthService auth) {
@@ -471,11 +525,17 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                           Icon(Icons.expand_more),
                         ],
                       ),
-                      onSelected: _bulkChangeStatus,
+                      onSelected: (value) {
+                        if (value == 'delete') {
+                          _bulkDeleteDrafts();
+                        } else {
+                          _bulkChangeStatus(value);
+                        }
+                      },
                       itemBuilder: (_) => const [
                         PopupMenuItem(
-                          value: 'archived',
-                          child: Text('Archivovat'),
+                          value: 'draft',
+                          child: Text('Vrátit do rozpracovaného'),
                         ),
                         PopupMenuItem(
                           value: 'reviewed',
@@ -488,6 +548,18 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                         PopupMenuItem(
                           value: 'invoiced',
                           child: Text('Nastavit: Vyfakturovaný'),
+                        ),
+                        PopupMenuItem(
+                          value: 'archived',
+                          child: Text('Archivovat'),
+                        ),
+                        PopupMenuDivider(),
+                        PopupMenuItem(
+                          value: 'delete',
+                          child: Text(
+                            'Smazat (jen rozpracované)',
+                            style: TextStyle(color: AppColors.error),
+                          ),
                         ),
                       ],
                     ),

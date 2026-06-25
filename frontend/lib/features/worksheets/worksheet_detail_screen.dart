@@ -458,6 +458,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     final status = ws['status'] as String? ?? 'draft';
     final totalValue = ws['totalValue'];
     final itemCount = ws['itemCount'] ?? items.length;
+    final hidePrices = ws['audience'] == 'customer';
 
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -492,11 +493,22 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
                     .join(', ')),
               ),
               _infoRow('Počet položek', Text('$itemCount')),
-              if (totalValue != null)
+              if (!hidePrices && totalValue != null)
                 _infoRow('Celková hodnota',
                     Text('${parseNum(totalValue).toStringAsFixed(2)} Kč')),
               if ((ws['note'] as String?)?.isNotEmpty == true)
                 _infoRow('Poznámka', Text(ws['note'] as String)),
+              if (hidePrices)
+                Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.sm),
+                  child: Text(
+                    'Zákaznický soupis (bez cen)',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -531,7 +543,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
             icon: Icons.list_alt_outlined,
           )
         else
-          ...items.map(_buildItemCard),
+          ...items.map((item) => _buildItemCard(item, hidePrices: hidePrices)),
         const SizedBox(height: AppSpacing.xl),
         const SectionHeader(
             title: 'Historie stavu', style: SectionHeaderStyle.h3),
@@ -591,7 +603,7 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
     return s.isEmpty ? '—' : s;
   }
 
-  Widget _buildItemCard(Map<String, dynamic> item) {
+  Widget _buildItemCard(Map<String, dynamic> item, {bool hidePrices = false}) {
     final unitVal = parseNumOrNull(item['unitPrice']);
     final totalVal = parseNumOrNull(item['totalPrice']);
     final qty = parseNumOrNull(item['quantity']) ?? 0;
@@ -620,19 +632,21 @@ class _WorksheetDetailScreenState extends ConsumerState<WorksheetDetailScreen> {
           _itemLine('Umístění', _orDash(item['location'])),
           _itemLine('Rozměr', _orDash(item['dimension'])),
           _itemLine('Množství', '${_orDash(item['quantity'])} $unitLabel'),
-          _itemLine(
-            'Jedn. cena',
-            unitVal != null
-                ? '${unitVal.toStringAsFixed(2)} Kč/$unitLabel'
-                : '—',
-          ),
-          _itemLine(
-            'Cena celkem',
-            computedTotal != null
-                ? '${computedTotal.toStringAsFixed(2)} Kč'
-                : '—',
-            bold: true,
-          ),
+          if (!hidePrices) ...[
+            _itemLine(
+              'Jedn. cena',
+              unitVal != null
+                  ? '${unitVal.toStringAsFixed(2)} Kč/$unitLabel'
+                  : '—',
+            ),
+            _itemLine(
+              'Cena celkem',
+              computedTotal != null
+                  ? '${computedTotal.toStringAsFixed(2)} Kč'
+                  : '—',
+              bold: true,
+            ),
+          ],
           if (note != null && note.isNotEmpty) _itemLine('Poznámka', note),
         ],
       ),

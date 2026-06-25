@@ -8,6 +8,7 @@ import '../../core/design_tokens.dart';
 import '../../core/parse_utils.dart';
 import '../auth/auth_provider.dart';
 import '../seals/seal_constants.dart';
+import '../worksheets/worksheet_create_helpers.dart';
 import 'export_service.dart';
 import 'reports_query.dart';
 
@@ -19,10 +20,12 @@ class ReportsFilterSelection {
     this.status,
     this.workerId,
     this.floorId,
+    this.floorIds = const [],
     this.system,
     this.entryType,
     this.from,
     this.to,
+    this.audience = 'worker',
   });
 
   final Map<String, String> queryParams;
@@ -31,10 +34,14 @@ class ReportsFilterSelection {
   final String? status;
   final String? workerId;
   final String? floorId;
+  /// Patra vybraná pro vytvoření soupisu (volitelné, lze vybrat víc najednou).
+  final List<String> floorIds;
   final String? system;
   final String? entryType;
   final DateTime? from;
   final DateTime? to;
+  /// 'worker' (soupis s cenami) nebo 'customer' (soupis pro zákazníka, bez cen).
+  final String audience;
 }
 
 class ReportsScreen extends ConsumerStatefulWidget {
@@ -79,6 +86,9 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
   String? _filterEntryType;
   DateTime? _filterFrom;
   DateTime? _filterTo;
+  final Set<String> _creationFloorIds = {};
+  final Set<String> _creationWorkerIds = {};
+  String _audience = 'worker';
 
   static const _statusOptions = <String?, String>{
     null: 'Všechny statusy',
@@ -105,12 +115,14 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
     final isWorker = _isWorker;
     final workerIds = isWorker
         ? <String>[if (currentUserId != null) currentUserId]
-        : _filterWorkerId != null
-            ? <String>[_filterWorkerId!]
-            : _workers
-                .map((w) => w['id'] as String?)
-                .whereType<String>()
-                .toList();
+        : _creationWorkerIds.isNotEmpty
+            ? _creationWorkerIds.toList()
+            : _filterWorkerId != null
+                ? <String>[_filterWorkerId!]
+                : _workers
+                    .map((w) => w['id'] as String?)
+                    .whereType<String>()
+                    .toList();
     return ReportsFilterSelection(
       queryParams: _queryParams,
       workerIds: workerIds,
@@ -118,10 +130,12 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
       status: _filterStatus,
       workerId: isWorker ? currentUserId : _filterWorkerId,
       floorId: _filterFloorId,
+      floorIds: _creationFloorIds.toList(),
       system: _filterSystem,
       entryType: _filterEntryType,
       from: _filterFrom,
       to: _filterTo,
+      audience: _audience,
     );
   }
 
@@ -183,6 +197,7 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
       setState(() {
         _floors = [];
         _filterFloorId = null;
+        _creationFloorIds.clear();
       });
       return;
     }
@@ -195,6 +210,8 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
             !_floors.any((f) => f['id'] == _filterFloorId)) {
           _filterFloorId = null;
         }
+        _creationFloorIds
+            .removeWhere((id) => !_floors.any((f) => f['id'] == id));
       });
     } on DioException catch (e) {
       _showError(_dioMessage(e, 'Nepodařilo se načíst patra'));
@@ -365,6 +382,88 @@ class ReportsScreenState extends ConsumerState<ReportsScreen> {
               _loadFloorsForJob(v);
             },
           ),
+          if (widget.compact && widget.onCreateWorksheet != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Patro (volitelné, lze vybrat víc)',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 4),
+            if (_floors.isEmpty)
+              Text(
+                'Nejdříve vyberte stavbu',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textMuted,
+                    ),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: _floors.map((f) {
+                  final id = f['id'] as String;
+                  final selected = _creationFloorIds.contains(id);
+                  return FilterChip(
+                    label: Text(f['name'] as String? ?? ''),
+                    selected: selected,
+                    onSelected: (v) => setState(() {
+                      if (v) {
+                        _creationFloorIds.add(id);
+                      } else {
+                        _creationFloorIds.remove(id);
+                      }
+                    }),
+                  );
+                }).toList(),
+              ),
+            if (!isWorker) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.people_outline),
+                label: Text(
+                  _creationWorkerIds.isEmpty
+                      ? 'Vybrat pracovníky'
+                      : 'Pracovníci vybráno: ${_creationWorkerIds.length}',
+                ),
+                onPressed: () async {
+                  final result = await pickWorksheetWorkerIds(
+                    context,
+                    workers: _workers,
+                    initialSelected: _creationWorkerIds.toList(),
+                  );
+                  if (result != null) {
+                    setState(() {
+                      _creationWorkerIds
+                        ..clear()
+                        ..addAll(result);
+                    });
+                  }
+                },
+              ),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              'Typ soupisu',
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 4),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
+                  value: 'worker',
+                  label: Text('Pro pracovníka'),
+                  icon: Icon(Icons.engineering_outlined),
+                ),
+                ButtonSegment(
+                  value: 'customer',
+                  label: Text('Pro zákazníka (bez cen)'),
+                  icon: Icon(Icons.storefront_outlined),
+                ),
+              ],
+              selected: {_audience},
+              onSelectionChanged: (s) => setState(() => _audience = s.first),
+            ),
+          ],
           if (!widget.compact) ...[
             const SizedBox(height: 12),
             DropdownButtonFormField<String?>(

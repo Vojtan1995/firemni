@@ -89,8 +89,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
         dio.get('/api/price-list/versions'),
       ]);
       final list = (results[0].data as Map).cast<String, dynamic>();
-      final versions =
-          (results[1].data as List).cast<Map<String, dynamic>>();
+      final versions = (results[1].data as List).cast<Map<String, dynamic>>();
       if (!mounted) return;
       setState(() {
         _priceList = list;
@@ -121,7 +120,18 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     final activeItems = _editableItems.where((i) => i.active).toList();
     if (activeItems.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Ceník musí mít alespoň jednu aktivní položku')),
+        const SnackBar(
+            content: Text('Ceník musí mít alespoň jednu aktivní položku')),
+      );
+      return;
+    }
+    if (_editableItems.any(
+      (i) => i.category.trim().isEmpty || i.sizeLabel.trim().isEmpty,
+    )) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Vyplňte kategorii a popis u všech položek'),
+        ),
       );
       return;
     }
@@ -157,11 +167,15 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     }
   }
 
+  List<String> get _existingCategories =>
+      {for (final i in _editableItems) i.category}.toList()..sort();
+
   Future<void> _showAddItemDialog() async {
     final categoryCtrl = TextEditingController();
     final labelCtrl = TextEditingController();
     final unitCtrl = TextEditingController(text: 'kus');
     final priceCtrl = TextEditingController();
+    final categories = _existingCategories;
 
     final ok = await showDialog<bool>(
       context: context,
@@ -170,11 +184,29 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               TextField(
                 controller: categoryCtrl,
-                decoration: const InputDecoration(labelText: 'Kategorie'),
+                decoration: const InputDecoration(
+                  labelText: 'Kategorie (existující nebo nová)',
+                ),
               ),
+              if (categories.isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: categories
+                      .map(
+                        (c) => ActionChip(
+                          label: Text(c),
+                          onPressed: () => categoryCtrl.text = c,
+                        ),
+                      )
+                      .toList(),
+                ),
+              ],
               TextField(
                 controller: labelCtrl,
                 decoration: const InputDecoration(labelText: 'Popis / rozměr'),
@@ -187,14 +219,19 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 controller: priceCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                decoration: const InputDecoration(labelText: 'Cena s materiálem (Kč)'),
+                decoration:
+                    const InputDecoration(labelText: 'Cena s materiálem (Kč)'),
               ),
             ],
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Zrušit')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Přidat')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zrušit')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Přidat')),
         ],
       ),
     );
@@ -225,9 +262,72 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     });
   }
 
+  Future<void> _renameCategory(String oldName) async {
+    final ctrl = TextEditingController(text: oldName);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Přejmenovat kategorii'),
+        content: TextField(
+          controller: ctrl,
+          decoration: const InputDecoration(labelText: 'Nový název kategorie'),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('Zrušit')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('Uložit'),
+          ),
+        ],
+      ),
+    );
+    if (newName == null || newName.isEmpty || newName == oldName) return;
+    setState(() {
+      for (final item in _editableItems) {
+        if (item.category == oldName) item.category = newName;
+      }
+      _dirty = true;
+    });
+  }
+
+  Future<void> _deleteCategory(String name) async {
+    final count = _editableItems.where((i) => i.category == name).length;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Smazat kategorii'),
+        content: Text('Smazat kategorii „$name" a všech $count položek?'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Zrušit')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Smazat'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    setState(() {
+      _editableItems.removeWhere((i) => i.category == name);
+      _dirty = true;
+    });
+  }
+
+  void _deleteItem(_EditablePriceItem item) {
+    setState(() {
+      _editableItems.remove(item);
+      _dirty = true;
+    });
+  }
+
   Future<void> _showVersionDetail(String version) async {
     try {
-      final res = await ref.read(dioProvider).get('/api/price-list/versions/$version');
+      final res =
+          await ref.read(dioProvider).get('/api/price-list/versions/$version');
       if (!mounted) return;
       final data = (res.data as Map).cast<String, dynamic>();
       final items = (data['items'] as List? ?? []).cast<Map<String, dynamic>>();
@@ -244,23 +344,26 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 return ListTile(
                   dense: true,
                   title: Text('${item['category']} — ${item['sizeLabel']}'),
-                  subtitle: item['active'] == false
-                      ? const Text('Neaktivní')
-                      : null,
+                  subtitle:
+                      item['active'] == false ? const Text('Neaktivní') : null,
                   trailing: Text('$price Kč / ${item['unit']}'),
                 );
               }).toList(),
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Zavřít')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Zavřít')),
           ],
         ),
       );
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(apiErrorMessage(e, fallback: 'Načtení verze selhalo'))),
+        SnackBar(
+            content:
+                Text(apiErrorMessage(e, fallback: 'Načtení verze selhalo'))),
       );
     }
   }
@@ -344,7 +447,28 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(entry.key, style: Theme.of(context).textTheme.titleLarge),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        entry.key,
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                    ),
+                    if (canManage) ...[
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined, size: 20),
+                        tooltip: 'Přejmenovat kategorii',
+                        onPressed: () => _renameCategory(entry.key),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 20),
+                        tooltip: 'Smazat kategorii',
+                        onPressed: () => _deleteCategory(entry.key),
+                      ),
+                    ],
+                  ],
+                ),
                 const SizedBox(height: AppSpacing.md),
                 ...entry.value.map((item) => _buildItemRow(item, canManage)),
               ],
@@ -353,7 +477,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
         }),
         if (inactiveVersions.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xl),
-          const SectionHeader(title: 'Historie verzí', style: SectionHeaderStyle.h3),
+          const SectionHeader(
+              title: 'Historie verzí', style: SectionHeaderStyle.h3),
           ...inactiveVersions.map((v) {
             final ver = v['version'] as String? ?? '';
             final from = v['validFrom'] as String?;
@@ -393,20 +518,36 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(item.sizeLabel),
-                if (!item.active)
-                  Text(
-                    'Neaktivní',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textMuted,
-                        ),
-                  ),
-              ],
+            flex: 3,
+            child: TextFormField(
+              initialValue: item.sizeLabel,
+              decoration: InputDecoration(
+                labelText: 'Popis / rozměr',
+                helperText: item.active ? null : 'Neaktivní',
+                isDense: true,
+              ),
+              onChanged: (v) {
+                item.sizeLabel = v;
+                _dirty = true;
+              },
             ),
           ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 70,
+            child: TextFormField(
+              initialValue: item.unit,
+              decoration: const InputDecoration(
+                labelText: 'Jedn.',
+                isDense: true,
+              ),
+              onChanged: (v) {
+                item.unit = v.trim().isEmpty ? 'kus' : v.trim();
+                _dirty = true;
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
           SizedBox(
             width: 88,
             child: TextFormField(
@@ -438,6 +579,11 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 _dirty = true;
               });
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, size: 20),
+            tooltip: 'Smazat položku',
+            onPressed: () => _deleteItem(item),
           ),
         ],
       ),
