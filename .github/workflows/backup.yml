@@ -29,11 +29,29 @@ jobs:
             echo "::error::Chybí secrets pro zálohu:${missing}. Doplň je v Settings → Secrets → Actions."
             exit 1
           fi
+          # Ověř, že PROD_DATABASE_URL je platné connection URI s hostem.
+          # Jinak by pg_dump spadl na lokální socket s nečitelnou hláškou.
+          case "${{ secrets.PROD_DATABASE_URL }}" in
+            postgres://*@*|postgresql://*@*) : ;;
+            *)
+              echo "::error::PROD_DATABASE_URL není platné URI. Očekávám tvar postgresql://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=require"
+              exit 1
+              ;;
+          esac
 
-      - name: Install postgresql-client
+      - name: Install postgresql-client 18
         run: |
+          # Produkční DB běží na PG 18; runner má ve výchozím repu jen klienta 16,
+          # který odmítne dump novějšího serveru. Přidáme oficiální PGDG repo.
+          sudo apt-get install -y curl ca-certificates
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
-          sudo apt-get install -y postgresql-client
+          sudo apt-get install -y postgresql-client-18
+          pg_dump --version
 
       - name: Run pg_dump
         env:
