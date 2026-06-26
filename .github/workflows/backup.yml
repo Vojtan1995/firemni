@@ -61,7 +61,9 @@ jobs:
           TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
           FILENAME="ucpavky_${TIMESTAMP}.sql.gz"
           echo "BACKUP_FILENAME=${FILENAME}" >> $GITHUB_ENV
-          pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
+          # Plná cesta na klienta 18 — ať se nespoléháme na to, kterého
+          # pg_dumpa vybere systémový wrapper (jinak hrozí pád na verzi 16).
+          /usr/lib/postgresql/18/bin/pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
           # Ověření integrity gzipu — poškozený dump zachytíme hned, ne až při obnově
           gunzip -t "${FILENAME}"
           SIZE=$(du -sh "${FILENAME}" | cut -f1)
