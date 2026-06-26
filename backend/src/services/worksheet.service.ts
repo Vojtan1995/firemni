@@ -4,6 +4,7 @@ import {
   SealStatus,
   Prisma,
   JobStatus,
+  MaterialMode,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { AppError, badRequest, forbidden, notFound } from "../lib/errors.js";
@@ -18,7 +19,11 @@ import { createCzechPdfDocument } from "../lib/pdf-pagination.js";
 import { setCzechPdfBold, setCzechPdfRegular } from "../lib/pdf-fonts.js";
 import { sealTradeLabel } from "../lib/seal-trade.js";
 import { jobAccessDeniedMessage, jobAllowsWrites } from "../lib/job-status.js";
-import { getActivePriceList, lookupPriceItem } from "./pricing.service.js";
+import {
+  getActivePriceList,
+  lookupPriceItem,
+  selectItemUnitPrice,
+} from "./pricing.service.js";
 
 /** Vynutí, že se zakázka smí editovat (jen aktivní). Soupisy jdou zakládat,
  *  plnit a měnit jejich stav pouze na aktivní zakázce. */
@@ -354,6 +359,77 @@ export async function createWorksheet(
   return worksheet;
 }
 
+/**
+ * Vytvoří a naplní soupis(y) z filtrů. Pravidlo: 1 soupis = 1 zakázka = 1 worker.
+ * - audience "worker": pro každého vybraného workera vznikne soupis zvlášť.
+ * - audience "customer": jeden soupis se všemi workery (na soupisu může být více jmen).
+ * Worker (role) zakládá vždy jen za sebe → jeden soupis.
+ */
+export async function generateWorksheets(
+  role: UserRole,
+  userId: string,
+  data: {
+    jobId: string;
+    workerIds?: string[];
+    periodFrom?: string;
+    periodTo?: string;
+    note?: string;
+    audience?: "worker" | "customer";
+    floorIds?: string[];
+    status?: string;
+    system?: string;
+    entryType?: string;
+    from?: string;
+    to?: string;
+  },
+) {
+  const audience = data.audience ?? "worker";
+  const populateFilters = {
+    floorIds: data.floorIds,
+    status: data.status,
+    system: data.system,
+    entryType: data.entryType,
+    from: data.from,
+    to: data.to,
+  };
+
+  let workerGroups: (string[] | undefined)[];
+  if (role === UserRole.worker) {
+    // createWorksheet si workerIds stejně vynutí na [userId].
+    workerGroups = [undefined];
+  } else if (audience === "worker") {
+    const ids = data.workerIds ?? [];
+    if (ids.length === 0) throw badRequest("Vyberte alespoň jednoho pracovníka");
+    workerGroups = ids.map((id) => [id]);
+  } else {
+    workerGroups = [data.workerIds ?? []];
+  }
+
+  const results = [];
+  for (const group of workerGroups) {
+    const ws = await createWorksheet(role, userId, {
+      jobId: data.jobId,
+      workerIds: group,
+      periodFrom: data.periodFrom,
+      periodTo: data.periodTo,
+      note: data.note,
+      audience,
+    });
+    const populated = await populateWorksheetFromFilters(
+      ws.id,
+      role,
+      userId,
+      populateFilters,
+    );
+    results.push({
+      worksheet: ws,
+      requestedCount: populated.requestedCount,
+      addedCount: populated.addedCount,
+    });
+  }
+  return results;
+}
+
 export async function getWorksheet(id: string, role: UserRole, userId: string) {
   await assertWorksheetAccess(id, role, userId);
 
@@ -478,7 +554,16 @@ export async function addWorksheetItems(
 
   // Cena se počítá až při vytvoření soupisu – z AKTUÁLNÍHO ceníku – a uloží se
   // jako snapshot do položky soupisu (Task 7). Pozdější změna ceníku už soupis nemění.
+  // Cena se vybírá podle statusu workera, který ucpávku vytvořil (s/bez materiálu).
   const activePriceList = await getActivePriceList();
+  const creatorIds = [...new Set(entries.map((e) => e.seal.createdById))];
+  const creators = await prisma.user.findMany({
+    where: { id: { in: creatorIds } },
+    select: { id: true, materialMode: true },
+  });
+  const materialModeByCreator = new Map(
+    creators.map((c) => [c.id, c.materialMode]),
+  );
   const itemData = await Promise.all(
     entries.map(async (entry, i) => {
       const quantity = entry.quantity;
@@ -496,7 +581,12 @@ export async function addWorksheetItems(
             activePriceList,
           )
         : null;
-      const unitPrice = match ? Number(match.item.priceWithMaterial) : null;
+      const materialMode =
+        materialModeByCreator.get(entry.seal.createdById) ??
+        MaterialMode.without_material;
+      const unitPrice = match
+        ? Number(selectItemUnitPrice(match.item, materialMode))
+        : null;
       const totalPrice =
         unitPrice != null ? unitPrice * Number(quantity) : null;
       const catalogId = entry.materials.map((m) => m.material).join(", ");

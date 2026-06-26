@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'core/router.dart';
 import 'core/design_tokens.dart';
 import 'core/desktop_esc_handler.dart';
+import 'core/error_reporting.dart';
 import 'core/theme.dart';
 import 'core/api/api_client.dart';
 import 'core/app_update_service.dart';
@@ -12,8 +15,27 @@ import 'features/sync/sync_retry_scheduler.dart';
 import 'widgets/app_update_dialog.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ProviderScope(child: UcpavkyApp()));
+  // Vše běží v jedné zóně, aby globální zachytávač chyb mohl odchytit i
+  // asynchronní chyby (runZonedGuarded) a nabídnout je nahlásit.
+  runZonedGuarded(() {
+    WidgetsFlutterBinding.ensureInitialized();
+    final container = ProviderContainer();
+    ErrorReporter.init(container);
+
+    FlutterError.onError = (details) {
+      FlutterError.presentError(details);
+      ErrorReporter.instance.capture(details.exception, details.stack);
+    };
+
+    runApp(
+      UncontrolledProviderScope(
+        container: container,
+        child: const UcpavkyApp(),
+      ),
+    );
+  }, (error, stack) {
+    ErrorReporter.instance.capture(error, stack);
+  });
 }
 
 class UcpavkyApp extends ConsumerStatefulWidget {

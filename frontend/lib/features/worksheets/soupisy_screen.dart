@@ -75,45 +75,61 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
 
     setState(() => _creatingWorksheet = true);
     try {
+      // 1 soupis = 1 zakázka = 1 worker. Pro "pro pracovníka" + více workerů
+      // backend vytvoří soupis pro každého zvlášť; pro "pro zákazníka" jeden
+      // soupis se všemi jmény. Vše řeší endpoint /generate jedním voláním.
       final body = <String, dynamic>{
         'jobId': filters.jobId,
         'audience': filters.audience,
-      };
-      if (!auth.isWorker) body['workerIds'] = filters.workerIds;
-      if (filters.from != null) body['periodFrom'] = _dateParam(filters.from!);
-      if (filters.to != null) body['periodTo'] = _dateParam(filters.to!);
-
-      final res = await ref.read(dioProvider).post(
-            '/api/worksheets',
-            data: body,
-          );
-      final ws = res.data as Map<String, dynamic>;
-
-      final populateBody = <String, dynamic>{
         if (filters.floorIds.isNotEmpty) 'floorIds': filters.floorIds,
         if (filters.status != null) 'status': filters.status,
+        if (filters.from != null) 'periodFrom': _dateParam(filters.from!),
+        if (filters.to != null) 'periodTo': _dateParam(filters.to!),
         if (filters.from != null) 'from': _dateParam(filters.from!),
         if (filters.to != null) 'to': _dateParam(filters.to!),
       };
-      final popRes = await ref.read(dioProvider).post(
-            '/api/worksheets/${ws['id']}/populate',
-            data: populateBody,
+      if (!auth.isWorker) body['workerIds'] = filters.workerIds;
+
+      final res = await ref.read(dioProvider).post(
+            '/api/worksheets/generate',
+            data: body,
           );
 
       if (!mounted) return;
-      final pop = popRes.data as Map<String, dynamic>?;
-      final requested = (pop?['requestedCount'] as num?)?.toInt();
-      final added = (pop?['addedCount'] as num?)?.toInt();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            requested != null && added != null
-                ? 'Soupis vytvořen. Přidáno $added z $requested položek.'
-                : 'Soupis vytvořen.',
-          ),
-        ),
+      final results =
+          (res.data as Map<String, dynamic>)['worksheets'] as List? ?? [];
+      final totalAdded = results.fold<int>(
+        0,
+        (sum, r) =>
+            sum + (((r as Map)['addedCount'] as num?)?.toInt() ?? 0),
       );
-      context.push('/worksheets/${ws['id']}');
+
+      if (results.length == 1) {
+        final r = results.first as Map<String, dynamic>;
+        final ws = r['worksheet'] as Map<String, dynamic>;
+        final requested = (r['requestedCount'] as num?)?.toInt();
+        final added = (r['addedCount'] as num?)?.toInt();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              requested != null && added != null
+                  ? 'Soupis vytvořen. Přidáno $added z $requested položek.'
+                  : 'Soupis vytvořen.',
+            ),
+          ),
+        );
+        context.push('/worksheets/${ws['id']}');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Vytvořeno ${results.length} soupisů. Přidáno celkem '
+              '$totalAdded položek.',
+            ),
+          ),
+        );
+        context.push('/saved-worksheets');
+      }
     } on DioException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(

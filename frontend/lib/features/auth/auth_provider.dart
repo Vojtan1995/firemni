@@ -137,6 +137,11 @@ class AuthService {
   }
 
   String? get role => _ref.read(authUserProvider)?['role'] as String?;
+  /// Status workera pro výběr ceníku (s materiálem / bez materiálu).
+  /// Default bez materiálu, pokud chybí.
+  String get materialMode =>
+      (_ref.read(authUserProvider)?['materialMode'] as String?) ??
+      'without_material';
   bool get isWorker => role == 'worker';
   bool get isVedeni => role == 'vedeni';
   bool get isAdmin => role == 'admin';

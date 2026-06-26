@@ -8,13 +8,18 @@ import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
 
+double _parsePrice(dynamic v) =>
+    v is num ? v.toDouble() : double.tryParse(v?.toString() ?? '') ?? 0;
+
 class _EditablePriceItem {
   _EditablePriceItem({
     this.id,
     required this.category,
     required this.sizeLabel,
     required this.unit,
+    required this.priceWithoutMaterial,
     required this.priceWithMaterial,
+    this.displayPrice,
     this.active = true,
     this.sortOrder = 0,
   });
@@ -23,21 +28,24 @@ class _EditablePriceItem {
   String category;
   String sizeLabel;
   String unit;
+  double priceWithoutMaterial;
   double priceWithMaterial;
+
+  /// Jediná cena vrácená backendem pro workera podle jeho statusu (jen prohlížení).
+  double? displayPrice;
   bool active;
   int sortOrder;
 
   factory _EditablePriceItem.fromJson(Map<String, dynamic> json) {
-    final price = json['priceWithMaterial'];
-    final n = price is num
-        ? price.toDouble()
-        : double.tryParse(price?.toString() ?? '') ?? 0;
     return _EditablePriceItem(
       id: json['id'] as String?,
       category: json['category'] as String? ?? '',
       sizeLabel: json['sizeLabel'] as String? ?? '',
       unit: json['unit'] as String? ?? 'kus',
-      priceWithMaterial: n,
+      priceWithoutMaterial: _parsePrice(json['priceWithoutMaterial']),
+      priceWithMaterial: _parsePrice(json['priceWithMaterial']),
+      displayPrice:
+          json.containsKey('price') ? _parsePrice(json['price']) : null,
       active: json['active'] as bool? ?? true,
       sortOrder: json['sortOrder'] as int? ?? 0,
     );
@@ -49,7 +57,7 @@ class _EditablePriceItem {
         'sizeLabel': sizeLabel,
         'unit': unit,
         'priceWithMaterial': priceWithMaterial,
-        'priceWithoutMaterial': priceWithMaterial,
+        'priceWithoutMaterial': priceWithoutMaterial,
         'active': active,
         'sortOrder': sortOrder,
       };
@@ -174,7 +182,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     final categoryCtrl = TextEditingController();
     final labelCtrl = TextEditingController();
     final unitCtrl = TextEditingController(text: 'kus');
-    final priceCtrl = TextEditingController();
+    final priceWithoutCtrl = TextEditingController();
+    final priceWithCtrl = TextEditingController(text: '0');
     final categories = _existingCategories;
 
     final ok = await showDialog<bool>(
@@ -216,7 +225,14 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
                 decoration: const InputDecoration(labelText: 'Jednotka'),
               ),
               TextField(
-                controller: priceCtrl,
+                controller: priceWithoutCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                decoration:
+                    const InputDecoration(labelText: 'Cena bez materiálu (Kč)'),
+              ),
+              TextField(
+                controller: priceWithCtrl,
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration:
@@ -237,13 +253,15 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
     );
 
     if (ok != true) return;
-    final price = double.tryParse(priceCtrl.text.trim());
+    final priceWithout = double.tryParse(priceWithoutCtrl.text.trim());
+    final priceWith = double.tryParse(priceWithCtrl.text.trim()) ?? 0;
     if (categoryCtrl.text.trim().isEmpty ||
         labelCtrl.text.trim().isEmpty ||
-        price == null) {
+        priceWithout == null) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Vyplňte kategorii, popis a cenu')),
+        const SnackBar(
+            content: Text('Vyplňte kategorii, popis a cenu bez materiálu')),
       );
       return;
     }
@@ -254,7 +272,8 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
           category: categoryCtrl.text.trim(),
           sizeLabel: labelCtrl.text.trim(),
           unit: unitCtrl.text.trim().isEmpty ? 'kus' : unitCtrl.text.trim(),
-          priceWithMaterial: price,
+          priceWithoutMaterial: priceWithout,
+          priceWithMaterial: priceWith,
           sortOrder: _editableItems.length,
         ),
       );
@@ -340,13 +359,17 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
             child: ListView(
               shrinkWrap: true,
               children: items.map((item) {
-                final price = item['priceWithMaterial'];
+                final without = _parsePrice(item['priceWithoutMaterial']);
+                final withMat = _parsePrice(item['priceWithMaterial']);
                 return ListTile(
                   dense: true,
                   title: Text('${item['category']} — ${item['sizeLabel']}'),
                   subtitle:
                       item['active'] == false ? const Text('Neaktivní') : null,
-                  trailing: Text('$price Kč / ${item['unit']}'),
+                  trailing: Text(
+                    'bez ${without.toStringAsFixed(0)} / '
+                    's ${withMat.toStringAsFixed(0)} Kč / ${item['unit']}',
+                  ),
                 );
               }).toList(),
             ),
@@ -496,13 +519,14 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
 
   Widget _buildItemRow(_EditablePriceItem item, bool canManage) {
     if (!canManage) {
+      final price = item.displayPrice ?? item.priceWithoutMaterial;
       return Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.sm),
         child: Row(
           children: [
             Expanded(child: Text(item.sizeLabel)),
             Text(
-              '${_formatPrice(item.priceWithMaterial)} / ${item.unit}',
+              '${_formatPrice(price)} / ${item.unit}',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -534,7 +558,7 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 70,
+            width: 56,
             child: TextFormField(
               initialValue: item.unit,
               decoration: const InputDecoration(
@@ -549,12 +573,34 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 88,
+            width: 78,
+            child: TextFormField(
+              initialValue: item.priceWithoutMaterial.toStringAsFixed(0),
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: const InputDecoration(
+                labelText: 'Bez mat.',
+                suffixText: 'Kč',
+                isDense: true,
+              ),
+              onChanged: (v) {
+                final n = double.tryParse(v);
+                if (n != null) {
+                  item.priceWithoutMaterial = n;
+                  _dirty = true;
+                }
+              },
+            ),
+          ),
+          const SizedBox(width: 8),
+          SizedBox(
+            width: 78,
             child: TextFormField(
               initialValue: item.priceWithMaterial.toStringAsFixed(0),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
+                labelText: 'S mat.',
                 suffixText: 'Kč',
                 isDense: true,
               ),

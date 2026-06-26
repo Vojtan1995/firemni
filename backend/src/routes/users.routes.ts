@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { UserRole } from '@prisma/client';
+import { UserRole, MaterialMode } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { logActivity } from '../services/audit.service.js';
@@ -18,6 +18,7 @@ const createUserSchema = z.object({
   displayName: z.string().min(1).max(100),
   pin: pinSchema,
   role: z.nativeEnum(UserRole),
+  materialMode: z.nativeEnum(MaterialMode).optional(),
 });
 
 const updateUserSchema = z.object({
@@ -25,6 +26,7 @@ const updateUserSchema = z.object({
   pin: pinSchema.optional(),
   role: z.nativeEnum(UserRole).optional(),
   isActive: z.boolean().optional(),
+  materialMode: z.nativeEnum(MaterialMode).optional(),
 });
 
 router.get('/', async (req, res, next) => {

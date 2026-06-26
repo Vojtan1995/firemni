@@ -296,13 +296,19 @@ router.get('/system', async (req, res, next) => {
     ]);
 
     const entries = [
-      ...errors.map((e) => ({
-        id: e.id,
-        timestamp: e.createdAt,
-        kind: 'error' as const,
-        title: `Chyba: ${e.message}`,
-        detail: [e.method, e.path].filter(Boolean).join(' ') || null,
-      })),
+      ...errors.map((e) => {
+        const isClient =
+          e.metadata !== null &&
+          typeof e.metadata === 'object' &&
+          (e.metadata as Record<string, unknown>).source === 'client';
+        return {
+          id: e.id,
+          timestamp: e.createdAt,
+          kind: 'error' as const,
+          title: `${isClient ? 'Chyba z aplikace' : 'Chyba'}: ${e.message}`,
+          detail: [e.method, e.path].filter(Boolean).join(' ') || null,
+        };
+      }),
       ...syncs.map((s) => ({
         id: s.id,
         timestamp: s.createdAt,

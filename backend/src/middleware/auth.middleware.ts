@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { UserRole } from '@prisma/client';
+import { UserRole, MaterialMode } from '@prisma/client';
 import { config } from '../config.js';
 import { prisma } from '../lib/prisma.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
@@ -11,6 +11,7 @@ export interface AuthUser {
   username: string;
   displayName: string;
   role: UserRole;
+  materialMode: MaterialMode;
 }
 
 declare global {
@@ -41,6 +42,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
       username: session.user.username,
       displayName: session.user.displayName,
       role: session.user.role,
+      materialMode: session.user.materialMode,
     };
     next();
   } catch {

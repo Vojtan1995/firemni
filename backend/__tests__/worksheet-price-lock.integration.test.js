@@ -57,7 +57,7 @@ describe('Worksheet price snapshot lock — Task 7', () => {
   afterAll(async () => {
     // Restore original price list prices to avoid polluting other suites.
     for (const [id, price] of originalPrices.entries()) {
-      await prisma.priceListItem.update({ where: { id }, data: { priceWithMaterial: price } });
+      await prisma.priceListItem.update({ where: { id }, data: { priceWithoutMaterial: price } });
     }
     await prisma.workSheetItem.deleteMany({ where: { sealNumber: { startsWith: PREFIX } } });
     await prisma.seal.deleteMany({ where: { sealNumber: { startsWith: PREFIX } } });
@@ -94,10 +94,12 @@ describe('Worksheet price snapshot lock — Task 7', () => {
       include: { items: { where: { active: true } } },
     });
     for (const it of activeList.items) {
-      originalPrices.set(it.id, it.priceWithMaterial);
+      // Tvůrce soupisu (vedení) má status "bez materiálu", takže se ceny počítají
+      // ze sloupce priceWithoutMaterial – ten i zde zdražujeme ×10.
+      originalPrices.set(it.id, it.priceWithoutMaterial);
       await prisma.priceListItem.update({
         where: { id: it.id },
-        data: { priceWithMaterial: Number(it.priceWithMaterial) * 10 },
+        data: { priceWithoutMaterial: Number(it.priceWithoutMaterial) * 10 },
       });
     }
 

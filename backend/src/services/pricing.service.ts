@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { Prisma, PriceList, PriceListItem } from '@prisma/client';
+import { Prisma, PriceList, PriceListItem, MaterialMode } from '@prisma/client';
 import { v4 as uuidv4 } from 'uuid';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, notFound } from '../lib/errors.js';
@@ -165,15 +165,32 @@ export async function lookupPriceItem(
   return null;
 }
 
+/**
+ * Vybere cenu položky podle statusu workera. Worker "bez materiálu" platí cenu
+ * bez materiálu (dnešní platné ceny), "s materiálem" cenu s materiálem.
+ * Fallback na druhý sloupec, pokud daná cena chybí (kompatibilita starých dat).
+ */
+export function selectItemUnitPrice(
+  item: PriceListItem,
+  materialMode: MaterialMode,
+): Prisma.Decimal {
+  if (materialMode === MaterialMode.without_material) {
+    return item.priceWithoutMaterial ?? item.priceWithMaterial;
+  }
+  return item.priceWithMaterial ?? item.priceWithoutMaterial ?? new Prisma.Decimal(0);
+}
+
 export function buildPricingData(
   item: PriceListItem,
   priceList: PriceList,
   quantity: number,
   userId: string,
   unit: string,
+  materialMode: MaterialMode,
 ): Prisma.SealEntryUpdateInput {
-  const unitPrice = Number(item.priceWithMaterial);
-  const totalPrice = multiplyMoney(item.priceWithMaterial, quantity);
+  const price = selectItemUnitPrice(item, materialMode);
+  const unitPrice = Number(price);
+  const totalPrice = multiplyMoney(price, quantity);
   return {
     unitPrice,
     totalPrice,
@@ -181,7 +198,7 @@ export function buildPricingData(
     currency: 'CZK',
     priceListVersion: priceList.version,
     priceListItem: { connect: { id: item.id } },
-    priceMode: 'with_material',
+    priceMode: materialMode,
     pricedAt: new Date(),
     pricedByUserId: userId,
     priceSource: 'automatic',
@@ -212,12 +229,19 @@ export async function priceSealEntries(
   const priceList = await getActivePriceList();
   const seal = await client.seal.findUnique({
     where: { id: sealId },
-    select: { openingLengthMm: true, openingWidthMm: true },
+    select: {
+      openingLengthMm: true,
+      openingWidthMm: true,
+      createdBy: { select: { materialMode: true } },
+    },
   });
   const sealOpening = {
     openingLengthMm: seal?.openingLengthMm ?? null,
     openingWidthMm: seal?.openingWidthMm ?? null,
   };
+  // Cena se řídí statusem workera, který ucpávku vytvořil.
+  const materialMode =
+    seal?.createdBy?.materialMode ?? MaterialMode.without_material;
 
   const entries = await client.sealEntry.findMany({
     where: { sealId, deletedAt: null },
@@ -278,6 +302,7 @@ export async function priceSealEntries(
             computed.billableQuantity,
             userId,
             computed.unit,
+            materialMode,
           ),
         }
       : { ...computedFields, ...clearPricingData(userId) };
@@ -362,7 +387,7 @@ export async function publishPriceListChanges(userId: string, items: PriceListIt
           sizeLabel: item.sizeLabel.trim(),
           unit: item.unit.trim() || 'kus',
           priceWithMaterial: item.priceWithMaterial,
-          priceWithoutMaterial: item.priceWithoutMaterial ?? item.priceWithMaterial,
+          priceWithoutMaterial: item.priceWithoutMaterial ?? null,
           active: item.active !== false,
           sortOrder: order,
         };
@@ -423,7 +448,8 @@ export async function seedDefaultPriceList(version = '2026-06') {
         category,
         sizeLabel: row.name,
         unit: row.unit ?? 'kus',
-        priceWithMaterial: row.price,
+        // Default ceník reprezentuje ceny "bez materiálu"; cena s materiálem se doplní později.
+        priceWithMaterial: 0,
         priceWithoutMaterial: row.price,
         sortOrder: sortOrder++,
         active: true,

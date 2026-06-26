@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.middleware.js';
-import { requirePermission } from '../lib/permissions.js';
+import { requirePermission, hasPermission } from '../lib/permissions.js';
 import { notFound } from '../lib/errors.js';
 import {
   getActivePriceList,
@@ -9,6 +9,7 @@ import {
   listPriceListVersions,
   publishPriceListChanges,
   seedDefaultPriceList,
+  selectItemUnitPrice,
 } from '../services/pricing.service.js';
 
 const router = Router();
@@ -48,13 +49,29 @@ router.get('/versions/:version', requirePermission('priceList.view'), async (req
   }
 });
 
-router.get('/', requirePermission('priceList.view'), async (_req, res, next) => {
+router.get('/', requirePermission('priceList.view'), async (req, res, next) => {
   try {
     const list = await getActivePriceList();
     if (!list) {
       throw notFound('Aktivní ceník není k dispozici');
     }
-    res.json(list);
+    // Vedení/admin vidí obě ceny (kvůli editaci). Worker vidí pouze jednu cenu
+    // odpovídající jeho statusu (s/bez materiálu).
+    if (hasPermission(req.user!.role, 'priceList.manage')) {
+      res.json(list);
+      return;
+    }
+    const materialMode = req.user!.materialMode;
+    const items = list.items.map((item) => ({
+      id: item.id,
+      category: item.category,
+      sizeLabel: item.sizeLabel,
+      unit: item.unit,
+      active: item.active,
+      sortOrder: item.sortOrder,
+      price: Number(selectItemUnitPrice(item, materialMode)),
+    }));
+    res.json({ ...list, items });
   } catch (e) {
     next(e);
   }

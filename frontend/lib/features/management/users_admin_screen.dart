@@ -19,6 +19,19 @@ String roleLabel(String role) {
   }
 }
 
+String materialModeLabel(String mode) {
+  switch (mode) {
+    case 'with_material':
+      return 'S materiálem';
+    case 'without_material':
+      return 'Bez materiálu';
+    default:
+      return mode;
+  }
+}
+
+const _materialModes = ['without_material', 'with_material'];
+
 class UsersAdminScreen extends ConsumerStatefulWidget {
   const UsersAdminScreen({super.key});
 
@@ -69,6 +82,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
     final nameCtrl = TextEditingController();
     final pinCtrl = TextEditingController();
     var role = _assignableRoles.first;
+    var materialMode = _materialModes.first;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => StatefulBuilder(
@@ -106,6 +120,17 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                     if (v != null) setDialog(() => role = v);
                   },
                 ),
+                DropdownButtonFormField<String>(
+                  initialValue: materialMode,
+                  decoration: const InputDecoration(labelText: 'Status (ceník)'),
+                  items: _materialModes
+                      .map((m) => DropdownMenuItem(
+                          value: m, child: Text(materialModeLabel(m))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialog(() => materialMode = v);
+                  },
+                ),
               ],
             ),
           ),
@@ -127,6 +152,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
         'displayName': nameCtrl.text.trim(),
         'pin': pinCtrl.text,
         'role': role,
+        'materialMode': materialMode,
       });
       await _load();
     } catch (e) {
@@ -166,6 +192,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
         TextEditingController(text: user['displayName'] as String? ?? '');
     final pinCtrl = TextEditingController();
     var role = user['role'] as String;
+    var materialMode =
+        (user['materialMode'] as String?) ?? 'without_material';
     var isActive = user['isActive'] != false;
     final roles = _assignableRoles.contains(role)
         ? _assignableRoles
@@ -204,6 +232,19 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                       .toList(),
                   onChanged: (v) {
                     if (v != null) setDialog(() => role = v);
+                  },
+                ),
+                DropdownButtonFormField<String>(
+                  initialValue: _materialModes.contains(materialMode)
+                      ? materialMode
+                      : _materialModes.first,
+                  decoration: const InputDecoration(labelText: 'Status (ceník)'),
+                  items: _materialModes
+                      .map((m) => DropdownMenuItem(
+                          value: m, child: Text(materialModeLabel(m))))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) setDialog(() => materialMode = v);
                   },
                 ),
                 SwitchListTile(
@@ -249,6 +290,7 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
       'displayName': nameCtrl.text.trim(),
       'role': role,
       'isActive': isActive,
+      'materialMode': materialMode,
     };
     if (pinCtrl.text.isNotEmpty) data['pin'] = pinCtrl.text;
 
@@ -281,6 +323,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 final u = _users[i];
                 final active = u['isActive'] != false;
                 final role = u['role'] as String? ?? '';
+                final materialMode =
+                    u['materialMode'] as String? ?? 'without_material';
                 return AppCard(
                   leading: AppIconBox(
                     icon: active ? Icons.person : Icons.person_off,
@@ -288,7 +332,8 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                     color: active ? AppColors.textPrimary : AppColors.textMuted,
                   ),
                   title: u['displayName'] as String? ?? '',
-                  subtitle: '${u['username']} · ${roleLabel(role)}',
+                  subtitle:
+                      '${u['username']} · ${roleLabel(role)} · ${materialModeLabel(materialMode)}',
                   trailing: active
                       ? null
                       : const StatusBadge(

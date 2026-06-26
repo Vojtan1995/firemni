@@ -25,6 +25,7 @@ import notificationsRoutes from './routes/notifications.routes.js';
 import searchRoutes from './routes/search.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import appRoutes from './routes/app.routes.js';
+import clientErrorsRoutes from './routes/client-errors.routes.js';
 
 export function createApp() {
   const app = express();
@@ -87,6 +88,7 @@ export function createApp() {
   app.use('/api/notifications', notificationsRoutes);
   app.use('/api/search', searchRoutes);
   app.use('/api/admin', adminRoutes);
+  app.use('/api/client-errors', clientErrorsRoutes);
 
   // Fallback 404 — musí být před errorMiddleware a za všemi routami
   app.use((_req, res) => {

@@ -12,6 +12,7 @@ import {
   deleteWorksheet,
   exportWorksheetCsv,
   exportWorksheetPdf,
+  generateWorksheets,
   getWorksheet,
   listWorksheets,
   populateWorksheetFromFilters,
@@ -59,6 +60,31 @@ router.post('/', requirePermission('worksheet.create'), async (req, res, next) =
       .parse(req.body);
     const worksheet = await createWorksheet(req.user!.role, req.user!.id, body);
     res.status(201).json(worksheet);
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post('/generate', requirePermission('worksheet.create'), async (req, res, next) => {
+  try {
+    const body = z
+      .object({
+        jobId: z.string().uuid(),
+        workerIds: z.array(z.string().uuid()).optional(),
+        periodFrom: z.string().optional(),
+        periodTo: z.string().optional(),
+        note: z.string().max(2000).optional(),
+        audience: z.enum(['worker', 'customer']).optional(),
+        floorIds: z.array(z.string().uuid()).optional(),
+        status: z.string().optional(),
+        system: z.string().optional(),
+        entryType: z.string().optional(),
+        from: z.string().optional(),
+        to: z.string().optional(),
+      })
+      .parse(req.body);
+    const results = await generateWorksheets(req.user!.role, req.user!.id, body);
+    res.status(201).json({ worksheets: results });
   } catch (e) {
     next(e);
   }

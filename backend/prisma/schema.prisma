@@ -13,6 +13,11 @@ enum UserRole {
   admin
 }
 
+enum MaterialMode {
+  with_material
+  without_material
+}
+
 enum SealStatus {
   draft
   checked
@@ -50,6 +55,7 @@ model User {
   displayName  String    @map("display_name")
   pinHash      String    @map("pin_hash")
   role         UserRole
+  materialMode MaterialMode @default(without_material) @map("material_mode")
   isActive     Boolean   @default(true) @map("is_active")
   mustChangePin Boolean  @default(false) @map("must_change_pin")
   createdAt    DateTime  @default(now()) @map("created_at")

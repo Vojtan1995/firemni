@@ -1,5 +1,5 @@
 import bcrypt from 'bcrypt';
-import { User, UserRole } from '@prisma/client';
+import { User, UserRole, MaterialMode } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { VEDENI_ROLES } from '../lib/permissions.js';
@@ -13,6 +13,7 @@ export type PublicUser = {
   username: string;
   displayName: string;
   role: UserRole;
+  materialMode: MaterialMode;
   isActive: boolean;
   mustChangePin: boolean;
   createdAt: Date;
@@ -25,6 +26,7 @@ export function toPublicUser(user: User): PublicUser {
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    materialMode: user.materialMode,
     isActive: user.isActive,
     mustChangePin: user.mustChangePin,
     createdAt: user.createdAt,
@@ -57,7 +59,13 @@ export async function listUsers(actorRole?: UserRole): Promise<PublicUser[]> {
 
 export async function createUser(
   actorRole: UserRole,
-  data: { username: string; displayName: string; pin: string; role: UserRole },
+  data: {
+    username: string;
+    displayName: string;
+    pin: string;
+    role: UserRole;
+    materialMode?: MaterialMode;
+  },
 ): Promise<PublicUser> {
   assertRoleAssignable(actorRole, data.role);
 
@@ -71,6 +79,7 @@ export async function createUser(
       displayName: data.displayName,
       pinHash,
       role: data.role,
+      materialMode: data.materialMode ?? MaterialMode.without_material,
       mustChangePin: true,
     },
   });
@@ -81,7 +90,13 @@ export async function updateUser(
   actorRole: UserRole,
   actorId: string,
   userId: string,
-  data: Partial<{ displayName: string; pin: string; role: UserRole; isActive: boolean }>,
+  data: Partial<{
+    displayName: string;
+    pin: string;
+    role: UserRole;
+    isActive: boolean;
+    materialMode: MaterialMode;
+  }>,
 ): Promise<PublicUser> {
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target) throw notFound('Uživatel nenalezen');
@@ -102,11 +117,13 @@ export async function updateUser(
     role?: UserRole;
     isActive?: boolean;
     mustChangePin?: boolean;
+    materialMode?: MaterialMode;
   } = {};
 
   if (data.displayName !== undefined) updateData.displayName = data.displayName;
   if (data.role !== undefined) updateData.role = data.role;
   if (data.isActive !== undefined) updateData.isActive = data.isActive;
+  if (data.materialMode !== undefined) updateData.materialMode = data.materialMode;
   if (data.pin !== undefined) {
     updateData.pinHash = await bcrypt.hash(data.pin, 10);
     updateData.mustChangePin = true;

@@ -67,6 +67,7 @@ export async function login(username: string, pin: string, meta?: { ip?: string;
       username: user.username,
       displayName: user.displayName,
       role: user.role,
+      materialMode: user.materialMode,
       mustChangePin: user.mustChangePin,
     },
   };
@@ -85,6 +86,7 @@ export async function getMe(userId: string) {
     username: user.username,
     displayName: user.displayName,
     role: user.role,
+    materialMode: user.materialMode,
     mustChangePin: user.mustChangePin,
   };
 }
@@ -115,6 +117,7 @@ export async function changeOwnPin(userId: string, currentPin: string, newPin: s
     username: updated.username,
     displayName: updated.displayName,
     role: updated.role,
+    materialMode: updated.materialMode,
     mustChangePin: updated.mustChangePin,
   };
 }
