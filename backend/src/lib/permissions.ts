@@ -42,7 +42,7 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'seal.delete': [UserRole.vedeni, UserRole.admin],
   'seal.restore': [UserRole.admin],
   'seal.history': [UserRole.vedeni, UserRole.admin],
-  'seal.override_locked': [UserRole.admin],
+  'seal.override_locked': [UserRole.vedeni, UserRole.admin],
   'photo.upload': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'photo.delete': [],
   'job.manage': [UserRole.vedeni, UserRole.admin],

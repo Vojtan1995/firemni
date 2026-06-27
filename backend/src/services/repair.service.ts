@@ -188,6 +188,64 @@ export async function createSealRepair(
   return repair;
 }
 
+const SNAPSHOT_INCLUDE = {
+  entries: {
+    where: { deletedAt: null },
+    include: { materials: { orderBy: { sortOrder: 'asc' as const } } },
+    orderBy: { sortOrder: 'asc' as const },
+  },
+} as const;
+
+/** Zachytí stav ucpávky (technická pole + prostupy) PŘED úpravou. */
+export async function captureSealSnapshot(
+  sealId: string,
+): Promise<RepairFieldsShape | null> {
+  const full = await prisma.seal.findFirst({
+    where: { id: sealId, deletedAt: null },
+    include: SNAPSHOT_INCLUDE,
+  });
+  return full ? buildSealSnapshot(full) : null;
+}
+
+/**
+ * Zaznamená úpravu ucpávky jako snímek (oprava): porovná stav před a po úpravě
+ * a uloží SealRepair s povinným důvodem. Když se nic nezměnilo, nevytvoří nic.
+ * Slouží k dohledatelnosti úprav v jakémkoliv stavu.
+ */
+export async function recordSealEditRepair(
+  sealId: string,
+  userId: string,
+  before: RepairFieldsShape,
+  note: string,
+): Promise<void> {
+  const full = await prisma.seal.findFirst({
+    where: { id: sealId, deletedAt: null },
+    include: SNAPSHOT_INCLUDE,
+  });
+  if (!full) return;
+  const after = buildSealSnapshot(full);
+  const changedFields = diffRepair(before, after);
+  if (changedFields.length === 0) return;
+
+  await prisma.sealRepair.create({
+    data: {
+      sealId,
+      jobId: full.jobId,
+      floorId: full.floorId,
+      sealNumber: full.sealNumber,
+      note: note.trim() || 'Úprava',
+      originalSnapshot: before as unknown as Prisma.InputJsonValue,
+      repairData: after as unknown as Prisma.InputJsonValue,
+      changedFields: changedFields as unknown as Prisma.InputJsonValue,
+      createdById: userId,
+    },
+  });
+  await logActivity(userId, 'create', 'seal_repair', sealId, {
+    sealId,
+    source: 'edit',
+  });
+}
+
 export async function listRepairs(role: UserRole, userId: string) {
   const where = await repairsJobFilter(role, userId);
   const repairs = await prisma.sealRepair.findMany({

@@ -38,6 +38,10 @@ import {
   refineSealOpeningDimensions,
 } from '../lib/zod-helpers.js';
 import { deleteSealMarker, upsertSealMarker } from '../services/floor-drawing.service.js';
+import {
+  captureSealSnapshot,
+  recordSealEditRepair,
+} from '../services/repair.service.js';
 
 function patchPayloadField<T>(payload: Record<string, unknown>, key: string, current: T): T {
   if (Object.prototype.hasOwnProperty.call(payload, key)) {
@@ -282,10 +286,20 @@ async function processMutation(
       .omit({ note: true, internalNote: true })
       .superRefine(refineSealPatch)
       .parse(mut.payload);
-    const seal = await assertSealEditable(sealId, userRole, userId);
+    const editReason =
+      typeof p.editReason === 'string' ? p.editReason : undefined;
+    // overrideLocked umožní vedení/admin upravit i zamčenou (vyfakturovanou)
+    // ucpávku. entriesChanged zde záměrně nevynucujeme, aby se nezměnilo dosavadní
+    // chování offline editů (sync historicky worksheet-lock nekontroloval).
+    const seal = await assertSealEditable(sealId, userRole, userId, {
+      overrideLocked: true,
+      overrideReason: editReason,
+    });
     if (mut.baseVersion !== undefined && mut.baseVersion !== seal.version) {
       throw conflict('Verze entity se neshoduje');
     }
+    // Snímek stavu před úpravou (dohledatelnost – uloží se jako oprava).
+    const beforeSnapshot = await captureSealSnapshot(sealId);
     if (patch.sealNumber && patch.sealNumber !== seal.sealNumber) {
       await checkDuplicateSealNumber(seal.jobId, seal.floorId, patch.sealNumber, seal.id);
     }
@@ -361,6 +375,9 @@ async function processMutation(
         await priceSealEntries(sealId, userId, tx);
       }
     });
+    if (beforeSnapshot) {
+      await recordSealEditRepair(sealId, userId, beforeSnapshot, editReason ?? '');
+    }
     await touchJobParticipant(seal.jobId, userId, 'worker');
     return { entityId: sealId };
   }

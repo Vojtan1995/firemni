@@ -520,15 +520,26 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
   Widget _buildItemRow(_EditablePriceItem item, bool canManage) {
     if (!canManage) {
       final price = item.displayPrice ?? item.priceWithoutMaterial;
-      return Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.sm),
+      return Container(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: AppColors.border)),
+        ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(child: Text(item.sizeLabel)),
+            Expanded(
+              child: Text(
+                item.sizeLabel,
+                style: Theme.of(context).textTheme.bodyLarge,
+              ),
+            ),
+            const SizedBox(width: AppSpacing.md),
             Text(
               '${_formatPrice(price)} / ${item.unit}',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AppColors.accent,
+                    fontWeight: FontWeight.w600,
                   ),
             ),
           ],
@@ -536,101 +547,127 @@ class _PriceListScreenState extends ConsumerState<PriceListScreen> {
       );
     }
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: AppSpacing.sm),
-      child: Row(
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.md),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.bgSecondary,
+        borderRadius: BorderRadius.circular(AppRadius.sm),
+        border: Border.all(
+          color: item.active ? AppColors.border : AppColors.warning,
+        ),
+      ),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            flex: 3,
-            child: TextFormField(
-              initialValue: item.sizeLabel,
-              decoration: InputDecoration(
-                labelText: 'Popis / rozměr',
-                helperText: item.active ? null : 'Neaktivní',
-                isDense: true,
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: TextFormField(
+                  initialValue: item.sizeLabel,
+                  decoration: const InputDecoration(
+                    labelText: 'Popis / rozměr',
+                    isDense: true,
+                  ),
+                  onChanged: (v) {
+                    item.sizeLabel = v;
+                    _dirty = true;
+                  },
+                ),
               ),
-              onChanged: (v) {
-                item.sizeLabel = v;
-                _dirty = true;
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 56,
-            child: TextFormField(
-              initialValue: item.unit,
-              decoration: const InputDecoration(
-                labelText: 'Jedn.',
-                isDense: true,
+              IconButton(
+                icon: Icon(
+                  item.active ? Icons.visibility_off_outlined : Icons.undo,
+                  size: 22,
+                ),
+                tooltip: item.active ? 'Deaktivovat' : 'Obnovit',
+                onPressed: () {
+                  setState(() {
+                    item.active = !item.active;
+                    _dirty = true;
+                  });
+                },
               ),
-              onChanged: (v) {
-                item.unit = v.trim().isEmpty ? 'kus' : v.trim();
-                _dirty = true;
-              },
-            ),
-          ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 78,
-            child: TextFormField(
-              initialValue: item.priceWithoutMaterial.toStringAsFixed(0),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'Bez mat.',
-                suffixText: 'Kč',
-                isDense: true,
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 22),
+                tooltip: 'Smazat položku',
+                onPressed: () => _deleteItem(item),
               ),
-              onChanged: (v) {
-                final n = double.tryParse(v);
-                if (n != null) {
-                  item.priceWithoutMaterial = n;
-                  _dirty = true;
-                }
-              },
-            ),
+            ],
           ),
-          const SizedBox(width: 8),
-          SizedBox(
-            width: 78,
-            child: TextFormField(
-              initialValue: item.priceWithMaterial.toStringAsFixed(0),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                labelText: 'S mat.',
-                suffixText: 'Kč',
-                isDense: true,
+          const SizedBox(height: AppSpacing.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 2,
+                child: TextFormField(
+                  initialValue: item.unit,
+                  decoration: const InputDecoration(
+                    labelText: 'Jednotka',
+                    isDense: true,
+                  ),
+                  onChanged: (v) {
+                    item.unit = v.trim().isEmpty ? 'kus' : v.trim();
+                    _dirty = true;
+                  },
+                ),
               ),
-              onChanged: (v) {
-                final n = double.tryParse(v);
-                if (n != null) {
-                  item.priceWithMaterial = n;
-                  _dirty = true;
-                }
-              },
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                flex: 3,
+                child: TextFormField(
+                  initialValue: item.priceWithoutMaterial.toStringAsFixed(0),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Bez materiálu',
+                    suffixText: 'Kč',
+                    isDense: true,
+                  ),
+                  onChanged: (v) {
+                    final n = double.tryParse(v);
+                    if (n != null) {
+                      item.priceWithoutMaterial = n;
+                      _dirty = true;
+                    }
+                  },
+                ),
+              ),
+              const SizedBox(width: AppSpacing.sm),
+              Expanded(
+                flex: 3,
+                child: TextFormField(
+                  initialValue: item.priceWithMaterial.toStringAsFixed(0),
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'S materiálem',
+                    suffixText: 'Kč',
+                    isDense: true,
+                  ),
+                  onChanged: (v) {
+                    final n = double.tryParse(v);
+                    if (n != null) {
+                      item.priceWithMaterial = n;
+                      _dirty = true;
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+          if (!item.active)
+            Padding(
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
+              child: Text(
+                'Neaktivní',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.warning,
+                    ),
+              ),
             ),
-          ),
-          IconButton(
-            icon: Icon(
-              item.active ? Icons.visibility_off_outlined : Icons.undo,
-              size: 20,
-            ),
-            tooltip: item.active ? 'Deaktivovat' : 'Obnovit',
-            onPressed: () {
-              setState(() {
-                item.active = !item.active;
-                _dirty = true;
-              });
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline, size: 20),
-            tooltip: 'Smazat položku',
-            onPressed: () => _deleteItem(item),
-          ),
         ],
       ),
     );

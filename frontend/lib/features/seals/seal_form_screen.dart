@@ -553,6 +553,14 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       return;
     }
 
+    // Každá úprava ucpávky vyžaduje důvod (povinné "edit info") – pro dohledatelnost.
+    String? editReason;
+    if (widget.isEdit) {
+      editReason = await _promptEditReason();
+      if (editReason == null) return; // uživatel zrušil
+      if (!mounted) return;
+    }
+
     setState(() => _saving = true);
     final entriesPayload = sealEntriesWithSharedMaterials(
       _entries.asMap().entries.map((i) {
@@ -584,7 +592,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
 
     try {
       if (widget.isEdit) {
-        await _saveEdit(db, sealNumber, entriesPayload);
+        await _saveEdit(db, sealNumber, entriesPayload, editReason!);
       } else {
         await _saveCreate(
           db,
@@ -758,10 +766,47 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
   }
 
+  /// Vyžádá povinný důvod úpravy. Vrátí null, pokud uživatel zruší.
+  Future<String?> _promptEditReason() async {
+    final ctrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Důvod úpravy'),
+          content: TextField(
+            controller: ctrl,
+            autofocus: true,
+            maxLines: 3,
+            maxLength: 2000,
+            decoration: const InputDecoration(
+              hintText: 'Napište, co a proč upravujete',
+            ),
+            onChanged: (_) => setDialog(() {}),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Zrušit'),
+            ),
+            FilledButton(
+              onPressed: ctrl.text.trim().isEmpty
+                  ? null
+                  : () => Navigator.pop(ctx, ctrl.text.trim()),
+              child: const Text('Uložit úpravu'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return reason;
+  }
+
   Future<void> _saveEdit(
     AppDatabase db,
     String sealNumber,
     List<Map<String, dynamic>> entriesPayload,
+    String editReason,
   ) async {
     final sealId = widget.sealId!;
     final role = ref.read(authServiceProvider).role;
@@ -779,6 +824,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'location': _effectiveLocation,
       'fireRating': _fireRating,
       'entries': entriesPayload,
+      'editReason': editReason,
     };
     SealNoteHelpers.applyNotesToPayload(
       payload,

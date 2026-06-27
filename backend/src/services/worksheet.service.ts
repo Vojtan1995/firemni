@@ -526,7 +526,12 @@ export async function addWorksheetItems(
     where: { sealEntryId: { in: sealEntryIds } },
     select: { sealEntryId: true, worksheetId: true },
   });
-  if (existingItems.some((item) => item.worksheetId !== worksheetId)) {
+  // Pravidlo "1 prostup = nejvýše 1 soupis" platí jen pro fakturovatelné (worker)
+  // soupisy. Zákaznické (informativní) soupisy smí stejný prostup sdílet.
+  if (
+    ws.audience === "worker" &&
+    existingItems.some((item) => item.worksheetId !== worksheetId)
+  ) {
     throw badRequest("Některé položky jsou již v jiném soupisu");
   }
   if (existingItems.some((item) => item.worksheetId === worksheetId)) {
@@ -592,6 +597,7 @@ export async function addWorksheetItems(
       const catalogId = entry.materials.map((m) => m.material).join(", ");
       return {
         worksheetId,
+        audience: ws.audience,
         sealId: entry.sealId,
         sealEntryId: entry.id,
         floorId: entry.seal.floorId,
@@ -825,12 +831,15 @@ export async function populateWorksheetFromFilters(
       (sealWhere.createdAt as Record<string, Date>).lte = new Date(filters.to);
   }
 
-  // Vynech prostupy, které už jsou v jakémkoliv soupisu – jinak by jediná zabraná
-  // položka shodila celý dávkový import přes addWorksheetItems.
+  // Worker (fakturovatelný) soupis: vynech prostupy, které už jsou v jakémkoliv
+  // soupisu – jinak by jediná zabraná položka shodila dávkový import.
+  // Zákaznický (informativní) soupis: prostup smí být i v jiných soupisech,
+  // vynech jen ty, které už jsou v TOMTO soupisu.
   const entryWhere: Record<string, unknown> = {
     deletedAt: null,
     seal: sealWhere,
-    worksheetItems: { none: {} },
+    worksheetItems:
+      ws.audience === "customer" ? { none: { worksheetId } } : { none: {} },
   };
   if (filters.entryType) entryWhere.entryType = filters.entryType;
   if (filters.system) {

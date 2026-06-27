@@ -1195,7 +1195,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       _DetailSection(
         title: 'Akce',
         children: [
-          if (status == 'draft' || status == 'checked')
+          // Worker upravuje rozpracované/zkontrolované; vedení/admin smí upravit
+          // ucpávku v jakémkoliv stavu (vč. vyfakturované) – vždy s povinným důvodem.
+          if (status == 'draft' || status == 'checked' || auth.isManagement)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: FilledButton.icon(
@@ -1209,7 +1211,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
                 icon: const Icon(Icons.edit),
                 label: Text(status == 'checked'
                     ? 'Upravit (vrátí na rozpracováno)'
-                    : 'Upravit ucpávku'),
+                    : status == 'invoiced'
+                        ? 'Upravit (vyfakturováno)'
+                        : 'Upravit ucpávku'),
               ),
             ),
           SealStatusActions(

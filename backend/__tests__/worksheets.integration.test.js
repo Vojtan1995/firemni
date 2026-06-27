@@ -324,6 +324,35 @@ describe("Worksheets module integration", () => {
       expect(second.body.error).toMatch(/jiném soupisu/i);
     });
 
+    it("allows the same seal entry in multiple customer worksheets", async () => {
+      const seal = await createSeal("8");
+      const entryId = seal.entries[0].id;
+
+      const custWs1 = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal, audience: "customer" });
+      expect(custWs1.status).toBe(201);
+      const custWs2 = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal, audience: "customer" });
+      expect(custWs2.status).toBe(201);
+
+      const first = await request(app)
+        .post(`/api/worksheets/${custWs1.body.id}/items`)
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({ sealEntryIds: [entryId] });
+      expect(first.status).toBe(201);
+
+      // Informativní (customer) soupis smí stejný prostup sdílet.
+      const second = await request(app)
+        .post(`/api/worksheets/${custWs2.body.id}/items`)
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({ sealEntryIds: [entryId] });
+      expect(second.status).toBe(201);
+    });
+
     it("management can add items to a draft worksheet centrally", async () => {
       const worker = await prisma.user.findUnique({
         where: { username: "worker1" },

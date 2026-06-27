@@ -46,6 +46,10 @@ import {
 import { parseSealFilters } from "../lib/seal-list-filters.js";
 import { listFloorSealsFiltered } from "../services/search.service.js";
 import { getEntryWorksheetMembership } from "../services/worksheet.service.js";
+import {
+  captureSealSnapshot,
+  recordSealEditRepair,
+} from "../services/repair.service.js";
 import { anonymizeOptionalUserForViewer } from "../lib/user-privacy.js";
 
 const router = Router();
@@ -396,20 +400,27 @@ router.patch("/:id", requirePermission("seal.edit"), async (req, res, next) => {
       .extend({
         baseVersion: z.number().int(),
         overrideReason: z.string().max(2000).optional(),
+        // Povinný důvod úpravy vynucuje klient; backend je tolerantní kvůli
+        // zpětné kompatibilitě se staršími verzemi aplikace.
+        editReason: z.string().max(2000).optional(),
       })
       .superRefine(refineSealPatch)
       .parse(req.body);
 
+    const editReason = body.editReason ?? body.overrideReason;
     const existing = await assertSealEditable(
       paramId(req.params.id),
       req.user!.role,
       req.user!.id,
       {
         overrideLocked: true,
-        overrideReason: body.overrideReason,
+        overrideReason: editReason,
         entriesChanged: !!body.entries,
       },
     );
+
+    // Snímek stavu před úpravou (pro dohledatelnost – uloží se jako oprava).
+    const beforeSnapshot = await captureSealSnapshot(existing.id);
 
     if (
       body.baseVersion !== undefined &&
@@ -581,6 +592,16 @@ router.patch("/:id", requirePermission("seal.edit"), async (req, res, next) => {
     }
 
     if (!seal) throw notFound("Ucpávka nenalezena");
+
+    // Zaznamenej úpravu jako snímek (důvod + co se změnilo) pro dohledatelnost.
+    if (beforeSnapshot) {
+      await recordSealEditRepair(
+        seal.id,
+        req.user!.id,
+        beforeSnapshot,
+        editReason ?? "",
+      );
+    }
 
     await logActivity(req.user!.id, "update", "seal", seal.id);
     await touchJobParticipant(existing.jobId, req.user!.id, "worker");

@@ -311,7 +311,7 @@ model SealRepair {
   createdAt        DateTime @default(now()) @map("created_at")
   updatedAt        DateTime @updatedAt @map("updated_at")
 
-  seal      Seal     @relation(fields: [sealId], references: [id])
+  seal      Seal     @relation(fields: [sealId], references: [id], onDelete: Cascade)
   job       Job      @relation(fields: [jobId], references: [id])
   floor     JobFloor @relation(fields: [floorId], references: [id])
   createdBy User     @relation("SealRepairCreator", fields: [createdById], references: [id])
@@ -421,6 +421,9 @@ model WorkSheetItem {
   floorId      String   @map("floor_id")
   workerId     String   @map("worker_id")
   sealNumber   String   @map("seal_number")
+  // "worker" (fakturovatelný) nebo "customer" (informativní). U customer smí být
+  // jeden prostup ve více soupisech – proto je unikát na sealEntryId jen částečný.
+  audience     String   @default("worker")
   trade        SealTrade @default(neurceno)
   entryType    String   @map("entry_type")
   dimension    String
@@ -444,7 +447,9 @@ model WorkSheetItem {
   worker    User      @relation("WorkSheetItemWorker", fields: [workerId], references: [id])
 
   @@unique([worksheetId, sealEntryId])
-  @@unique([sealEntryId])
+  // Globální unikát na sealEntryId je nahrazen ČÁSTEČNÝM indexem (jen audience='worker')
+  // vytvořeným v migraci 20260627_customer_worksheet_shared_entries. Prisma částečné
+  // indexy v schématu neumí, proto je spravován ručně v migraci.
   @@index([worksheetId])
   @@map("worksheet_items")
 }
