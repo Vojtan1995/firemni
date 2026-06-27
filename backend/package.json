@@ -16,7 +16,12 @@
     "storage:verify": "tsx scripts/storage-health.ts verify",
     "storage:audit": "tsx scripts/storage-health.ts audit",
     "storage:railway-env": "tsx scripts/storage-health.ts railway-env",
-    "storage:backfill-local": "tsx scripts/storage-health.ts backfill-local"
+    "storage:backfill-local": "tsx scripts/storage-health.ts backfill-local",
+    "seed:load": "tsx scripts/seed-load-test.ts",
+    "prepare:load-tokens": "tsx scripts/prepare-load-tokens.ts",
+    "verify:load": "tsx scripts/verify-load-test.ts",
+    "mfa:reset": "tsx scripts/reset-mfa.ts",
+    "privacy:reapply": "tsx scripts/reapply-privacy-erasures.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

@@ -1,16 +1,23 @@
 # Audit připravenosti k reálnému nasazení — Ucpávky (unifast)
 
-Datum auditu: 2026-06-13 · Rozsah: backend (Express/TS/Prisma), Flutter frontend, konfigurace, CI/CD, závislosti, role. Kód nebyl měněn.
+Datum auditu: 2026-06-13 · Rozsah: backend (Express/TS/Prisma), Flutter frontend, konfigurace, CI/CD, závislosti, role.
+
+> **STAV K 2026-06-27 — všechny 3 KRITICKÉ nálezy a klíčové vážné body jsou OPRAVENÉ a produkce je živá.**
+> Backend běží na `https://firemni-production.up.railway.app` (`/ready` → `database: ok`, `storage.driver: s3`, `publicUploads: false`). Multer je na 2.x, `trust proxy` nastaven, PIN má min. 6 znaků + per-účtový lockout + `mustChangePin`, CORS prod šablona bez wildcardu, git repozitář zdravý, R2/S3 storage vynucený. Doplněn také per-uživatelský rate limiting na zprávy, sync push a CSV/PDF exporty. Detaily níže (sekce 2 a 3 jsou označeny ✅/zbývá).
+>
+> Aktuální verdikt: **způsobilé pro interní produkční nasazení (desítky uživatelů firmy).** Pro vystavení na veřejný internet zvážit ještě silnější autentizaci než PIN.
 
 Dodatek 2026-06-23: storage riziko `STORAGE_DRIVER=local` na Railway je v kodu osetrene fail-fast validaci. Produkce vyzaduje `STORAGE_DRIVER=s3`, `PUBLIC_UPLOADS=false`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`; lokalni storage v produkci projde jen s nouzovym `ALLOW_LOCAL_STORAGE_IN_PRODUCTION=true`. Operacni postup je v `docs/R2_STORAGE_RUNBOOK.md`.
 
 ---
 
-## Verdikt
+## Verdikt (původní, 2026-06-13)
 
 **Připraveno pro řízený interní pilot (beta) — NE pro otevřené produkční nasazení bez oprav níže.**
 
 Aplikace je na poměry interního firemního nástroje nadprůměrně zabezpečená a otestovaná. Bezpečnostní základ (session-based JWT, RBAC matice, validace, fail-fast konfigurace) je solidní. Brání jí ale 3 kritické a několik vážných nálezů — hlavně zranitelná verze multeru, chybějící `trust proxy` (rozbíjí rate limiting za reverzní proxy), a slabý PIN model bez per-účtového lockoutu.
+
+> Poznámka 2026-06-27: tyto 3 kritické nálezy jsou nyní vyřešené — viz označení ✅ v sekci 2.
 
 ---
 
@@ -34,20 +41,25 @@ Aplikace je na poměry interního firemního nástroje nadprůměrně zabezpeče
 
 ---
 
-## 2. KRITICKÉ — blokuje produkci
+## 2. KRITICKÉ — blokuje produkci → ✅ VŠE VYŘEŠENO (2026-06-27)
+
+> Všechny tři kritické nálezy níže jsou opravené v aktuální `main`. Původní text je ponechán jako kontext, stav je doplněn na začátku každého bodu.
 
 ### 2.1 Zranitelná závislost: multer 1.4.5-lts.2
+**✅ VYŘEŠENO:** `backend/package.json` nyní `"multer": "^2.2.0"` (`@types/multer` `^2.0.0`), nainstalováno 2.2.0.
 - Nainstalovaná řada multer 1.x má známé DoS zranitelnosti (CVE-2025-47935 — memory leak při chybě streamu, CVE-2025-47944 — crash na malformovaný multipart, CVE-2025-7338); opraveno až v multeru 2.x.
 - Používá se na obou upload endpointech (fotky, výkresy podlaží). Neautentizovaný útočník se k nim nedostane (auth middleware je před nimi), ale kterýkoli přihlášený worker může server shodit.
 - **Doporučení:** upgrade na `multer@^2`. (`backend/package.json` — `"multer": "^1.4.5-lts.1"`)
 - Pozn.: `npm audit` se v sandboxu nepodařilo spustit (blokovaná síť) — před nasazením spustit lokálně pro úplný obraz.
 
 ### 2.2 Chybí `app.set('trust proxy', …)`
+**✅ VYŘEŠENO:** `backend/src/app.ts:36` nastavuje `app.set('trust proxy', 1)`.
 - V `backend/src/app.ts` není trust proxy nastaven, přitom cílový deploy je Railway (za reverzní proxy).
 - Důsledky: `req.ip` = IP proxy pro všechny klienty → **login rate limiter (30 pokusů/15 min/IP) se sečte přes všechny uživatele firmy** — buď zamkne legitimní uživatele, nebo (podle proxy) naopak útočník rotuje X-Forwarded-For. Také `LoginLog.ipAddress` bude k ničemu.
 - **Doporučení:** `app.set('trust proxy', 1)` + ověřit chování express-rate-limit za Railway.
 
 ### 2.3 Slabý PIN model bez per-účtového lockoutu
+**✅ VYŘEŠENO:** PIN min. 6 znaků (`auth.routes.ts` — `z.string().min(6).max(8)`), per-účtový lockout (10 neúspěšných pokusů / 15 min přes `LoginLog`, `auth.service.ts:checkAccountLockout`), `mustChangePin: true` v seedu a `SEED_DEMO_PIN` povinný v produkci. Zbývá zvážit: pro admin účty silnější heslo místo PINu.
 - PIN 4–8 znaků (`backend/src/routes/auth.routes.ts:11`, schéma nevynucuje ani číslice, ale 4 znaky jsou málo), bcrypt cost 10.
 - Rate limit je jen per-IP (viz 2.2) — **neexistuje lockout per účet**. 4místný PIN = 10 000 kombinací; při distribuovaném útoku reálně prolomitelné. Při úniku DB je offline crack 4–8místných PINů triviální i s bcryptem.
 - Seed (`backend/prisma/seed.ts`) navíc dává **všem 5 účtům včetně admina stejný PIN** a `mustChangePin` nenastavuje (default `false` — `backend/prisma/schema.prisma:44`) → seednutý admin si PIN nikdy nemusí změnit.
@@ -56,6 +68,13 @@ Aplikace je na poměry interního firemního nástroje nadprůměrně zabezpeče
 ---
 
 ## 3. VÁŽNÉ — opravit před/při nasazení
+
+> **Stav 2026-06-27:** 3.1–3.4 vyřešeny, 3.5 z velké části doplněna.
+> - **3.1 ✅** Produkce běží na HTTPS (Railway), APK je release-podepsané (`key.properties` + CI keystore). Windows exe zůstává nepodepsaný (SmartScreen) — nízká priorita.
+> - **3.2 ✅** `STORAGE_DRIVER=s3` vynucený a ověřený živě (`/ready` → `storage.driver=s3`).
+> - **3.3 ✅** `backend/.env.production.example` má `CORS_ORIGIN=https://app.example.com`, `ALLOW_WILDCARD_CORS=false`.
+> - **3.4 ✅** `git fsck` čistý (žádný corrupt index), staré APK/binárky uklizené z pracovní kopie, `releases/` drží jen poslední 2 verze.
+> - **3.5 ◑** Doplněn per-uživatelský rate limit na `POST /api/messages` (60/15 min), `POST /api/sync/push` (300/15 min) a CSV/PDF exporty reportů i pracovních listů (40/15 min) — `security.middleware.ts`. Zbývá zvážit globální limiter na celé `/api`.
 
 | # | Nález | Detail / odkaz |
 |---|---|---|
@@ -82,6 +101,8 @@ Aplikace je na poměry interního firemního nástroje nadprůměrně zabezpeče
 
 Matice (`backend/src/lib/permissions.ts`) je konzistentní s použitím v routách; namátkové integrační testy RBAC existují (`backend/__tests__/rbac.refactor.integration.test.js`, `auth.roles.integration.test.js`, `permissions.test.js`).
 
+> Poznámka 2026-06-27: role **`ucetni` byla odstraněna** (migrace `20250617000000_remove_ucetni_role`), všechna její oprávnění spadla pod `vedeni`. Sloupec `ucetni` v tabulce níže je historický — aktuální role jsou jen **worker / vedeni / admin**.
+
 | Akce | worker | vedeni | ucetni | admin |
 |---|---|---|---|---|
 | Ucpávky: vytvořit/editovat | ✔ | ✔ | ✖ | ✔ |
@@ -102,13 +123,13 @@ Nesrovnalosti k diskusi (ne nutně chyby):
 
 ## 6. Checklist před ostrým nasazením (go/no-go)
 
-1. ☐ Upgrade `multer` na 2.x + `npm audit` lokálně (2.1)
-2. ☐ `app.set('trust proxy', 1)` + retest rate limitů za Railway (2.2)
-3. ☐ Per-účtový login lockout, min. délka PIN 6, `mustChangePin: true` v seedu (2.3)
-4. ☐ HTTPS všude; odstranit cleartext z Android konfigurace; podepsat APK (`key.properties`) i Windows exe (3.1)
-5. ☐ Produkce: `STORAGE_DRIVER=s3` (R2), `PUBLIC_UPLOADS=false`, konkrétní `CORS_ORIGIN` (3.2, 3.3)
-6. ☐ Opravit git repozitář, commitnout 178 změn, binárky přesunout do Releases (3.4)
-7. ☐ Otestovat obnovu ze zálohy (pg_dump → restore) — záloha bez testu obnovy není záloha
-8. ☐ Smoke test celé cesty: login → sync → fotka → export PDF na produkční URL
+1. ☑ Upgrade `multer` na 2.x (2.2.0) — `npm audit` lokálně před každým releasem (2.1)
+2. ☑ `app.set('trust proxy', 1)` (2.2)
+3. ☑ Per-účtový login lockout, min. délka PIN 6, `mustChangePin: true` v seedu (2.3)
+4. ☑ HTTPS produkce (Railway); APK release-podepsané. ☐ Windows exe podpis (nízká priorita) (3.1)
+5. ☑ Produkce: `STORAGE_DRIVER=s3` (R2), `PUBLIC_UPLOADS=false`, konkrétní `CORS_ORIGIN` (3.2, 3.3)
+6. ☑ Git repozitář zdravý, binárky uklizené, `releases/` drží poslední 2 verze (3.4)
+7. ☐ **Otestovat obnovu ze zálohy** (pg_dump → restore) — záloha bez testu obnovy není záloha *(zbývá)*
+8. ☐ Smoke test celé cesty: login → sync → fotka → export PDF na produkční URL *(průběžně)*
 
-Po splnění bodů 1–5 je aplikace dle mého posouzení způsobilá pro produkční interní nasazení (desítky uživatelů). Pro vystavení na veřejný internet doplnit i bod 3.5 (globální rate limiting).
+Body 1–6 jsou splněné a produkce je živá → aplikace je způsobilá pro produkční interní nasazení (desítky uživatelů). Zbývají provozní body 7–8. Rate limiting (3.5) je doplněn na nejnáročnější endpointy; globální limiter na celé `/api` zvážit pro veřejné vystavení.

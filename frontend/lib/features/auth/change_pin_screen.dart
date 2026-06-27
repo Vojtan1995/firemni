@@ -23,8 +23,14 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
 
   Future<void> _submit() async {
     final newPin = _newCtrl.text;
-    if (newPin.length < 6 || newPin.length > 8) {
-      setState(() => _error = 'Nový PIN musí mít 6 až 8 číslic');
+    final isAdmin = ref.read(authServiceProvider).isAdmin;
+    final invalid = isAdmin
+        ? newPin.length < 12 || newPin.length > 128
+        : newPin.length < 6 || newPin.length > 8;
+    if (invalid) {
+      setState(() => _error = isAdmin
+          ? 'Admin heslo musí mít 12 až 128 znaků'
+          : 'Nový PIN musí mít 6 až 8 znaků');
       return;
     }
     if (newPin != _confirmCtrl.text) {
@@ -57,11 +63,13 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isAdmin = ref.read(authServiceProvider).isAdmin;
+    final credentialLabel = isAdmin ? 'heslo' : 'PIN';
     return PopScope(
       canPop: false,
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('Změna PINu'),
+          title: Text('Změna ${isAdmin ? 'hesla' : 'PINu'}'),
           automaticallyImplyLeading: false,
         ),
         body: SafeArea(
@@ -69,21 +77,22 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
             padding: const EdgeInsets.all(AppSpacing.xl),
             children: [
               Text(
-                'Nastavte si vlastní PIN',
+                'Nastavte si vlastní $credentialLabel',
                 style: Theme.of(context).textTheme.headlineMedium,
               ),
               const SizedBox(height: AppSpacing.sm),
               Text(
-                'Před pokračováním je potřeba změnit dočasný PIN.',
+                'Před pokračováním je potřeba změnit dočasný $credentialLabel.',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
               const SizedBox(height: AppSpacing.xl),
               AppTextField(
                 key: const Key('change_pin_current'),
                 controller: _currentCtrl,
-                label: 'Aktuální PIN',
+                label: 'Aktuální $credentialLabel',
                 obscureText: true,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    isAdmin ? TextInputType.text : TextInputType.number,
                 textInputAction: TextInputAction.next,
                 prefixIcon: const Icon(Icons.lock_outline),
               ),
@@ -91,9 +100,10 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
               AppTextField(
                 key: const Key('change_pin_new'),
                 controller: _newCtrl,
-                label: 'Nový PIN',
+                label: 'Nový $credentialLabel',
                 obscureText: true,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    isAdmin ? TextInputType.text : TextInputType.number,
                 textInputAction: TextInputAction.next,
                 prefixIcon: const Icon(Icons.lock_reset),
               ),
@@ -101,9 +111,10 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
               AppTextField(
                 key: const Key('change_pin_confirm'),
                 controller: _confirmCtrl,
-                label: 'Potvrdit nový PIN',
+                label: 'Potvrdit nový $credentialLabel',
                 obscureText: true,
-                keyboardType: TextInputType.number,
+                keyboardType:
+                    isAdmin ? TextInputType.text : TextInputType.number,
                 prefixIcon: const Icon(Icons.check_circle_outline),
                 onSubmitted: (_) => _submit(),
               ),
@@ -114,7 +125,7 @@ class _ChangePinScreenState extends ConsumerState<ChangePinScreen> {
               const SizedBox(height: AppSpacing.xl),
               AppPrimaryButton(
                 key: const Key('change_pin_submit'),
-                label: 'Uložit PIN',
+                label: 'Uložit $credentialLabel',
                 loading: _loading,
                 onPressed: _submit,
               ),

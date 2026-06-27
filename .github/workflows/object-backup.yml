@@ -1,0 +1,136 @@
+name: R2 Object Backup
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Install AWS CLI and PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y awscli postgresql-client
+
+      - name: Configure isolated source and destination profiles
+        env:
+          SRC_KEY: ${{ secrets.APP_STORAGE_READ_ACCESS_KEY_ID }}
+          SRC_SECRET: ${{ secrets.APP_STORAGE_READ_SECRET_ACCESS_KEY }}
+          DST_KEY: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          DST_SECRET: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+        run: |
+          set -euo pipefail
+          for value in "$SRC_KEY" "$SRC_SECRET" "$DST_KEY" "$DST_SECRET"; do
+            [ -n "$value" ] || { echo "::error::Missing object backup credentials"; exit 1; }
+          done
+          aws configure set aws_access_key_id "$SRC_KEY" --profile source
+          aws configure set aws_secret_access_key "$SRC_SECRET" --profile source
+          aws configure set region auto --profile source
+          aws configure set aws_access_key_id "$DST_KEY" --profile destination
+          aws configure set aws_secret_access_key "$DST_SECRET" --profile destination
+          aws configure set region auto --profile destination
+
+      - name: Download source and build manifest
+        env:
+          SOURCE_BUCKET: ${{ secrets.APP_STORAGE_BUCKET }}
+          SOURCE_ENDPOINT: ${{ secrets.APP_STORAGE_ENDPOINT }}
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          STORAGE_PREFIX: ${{ secrets.APP_STORAGE_KEY_PREFIX }}
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot
+          aws s3 sync "s3://${SOURCE_BUCKET}/" snapshot/ \
+            --endpoint-url "$SOURCE_ENDPOINT" --profile source --no-progress
+          find snapshot -type f -print0 | sort -z | xargs -0 -r sha256sum \
+            | sed 's#  snapshot/#  #' > object-manifest.sha256
+          find snapshot -type f -printf '%P\n' | sort > actual-objects.txt
+
+          prefix="${STORAGE_PREFIX:-photos}"
+          prefix="${prefix#/}"
+          prefix="${prefix%/}"
+          psql "$DATABASE_URL" -Atc \
+            "SELECT file_path FROM seal_photos UNION SELECT file_path FROM floor_drawings" \
+            | sed '/^$/d' | sed "s#^#${prefix}/#" | sort -u > expected-objects.txt
+
+          comm -23 expected-objects.txt actual-objects.txt > missing-objects.txt
+          comm -13 expected-objects.txt actual-objects.txt > orphan-objects.txt
+          if [ -s missing-objects.txt ]; then
+            echo "::error::Database references missing objects"
+            head -20 missing-objects.txt
+            exit 1
+          fi
+          if [ -s orphan-objects.txt ]; then
+            echo "::error::Bucket contains objects without database records"
+            head -20 orphan-objects.txt
+            exit 1
+          fi
+
+          count="$(find snapshot -type f | wc -l)"
+          bytes="$(du -sb snapshot | cut -f1)"
+          echo "OBJECT_COUNT=$count" >> "$GITHUB_ENV"
+          echo "OBJECT_BYTES=$bytes" >> "$GITHUB_ENV"
+          test "$count" -gt 0
+
+      - name: Detect same-key changes and mass deletion
+        env:
+          BACKUP_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          if aws s3 cp "s3://${BACKUP_BUCKET}/objects/latest/object-manifest.sha256" \
+            previous-manifest.sha256 --endpoint-url "$BACKUP_ENDPOINT" \
+            --profile destination --no-progress 2>/dev/null; then
+            previous_count="$(wc -l < previous-manifest.sha256)"
+            if [ "$previous_count" -gt 0 ] && [ "$OBJECT_COUNT" -lt $((previous_count * 80 / 100)) ]; then
+              echo "::error::Object count dropped by more than 20 percent"
+              exit 1
+            fi
+            awk '{ hash=$1; $1=""; sub(/^  /, ""); print $0, hash }' \
+              previous-manifest.sha256 | sort > previous-by-key.txt
+            awk '{ hash=$1; $1=""; sub(/^  /, ""); print $0, hash }' \
+              object-manifest.sha256 | sort > current-by-key.txt
+            join previous-by-key.txt current-by-key.txt \
+              | awk '$2 != $3 { print $1 }' > changed-keys.txt
+            if [ -s changed-keys.txt ]; then
+              echo "::error::Content changed under existing object keys"
+              head -20 changed-keys.txt
+              exit 1
+            fi
+          fi
+
+      - name: Upload immutable dated snapshot
+        env:
+          BACKUP_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          prefix="objects/$(date -u +%Y-%m-%d_%H%M%S)"
+          aws s3 sync snapshot/ "s3://${BACKUP_BUCKET}/${prefix}/data/" \
+            --endpoint-url "$BACKUP_ENDPOINT" --profile destination --no-progress
+          aws s3 cp object-manifest.sha256 \
+            "s3://${BACKUP_BUCKET}/${prefix}/object-manifest.sha256" \
+            --endpoint-url "$BACKUP_ENDPOINT" --profile destination
+          aws s3 cp object-manifest.sha256 \
+            "s3://${BACKUP_BUCKET}/objects/latest/object-manifest.sha256" \
+            --endpoint-url "$BACKUP_ENDPOINT" --profile destination
+          {
+            echo "Objects: ${OBJECT_COUNT}"
+            echo "Bytes: ${OBJECT_BYTES}"
+            echo "Snapshot: ${prefix}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Alert on object backup failure
+        if: failure()
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || exit 0
+          curl -fsS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=UNIFAST R2 object backup failed. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null

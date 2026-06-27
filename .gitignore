@@ -25,3 +25,8 @@ coverage/
 /ucpavky-*.apk
 /ucpavky-windows-release.zip
 /*.exe
+reports/*.json
+reports/*.md
+reports/*.csv
+reports/*.html
+reports/load-tokens.json

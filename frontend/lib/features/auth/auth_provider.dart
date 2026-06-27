@@ -25,6 +25,20 @@ final currentUserIdProvider = Provider<String?>((ref) {
 
 final authServiceProvider = Provider((ref) => AuthService(ref));
 
+class LoginOutcome {
+  const LoginOutcome({
+    this.authenticated = false,
+    this.mfaRequired = false,
+    this.enrollmentRequired = false,
+    this.challengeToken,
+  });
+
+  final bool authenticated;
+  final bool mfaRequired;
+  final bool enrollmentRequired;
+  final String? challengeToken;
+}
+
 class AuthService {
   AuthService(this._ref);
   final Ref _ref;
@@ -101,18 +115,70 @@ class AuthService {
     }
   }
 
-  Future<void> login(String username, String pin) async {
-    final res = await _dio.post('/api/auth/login', data: {
-      'username': username,
-      'pin': pin,
-    });
-    final data = res.data as Map<String, dynamic>;
+  Future<void> _storeSession(Map<String, dynamic> data) async {
     final token = data['token'] as String;
-    final user = data['user'] as Map<String, dynamic>;
+    final user = Map<String, dynamic>.from(data['user'] as Map);
     await _storage.write(key: _tokenKey, value: token);
     await _storeUser(user);
     _ref.read(authTokenProvider.notifier).state = token;
     _ref.read(authUserProvider.notifier).state = user;
+  }
+
+  Future<LoginOutcome> login(String username, String credential) async {
+    final res = await _dio.post('/api/auth/login', data: {
+      'username': username,
+      'credential': credential,
+    });
+    final data = Map<String, dynamic>.from(res.data as Map);
+    if (data['mfaRequired'] == true) {
+      return LoginOutcome(
+        mfaRequired: true,
+        enrollmentRequired: data['enrollmentRequired'] == true,
+        challengeToken: data['challengeToken'] as String?,
+      );
+    }
+    await _storeSession(data);
+    return const LoginOutcome(authenticated: true);
+  }
+
+  Future<Map<String, dynamic>> startMfaEnrollment(String challengeToken) async {
+    final res = await _dio.post('/api/auth/mfa/enroll/start', data: {
+      'challengeToken': challengeToken,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<List<String>> confirmMfaEnrollment(
+    String challengeToken,
+    String code,
+  ) async {
+    final res = await _dio.post('/api/auth/mfa/enroll/confirm', data: {
+      'challengeToken': challengeToken,
+      'code': code,
+    });
+    final data = Map<String, dynamic>.from(res.data as Map);
+    await _storeSession(data);
+    return (data['recoveryCodes'] as List).cast<String>();
+  }
+
+  Future<void> verifyMfaLogin(String challengeToken, String code) async {
+    final res = await _dio.post('/api/auth/mfa/verify-login', data: {
+      'challengeToken': challengeToken,
+      'code': code,
+    });
+    await _storeSession(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  Future<void> useMfaRecovery(String challengeToken, String code) async {
+    final res = await _dio.post('/api/auth/mfa/recovery', data: {
+      'challengeToken': challengeToken,
+      'code': code,
+    });
+    await _storeSession(Map<String, dynamic>.from(res.data as Map));
+  }
+
+  Future<void> stepUpMfa(String code) async {
+    await _dio.post('/api/auth/mfa/step-up', data: {'code': code});
   }
 
   Future<void> changePin(String currentPin, String newPin) async {

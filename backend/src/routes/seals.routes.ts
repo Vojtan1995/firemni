@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { SealStatus, UserRole, SealTrade } from "@prisma/client";
-import { authMiddleware } from "../middleware/auth.middleware.js";
+import { authMiddleware, requireRecentAdminMfa } from "../middleware/auth.middleware.js";
 import { requirePermission } from "../lib/permissions.js";
 import { prisma } from "../lib/prisma.js";
 import { notFound } from "../lib/errors.js";
@@ -686,6 +686,7 @@ router.delete(
 router.patch(
   "/:id/restore",
   requirePermission("seal.restore"),
+  requireRecentAdminMfa,
   async (req, res, next) => {
     try {
       const seal = await restoreSeal(

@@ -26,6 +26,7 @@ import searchRoutes from './routes/search.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import appRoutes from './routes/app.routes.js';
 import clientErrorsRoutes from './routes/client-errors.routes.js';
+import privacyRoutes from './routes/privacy.routes.js';
 
 export function createApp() {
   const app = express();
@@ -39,6 +40,18 @@ export function createApp() {
     pinoHttp({
       logger,
       autoLogging: config.nodeEnv !== 'test',
+      redact: {
+        paths: [
+          'req.headers.authorization',
+          'req.headers.cookie',
+          'req.body.pin',
+          'req.body.password',
+          'req.body.credential',
+          'req.body.code',
+          'req.body.challengeToken',
+        ],
+        censor: '[REDACTED]',
+      },
     }),
   );
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
@@ -89,6 +102,7 @@ export function createApp() {
   app.use('/api/search', searchRoutes);
   app.use('/api/admin', adminRoutes);
   app.use('/api/client-errors', clientErrorsRoutes);
+  app.use('/api/privacy', privacyRoutes);
 
   // Fallback 404 — musí být před errorMiddleware a za všemi routami
   app.use((_req, res) => {

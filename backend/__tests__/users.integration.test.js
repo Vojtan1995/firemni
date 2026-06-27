@@ -156,7 +156,7 @@ describe('Users admin (management / admin)', () => {
       .send({
         username,
         displayName: 'Test Admin',
-        pin: '432109',
+        pin: 'Strong-Test-Admin-2026!',
         role: 'admin',
       });
     expect(created.status).toBe(201);

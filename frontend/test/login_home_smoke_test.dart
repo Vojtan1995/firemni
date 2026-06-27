@@ -26,7 +26,7 @@ class _FakeAuthService extends AuthService {
   final Ref ref;
 
   @override
-  Future<void> login(String username, String pin) async {
+  Future<LoginOutcome> login(String username, String pin) async {
     if (username != 'worker1' || pin != '1234') {
       throw Exception('Invalid credentials');
     }
@@ -38,6 +38,7 @@ class _FakeAuthService extends AuthService {
       'role': 'worker',
       'mustChangePin': false,
     };
+    return const LoginOutcome(authenticated: true);
   }
 }
 

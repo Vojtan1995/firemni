@@ -1,8 +1,10 @@
 # RELEASE_CHECKLIST.md – interní beta a ostré nasazení
 
-Datum auditu: **2026-05-28** (finální MVP)
+Datum auditu: **2026-05-28** (finální MVP) · Aktualizace: **2026-06-27**
 
-Související: [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [PROJECT_STATUS.md](PROJECT_STATUS.md), [docs/CI.md](docs/CI.md).
+> **Stav 2026-06-27:** Produkce je **živá** na `https://firemni-production.up.railway.app` (HTTPS, PostgreSQL, R2/S3 storage). Většina „blokerů ostrého nasazení" z §2 níže je **vyřešena** — viz aktualizační poznámka v §2. Aktuální verze klienta: `1.0.8+9`.
+
+Související: [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [RUNNING.md](RUNNING.md), [KNOWN_ISSUES.md](KNOWN_ISSUES.md), [AUDIT_REPORT_NASAZENI.md](AUDIT_REPORT_NASAZENI.md), [docs/CI.md](docs/CI.md).
 
 ---
 
@@ -35,6 +37,17 @@ Související: [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [RUNNING.md](RUNNING.md),
 
 ## 2. Co blokuje ostré (produkční) nasazení
 
+> **Aktualizace 2026-06-27 — většina blokerů VYŘEŠENA:**
+> - ✅ **Hostovaný backend** — běží na Railway (`https://firemni-production.up.railway.app`), klient (release APK) volá tuto HTTPS URL přes `--dart-define=API_BASE_URL`.
+> - ✅ **HTTPS / cleartext** — produkce je HTTPS; Android `network_security_config` zakazuje cleartext globálně (povolen jen pro localhost/LAN dev domény).
+> - ✅ **Android Play signing** — release APK je podepsané release keystorem (`key.properties` lokálně, secrets v CI).
+> - ✅ **Storage** — `STORAGE_DRIVER=s3` (Cloudflare R2) vynucený a ověřený živě.
+> - ◑ **Sync na pozadí (Doze)** — stále řešeno ručním syncem; WorkManager je budoucí task.
+> - ☐ **Nepodepsaný Windows exe** — zbývá (SmartScreen „Spustit přesto"), nízká priorita.
+> - ☐ **Koš jen pro ucpávky** — patra/stavby bez obnovy, zbývá.
+> - ☐ **Provozní procesy** — test obnovy ze zálohy zatím neproběhl.
+>
+> Tabulka níže je původní (2026-05-28) a slouží jako kontext.
 
 | Blokér                             | Důvod                                                                           | Co by bylo potřeba                                     |
 | ---------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------ |
@@ -140,9 +153,12 @@ Ověření: `GET /api/app/release?platform=android` → JSON s `updateAvailable:
 
 ## 5c. Kandidat release notes pro stabilizacni varku
 
-Tato sekce je priprava vydani, ne bump verze ani build artefaktu. Aktualni
-`frontend/pubspec.yaml` zustava `1.0.2+3`; pro dalsi vydani je doporuceno
-`1.0.3+4`, pokud nepribude dalsi funkcni zmena.
+> Aktualizace 2026-06-27: tato sekce je historická (psána u verze `1.0.2+3`).
+> Aktuální `frontend/pubspec.yaml` je `1.0.8+9`; poslední dvě podepsané APK jsou
+> v `releases/` (`1.0.7+8`, `1.0.8+9`). Pro postup vydání viz §8 a
+> [memory release-flow]. Text níže popisuje princip kandidátních release notes.
+
+Tato sekce je priprava vydani, ne bump verze ani build artefaktu.
 
 Kandidatni `APP_RELEASE_NOTES`:
 

@@ -1,12 +1,13 @@
 import bcrypt from 'bcrypt';
-import jwt from 'jsonwebtoken';
-import { v4 as uuidv4 } from 'uuid';
+import { UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { config } from '../config.js';
 import { unauthorized, forbidden } from '../lib/errors.js';
 import { AppError } from '../lib/errors.js';
 import { hashSessionToken } from '../lib/session-token.js';
 import { logActivity } from './audit.service.js';
+import { createAuthenticatedSession } from './session.service.js';
+import { assertStrongAdminPassword, beginAdminMfa } from './mfa.service.js';
 
 const LOCKOUT_WINDOW_MS = 15 * 60 * 1000; // 15 minut
 const LOCKOUT_MAX_ATTEMPTS = 10;
@@ -21,7 +22,7 @@ async function checkAccountLockout(username: string): Promise<void> {
   }
 }
 
-export async function login(username: string, pin: string, meta?: { ip?: string; userAgent?: string }) {
+export async function login(username: string, credential: string, meta?: { ip?: string; userAgent?: string }) {
   // Zkontroluj lockout před načtením uživatele (brání user enumeration přes timing)
   await checkAccountLockout(username);
 
@@ -34,7 +35,9 @@ export async function login(username: string, pin: string, meta?: { ip?: string;
     throw unauthorized('Neplatné přihlašovací údaje');
   }
 
-  const valid = await bcrypt.compare(pin, user.pinHash);
+  const isAdmin = user.role === UserRole.admin;
+  const credentialHash = isAdmin && user.passwordHash ? user.passwordHash : user.pinHash;
+  const valid = await bcrypt.compare(credential, credentialHash);
   if (!valid) {
     await prisma.loginLog.create({
       data: { userId: user.id, username, success: false, ipAddress: meta?.ip, userAgent: meta?.userAgent },
@@ -46,31 +49,25 @@ export async function login(username: string, pin: string, meta?: { ip?: string;
     data: { userId: user.id, username, success: true, ipAddress: meta?.ip, userAgent: meta?.userAgent },
   });
 
-  const sessionId = uuidv4();
-  const token = jwt.sign({ sub: user.id, sid: sessionId }, config.jwtSecret, {
-    expiresIn: `${config.sessionDays}d`,
-  });
-
-  const expiresAt = new Date();
-  expiresAt.setDate(expiresAt.getDate() + config.sessionDays);
-
-  await prisma.userSession.create({
-    data: { id: sessionId, userId: user.id, token: hashSessionToken(token), expiresAt },
-  });
+  if (isAdmin && config.adminMfa.required && !user.passwordHash) {
+    throw new AppError(
+      428,
+      'ADMIN_PASSWORD_SETUP_REQUIRED',
+      'Admin musí před aktivací MFA nastavit heslo o délce alespoň 12 znaků',
+    );
+  }
+  const mfa = isAdmin
+    ? await prisma.userMfaCredential.findUnique({ where: { userId: user.id } })
+    : null;
+  if (isAdmin && (config.adminMfa.required || mfa?.enabledAt)) {
+    return beginAdminMfa(user);
+  }
 
   await logActivity(user.id, 'login', 'user', user.id);
-
-  return {
-    token,
-    user: {
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      role: user.role,
-      materialMode: user.materialMode,
-      mustChangePin: user.mustChangePin,
-    },
-  };
+  return createAuthenticatedSession(
+    user.id,
+    isAdmin && user.passwordHash ? 'password' : 'pin',
+  );
 }
 
 export async function logout(token: string, userId: string) {
@@ -79,7 +76,10 @@ export async function logout(token: string, userId: string) {
 }
 
 export async function getMe(userId: string) {
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { mfaCredential: { select: { enabledAt: true } } },
+  });
   if (!user || !user.isActive) throw forbidden('Účet deaktivován');
   return {
     id: user.id,
@@ -88,6 +88,7 @@ export async function getMe(userId: string) {
     role: user.role,
     materialMode: user.materialMode,
     mustChangePin: user.mustChangePin,
+    mfaEnabled: user.mfaCredential?.enabledAt != null,
   };
 }
 
@@ -95,16 +96,22 @@ export async function changeOwnPin(userId: string, currentPin: string, newPin: s
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user || !user.isActive) throw forbidden('Účet deaktivován');
 
-  const valid = await bcrypt.compare(currentPin, user.pinHash);
+  const currentHash =
+    user.role === UserRole.admin && user.passwordHash ? user.passwordHash : user.pinHash;
+  const valid = await bcrypt.compare(currentPin, currentHash);
   if (!valid) throw unauthorized('Aktuální PIN není správný');
 
-  const samePin = await bcrypt.compare(newPin, user.pinHash);
+  const samePin = await bcrypt.compare(newPin, currentHash);
   if (samePin) throw forbidden('Nový PIN musí být jiný než aktuální PIN');
 
-  const pinHash = await bcrypt.hash(newPin, 10);
+  if (user.role === UserRole.admin) assertStrongAdminPassword(newPin);
+  const nextHash = await bcrypt.hash(newPin, 10);
   const updated = await prisma.user.update({
     where: { id: userId },
-    data: { pinHash, mustChangePin: false },
+    data:
+      user.role === UserRole.admin
+        ? { passwordHash: nextHash, mustChangePin: false }
+        : { pinHash: nextHash, mustChangePin: false },
   });
 
   await prisma.userSession.deleteMany({

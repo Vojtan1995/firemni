@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { authMiddleware } from '../middleware/auth.middleware.js';
 import { logError } from '../services/audit.service.js';
+import { redactText } from '../lib/redaction.js';
 
 const router = Router();
 router.use(authMiddleware);
@@ -19,9 +20,9 @@ const clientErrorSchema = z.object({
 router.post('/', async (req, res, next) => {
   try {
     const body = clientErrorSchema.parse(req.body);
-    await logError(body.message, {
-      stack: body.stack,
-      path: body.route,
+    await logError(redactText(body.message, 2000)!, {
+      stack: redactText(body.stack),
+      path: redactText(body.route, 500),
       method: 'CLIENT',
       userId: req.user!.id,
       metadata: {

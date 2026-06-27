@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { UserRole } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { messageRateLimiter } from '../middleware/security.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { badRequest, forbidden, notFound } from '../lib/errors.js';
 import { paramId } from '../lib/params.js';
@@ -69,7 +70,7 @@ router.get('/unread-count', async (req, res, next) => {
   }
 });
 
-router.post('/', async (req, res, next) => {
+router.post('/', messageRateLimiter, async (req, res, next) => {
   try {
     const body = sendSchema.parse(req.body);
     if (body.recipientId === req.user!.id) {

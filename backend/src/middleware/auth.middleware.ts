@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import { UserRole, MaterialMode } from '@prisma/client';
 import { config } from '../config.js';
 import { prisma } from '../lib/prisma.js';
-import { unauthorized, forbidden } from '../lib/errors.js';
+import { AppError, unauthorized, forbidden } from '../lib/errors.js';
 import { hashSessionToken } from '../lib/session-token.js';
 
 export interface AuthUser {
@@ -12,6 +12,9 @@ export interface AuthUser {
   displayName: string;
   role: UserRole;
   materialMode: MaterialMode;
+  sessionId: string;
+  mfaVerifiedAt?: Date;
+  authMethod: string;
 }
 
 declare global {
@@ -43,11 +46,25 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
       displayName: session.user.displayName,
       role: session.user.role,
       materialMode: session.user.materialMode,
+      sessionId: session.id,
+      mfaVerifiedAt: session.mfaVerifiedAt ?? undefined,
+      authMethod: session.authMethod,
     };
     next();
   } catch {
     next(unauthorized());
   }
+}
+
+export function requireRecentAdminMfa(req: Request, _res: Response, next: NextFunction) {
+  if (!req.user) return next(unauthorized());
+  if (req.user.role !== UserRole.admin || !config.adminMfa.required) return next();
+  const verifiedAt = req.user.mfaVerifiedAt;
+  const maxAgeMs = config.adminMfa.stepUpMinutes * 60 * 1000;
+  if (!verifiedAt || Date.now() - verifiedAt.getTime() > maxAgeMs) {
+    return next(new AppError(403, 'STEP_UP_REQUIRED', 'Pro tuto operaci je nutné znovu ověřit MFA'));
+  }
+  next();
 }
 
 export function requireRole(...roles: UserRole[]) {

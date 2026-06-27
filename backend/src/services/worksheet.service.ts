@@ -142,11 +142,15 @@ async function assertWorksheetAccess(
     },
   });
   if (!ws) throw notFound("Soupis nenalezen");
-  if (
-    role === UserRole.worker &&
-    !ws.workers.some((w) => w.userId === userId)
-  ) {
-    throw forbidden("Nemáte přístup k tomuto soupisu");
+  if (role === UserRole.worker) {
+    // Zákaznický soupis je interní podklad pro vedení – worker k němu nemá
+    // přístup ani jako účastník (jeho jméno na soupisu pro zákazníka).
+    if (ws.audience === "customer") {
+      throw forbidden("Nemáte přístup k tomuto soupisu");
+    }
+    if (!ws.workers.some((w) => w.userId === userId)) {
+      throw forbidden("Nemáte přístup k tomuto soupisu");
+    }
   }
   return ws;
 }
@@ -277,6 +281,9 @@ export async function listWorksheets(
 
   if (role === UserRole.worker) {
     where.workers = { some: { userId } };
+    // Worker nesmí vidět zákaznické soupisy, ani když je v nich jako jméno –
+    // jsou to interní podklady pro vedení/fakturaci směrem k zákazníkovi.
+    where.audience = "worker";
   } else if (filters.workerId) {
     where.workers = { some: { userId: filters.workerId } };
   }
@@ -324,6 +331,11 @@ export async function createWorksheet(
   });
   if (!job) throw notFound("Zakázka nenalezena");
   assertJobWritableStatus(job.status);
+
+  // Zákaznický soupis (interní podklad pro vedení) smí založit pouze vedení/admin.
+  if (role === UserRole.worker && data.audience === "customer") {
+    throw forbidden("Worker nemůže vytvořit soupis pro zákazníka");
+  }
 
   let workerIds = data.workerIds ?? [];
   if (role === UserRole.worker) {

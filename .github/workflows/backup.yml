@@ -1,128 +1,149 @@
-name: DB Backup
+name: Encrypted DB Backup
 
 on:
-  # Denní off-site záloha do R2. Vyžaduje nastavené secrets:
-  #   PROD_DATABASE_URL, BACKUP_S3_BUCKET, BACKUP_S3_ENDPOINT,
-  #   BACKUP_S3_ACCESS_KEY_ID, BACKUP_S3_SECRET_ACCESS_KEY
-  #   TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID (alert při selhání)
   schedule:
-    - cron: '0 2 * * *'   # každý den 2:00 UTC (4:00 Prague letní čas)
+    - cron: '0 2 * * *'
   workflow_dispatch:
-    # Umožní ruční spuštění z GitHub Actions UI
+
+permissions:
+  contents: read
 
 jobs:
   backup:
-    name: pg_dump → R2/S3
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    timeout-minutes: 20
     steps:
-      - name: Check backup storage configured
+      - uses: actions/checkout@v4
+
+      - name: Validate configuration
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          ACCESS_KEY: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          SECRET_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: |
-          missing=""
-          [ -z "${{ secrets.PROD_DATABASE_URL }}" ] && missing="${missing} PROD_DATABASE_URL"
-          [ -z "${{ secrets.BACKUP_S3_BUCKET }}" ] && missing="${missing} BACKUP_S3_BUCKET"
-          [ -z "${{ secrets.BACKUP_S3_ENDPOINT }}" ] && missing="${missing} BACKUP_S3_ENDPOINT"
-          [ -z "${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}" ] && missing="${missing} BACKUP_S3_ACCESS_KEY_ID"
-          [ -z "${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}" ] && missing="${missing} BACKUP_S3_SECRET_ACCESS_KEY"
-          if [ -n "$missing" ]; then
-            echo "::error::Chybí secrets pro zálohu:${missing}. Doplň je v Settings → Secrets → Actions."
-            exit 1
-          fi
-          # Ověř, že PROD_DATABASE_URL je platné connection URI s hostem.
-          # Jinak by pg_dump spadl na lokální socket s nečitelnou hláškou.
-          case "${{ secrets.PROD_DATABASE_URL }}" in
-            postgres://*@*|postgresql://*@*) : ;;
-            *)
-              echo "::error::PROD_DATABASE_URL není platné URI. Očekávám tvar postgresql://USER:PASSWORD@HOST:PORT/DBNAME?sslmode=require"
-              exit 1
-              ;;
+          set -euo pipefail
+          for name in DATABASE_URL BUCKET ENDPOINT ACCESS_KEY SECRET_KEY AGE_RECIPIENT; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing $name"; exit 1; }
+          done
+          case "$DATABASE_URL" in
+            postgres://*@*|postgresql://*@*) ;;
+            *) echo "::error::PROD_DATABASE_URL is not a PostgreSQL URI"; exit 1 ;;
           esac
 
-      - name: Install postgresql-client 18
+      - name: Install PostgreSQL 18 client, age and AWS CLI
         run: |
-          # Produkční DB běží na PG 18; runner má ve výchozím repu jen klienta 16,
-          # který odmítne dump novějšího serveru. Přidáme oficiální PGDG repo.
-          sudo apt-get install -y curl ca-certificates
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y curl ca-certificates age awscli
           sudo install -d /usr/share/postgresql-common/pgdg
-          sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
             https://www.postgresql.org/media/keys/ACCC4CF8.asc
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo $VERSION_CODENAME)-pgdg main" \
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list
           sudo apt-get update -qq
           sudo apt-get install -y postgresql-client-18
-          pg_dump --version
 
-      - name: Run pg_dump
+      - name: Create, encrypt and verify backup
         env:
           DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
         run: |
-          set -o pipefail
-          TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
-          FILENAME="ucpavky_${TIMESTAMP}.sql.gz"
-          echo "BACKUP_FILENAME=${FILENAME}" >> $GITHUB_ENV
-          # Plná cesta na klienta 18 — ať se nespoléháme na to, kterého
-          # pg_dumpa vybere systémový wrapper (jinak hrozí pád na verzi 16).
-          /usr/lib/postgresql/18/bin/pg_dump "$DATABASE_URL" | gzip > "${FILENAME}"
-          # Ověření integrity gzipu — poškozený dump zachytíme hned, ne až při obnově
-          gunzip -t "${FILENAME}"
-          SIZE=$(du -sh "${FILENAME}" | cut -f1)
-          echo "Backup hotov: ${FILENAME} (${SIZE})"
-          echo "✅ Záloha **${FILENAME}** (${SIZE}) — gzip integrita OK" >> "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          timestamp="$(date -u +%Y%m%d_%H%M%S)"
+          base="ucpavky_${timestamp}"
+          dump="${base}.dump"
+          encrypted="${dump}.age"
+          manifest="${base}.manifest.json"
 
-      - name: Upload to Cloudflare R2
+          /usr/lib/postgresql/18/bin/pg_dump -Fc --no-owner --no-acl \
+            --file "$dump" "$DATABASE_URL"
+          /usr/lib/postgresql/18/bin/pg_restore --list "$dump" >/dev/null
+          age -r "$AGE_RECIPIENT" -o "$encrypted" "$dump"
+          sha256sum "$encrypted" > "${encrypted}.sha256"
+
+          db_version="$(/usr/lib/postgresql/18/bin/psql "$DATABASE_URL" -Atc 'SHOW server_version;')"
+          migration_count="$(find backend/prisma/migrations -mindepth 1 -maxdepth 1 -type d | wc -l)"
+          size="$(stat -c %s "$encrypted")"
+          cat > "$manifest" <<EOF
+          {
+            "formatVersion": 1,
+            "createdAt": "$(date -u +%FT%TZ)",
+            "sourcePostgresVersion": "$db_version",
+            "migrationCount": $migration_count,
+            "gitCommit": "${GITHUB_SHA}",
+            "encryptedFile": "$encrypted",
+            "encryptedBytes": $size,
+            "rpoTargetHours": 24,
+            "rtoTargetHours": 4
+          }
+          EOF
+          test "$size" -gt 1024
+          rm -f "$dump"
+          echo "BACKUP_BASE=$base" >> "$GITHUB_ENV"
+          echo "BACKUP_FILE=$encrypted" >> "$GITHUB_ENV"
+          echo "MANIFEST_FILE=$manifest" >> "$GITHUB_ENV"
+
+      - name: Export encrypted privacy erasure ledger
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+          AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          /usr/lib/postgresql/18/bin/psql "$DATABASE_URL" -Atc \
+            "COPY (SELECT row_to_json(t) FROM (SELECT subject_user_id, actor_user_id, original_username_hash, performed_at FROM privacy_erasures ORDER BY performed_at) t) TO STDOUT" \
+            > privacy-erasure-ledger.jsonl
+          age -r "$AGE_RECIPIENT" -o privacy-erasure-ledger.jsonl.age \
+            privacy-erasure-ledger.jsonl
+          sha256sum privacy-erasure-ledger.jsonl.age \
+            > privacy-erasure-ledger.jsonl.age.sha256
+          rm -f privacy-erasure-ledger.jsonl
+
+      - name: Upload to isolated R2 backup bucket
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
         run: |
-          pip install --quiet awscli
-          aws s3 cp "${BACKUP_FILENAME}" \
-            "s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}" \
-            --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}" \
-            --no-progress
-          echo "Upload hotov: s3://${{ secrets.BACKUP_S3_BUCKET }}/backups/${BACKUP_FILENAME}"
+          set -euo pipefail
+          prefix="backups/${BACKUP_BASE}"
+          aws s3 cp "$BACKUP_FILE" "s3://${BUCKET}/${prefix}/${BACKUP_FILE}" --endpoint-url "$ENDPOINT"
+          aws s3 cp "${BACKUP_FILE}.sha256" "s3://${BUCKET}/${prefix}/${BACKUP_FILE}.sha256" --endpoint-url "$ENDPOINT"
+          aws s3 cp "$MANIFEST_FILE" "s3://${BUCKET}/${prefix}/${MANIFEST_FILE}" --endpoint-url "$ENDPOINT"
+          aws s3 cp privacy-erasure-ledger.jsonl.age \
+            "s3://${BUCKET}/privacy-ledger/latest.jsonl.age" --endpoint-url "$ENDPOINT"
+          aws s3 cp privacy-erasure-ledger.jsonl.age.sha256 \
+            "s3://${BUCKET}/privacy-ledger/latest.jsonl.age.sha256" --endpoint-url "$ENDPOINT"
+          echo "Encrypted backup uploaded: ${prefix}" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Prune backups older than 30 days
+      - name: Prune snapshots older than 30 days
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
         run: |
-          CUTOFF=$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || \
-                   date -u -v -30d +%Y-%m-%dT%H:%M:%SZ)
-          echo "Mazání záloh starších než: ${CUTOFF}"
-          aws s3api list-objects-v2 \
-            --bucket "${{ secrets.BACKUP_S3_BUCKET }}" \
-            --prefix "backups/" \
-            --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}" \
-            --query "Contents[?LastModified<='${CUTOFF}'].Key" \
-            --output text | \
-          tr '\t' '\n' | \
-          grep -v '^$' | \
-          while read key; do
-            echo "Mazání: ${key}"
-            aws s3 rm "s3://${{ secrets.BACKUP_S3_BUCKET }}/${key}" \
-              --endpoint-url "${{ secrets.BACKUP_S3_ENDPOINT }}"
+          cutoff="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          aws s3api list-objects-v2 --bucket "$BUCKET" --prefix backups/ \
+            --endpoint-url "$ENDPOINT" \
+            --query "Contents[?LastModified<='${cutoff}'].Key" --output text |
+          tr '\t' '\n' | grep -v '^$' | while read -r key; do
+            aws s3 rm "s3://${BUCKET}/${key}" --endpoint-url "$ENDPOINT"
           done || true
-
-      - name: Cleanup local dump
-        if: always()
-        run: rm -f "${BACKUP_FILENAME}"
 
       - name: Telegram alert on failure
         if: failure()
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
-            echo "::warning::TELEGRAM_* secrets nenastavené — alert přeskočen."
-            exit 0
-          fi
-          MSG=$(printf '🔴 UNIFAST záloha DB SELHALA (run %s)\n%s' "${{ github.run_id }}" "${RUN_URL}")
-          curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
-            --data-urlencode "text=${MSG}" \
-            > /dev/null
+          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || exit 0
+          curl -fsS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=UNIFAST encrypted DB backup failed. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null

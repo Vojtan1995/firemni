@@ -325,32 +325,66 @@ describe("Worksheets module integration", () => {
     });
 
     it("allows the same seal entry in multiple customer worksheets", async () => {
+      // Zákaznický soupis smí založit pouze vedení/admin (worker nemá přístup
+      // ani k vytvoření, ani k obsahu zákaznického soupisu).
+      const worker = await prisma.user.findUnique({
+        where: { username: "worker1" },
+      });
       const seal = await createSeal("8");
       const entryId = seal.entries[0].id;
 
       const custWs1 = await request(app)
         .post("/api/worksheets")
-        .set("Authorization", `Bearer ${workerToken}`)
-        .send({ jobId: jobIdLocal, audience: "customer" });
+        .set("Authorization", `Bearer ${vedeniToken}`)
+        .send({ jobId: jobIdLocal, workerIds: [worker.id], audience: "customer" });
       expect(custWs1.status).toBe(201);
       const custWs2 = await request(app)
         .post("/api/worksheets")
-        .set("Authorization", `Bearer ${workerToken}`)
-        .send({ jobId: jobIdLocal, audience: "customer" });
+        .set("Authorization", `Bearer ${vedeniToken}`)
+        .send({ jobId: jobIdLocal, workerIds: [worker.id], audience: "customer" });
       expect(custWs2.status).toBe(201);
 
       const first = await request(app)
         .post(`/api/worksheets/${custWs1.body.id}/items`)
-        .set("Authorization", `Bearer ${workerToken}`)
+        .set("Authorization", `Bearer ${vedeniToken}`)
         .send({ sealEntryIds: [entryId] });
       expect(first.status).toBe(201);
 
       // Informativní (customer) soupis smí stejný prostup sdílet.
       const second = await request(app)
         .post(`/api/worksheets/${custWs2.body.id}/items`)
-        .set("Authorization", `Bearer ${workerToken}`)
+        .set("Authorization", `Bearer ${vedeniToken}`)
         .send({ sealEntryIds: [entryId] });
       expect(second.status).toBe(201);
+    });
+
+    it("worker cannot create, view or list a customer worksheet", async () => {
+      const worker = await prisma.user.findUnique({
+        where: { username: "worker1" },
+      });
+
+      const created = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({ jobId: jobIdLocal, audience: "customer" });
+      expect(created.status).toBe(403);
+
+      const custWs = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${vedeniToken}`)
+        .send({ jobId: jobIdLocal, workerIds: [worker.id], audience: "customer" });
+      expect(custWs.status).toBe(201);
+
+      const detail = await request(app)
+        .get(`/api/worksheets/${custWs.body.id}`)
+        .set("Authorization", `Bearer ${workerToken}`);
+      expect(detail.status).toBe(403);
+
+      const list = await request(app)
+        .get("/api/worksheets")
+        .set("Authorization", `Bearer ${workerToken}`);
+      expect(list.status).toBe(200);
+      expect(list.body.find((w) => w.id === custWs.body.id)).toBeUndefined();
     });
 
     it("management can add items to a draft worksheet centrally", async () => {

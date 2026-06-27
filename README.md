@@ -97,8 +97,7 @@ V produkci nastavte `SEED_DEMO_PIN` před `npx prisma db seed`.
 | Uživatel | Role | Popis |
 |----------|------|-------|
 | admin | admin | Plný přístup, správa všech uživatelů, koš, zálohy |
-| vedeni | vedení | Správa staveb a pater, export, správa uživatelů (mimo admin) |
-| ucetni | účetní / administrativa | Ceník, pracovní listy, export sestav |
+| vedeni | vedení | Správa staveb a pater, export, ceník, pracovní listy, správa uživatelů (mimo admin) |
 | worker1, worker2 | worker | Tvorba ucpávek, offline sync, fotky |
 
 ## Testovací stavba
@@ -171,8 +170,8 @@ Vedení může přiřadit konkrétní pracovníky ke stavbě (`/api/jobs/:jobId/
 |--------|--------|
 | [RUNNING.md](RUNNING.md) | Lokální spuštění (PostgreSQL, backend, Flutter) |
 | [KNOWN_ISSUES.md](KNOWN_ISSUES.md) | Známé problémy a obejití |
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Stav implementace, technický dluh |
 | [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) | Checklist pro beta a produkci |
+| [AUDIT_REPORT_NASAZENI.md](AUDIT_REPORT_NASAZENI.md) | Audit připravenosti k nasazení |
 | [docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md) | Deploy backendu na Railway |
 | [docs/DATABASE.md](docs/DATABASE.md) | Schéma DB, tabulky, enums, pravidla |
 | [docs/SYNC.md](docs/SYNC.md) | Offline-first sync protokol |

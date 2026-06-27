@@ -54,6 +54,7 @@ model User {
   username     String    @unique
   displayName  String    @map("display_name")
   pinHash      String    @map("pin_hash")
+  passwordHash String?   @map("password_hash")
   role         UserRole
   materialMode MaterialMode @default(without_material) @map("material_mode")
   isActive     Boolean   @default(true) @map("is_active")
@@ -79,6 +80,10 @@ model User {
   floorDrawingsUploaded FloorDrawing[]
   sealMarkersCreated SealMarker[] @relation("SealMarkerCreator")
   repairsCreated SealRepair[] @relation("SealRepairCreator")
+  mfaCredential UserMfaCredential?
+  mfaRecoveryCodes MfaRecoveryCode[]
+  authChallenges AuthChallenge[]
+  privacyNoticeAcceptances PrivacyNoticeAcceptance[]
 
   @@map("users")
 }
@@ -89,10 +94,81 @@ model UserSession {
   token     String   @unique
   expiresAt DateTime @map("expires_at")
   createdAt DateTime @default(now()) @map("created_at")
+  mfaVerifiedAt DateTime? @map("mfa_verified_at")
+  authMethod String @default("pin") @map("auth_method")
 
   user User @relation(fields: [userId], references: [id])
 
   @@map("user_sessions")
+}
+
+model UserMfaCredential {
+  id               String    @id @default(uuid())
+  userId           String    @unique @map("user_id")
+  secretCiphertext String    @map("secret_ciphertext")
+  keyVersion       Int       @default(1) @map("key_version")
+  enabledAt        DateTime? @map("enabled_at")
+  lastUsedStep     BigInt?   @map("last_used_step")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_mfa_credentials")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  codeHash  String    @map("code_hash")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt])
+  @@map("mfa_recovery_codes")
+}
+
+model AuthChallenge {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  tokenHash String    @unique @map("token_hash")
+  kind      String
+  attempts  Int       @default(0)
+  expiresAt DateTime  @map("expires_at")
+  consumedAt DateTime? @map("consumed_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("auth_challenges")
+}
+
+model PrivacyNoticeAcceptance {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  version    String
+  acceptedAt DateTime @default(now()) @map("accepted_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, version])
+  @@map("privacy_notice_acceptances")
+}
+
+model PrivacyErasure {
+  id                   String   @id @default(uuid())
+  subjectUserId        String   @unique @map("subject_user_id")
+  actorUserId          String   @map("actor_user_id")
+  originalUsernameHash String   @map("original_username_hash")
+  details              Json?
+  performedAt          DateTime @default(now()) @map("performed_at")
+
+  @@index([performedAt])
+  @@map("privacy_erasures")
 }
 
 model Job {

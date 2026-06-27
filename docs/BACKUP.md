@@ -71,6 +71,19 @@ Konfigurace (env):
 | `BACKUP_RETENTION_COUNT` | `7` | Počet úspěšných záloh k uchování |
 | `BACKUP_INTERVAL_HOURS` | `24` | Interval automatické zálohy |
 
+## Retence logů (GDPR)
+
+Nezávislý scheduler (`startLogRetentionScheduler` v `index.ts`) maže staré
+technické logy kvůli data minimization. Běží **i bez zapnutých záloh**.
+Mazány jsou `LoginLog` (IP, user agent), `ErrorLog` a zpracované `SyncMutation`.
+Audit (`ActivityLog` / `ChangeLog`) se **nemaže** — je to trvalá historie.
+
+| Proměnná | Výchozí | Popis |
+|----------|---------|--------|
+| `LOG_RETENTION_ENABLED` | `true` v produkci, jinak `false` | Zapne scheduler retence |
+| `LOG_RETENTION_DAYS` | `90` | Po kolika dnech mazat logy |
+| `LOG_RETENTION_INTERVAL_HOURS` | `24` | Interval kontroly |
+
 API (admin, oprávnění `admin.backup`):
 - `GET /api/admin/backups` — seznam logů záloh
 - `POST /api/admin/backup` — ruční spuštění zálohy

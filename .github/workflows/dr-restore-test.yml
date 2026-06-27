@@ -1,0 +1,145 @@
+name: Weekly DR Restore Test
+
+on:
+  schedule:
+    - cron: '0 5 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    environment: dr-restore
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: restore
+          POSTGRES_PASSWORD: restore-test-only
+          POSTGRES_DB: restore
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U restore -d restore"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install PostgreSQL 18 client, age and AWS CLI
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y curl ca-certificates age awscli
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(. /etc/os-release && echo "$VERSION_CODENAME")-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client-18
+
+      - name: Download latest encrypted backup
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          key="$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix backups/ \
+            --endpoint-url "$ENDPOINT" \
+            --query 'reverse(sort_by(Contents,&LastModified))[?ends_with(Key, `.dump.age`)]|[0].Key' \
+            --output text)"
+          [ "$key" != "None" ] || { echo "::error::No encrypted backup found"; exit 1; }
+          aws s3 cp "s3://${BUCKET}/${key}" backup.dump.age --endpoint-url "$ENDPOINT"
+          aws s3 cp "s3://${BUCKET}/${key}.sha256" backup.dump.age.sha256 --endpoint-url "$ENDPOINT"
+          aws s3 cp "s3://${BUCKET}/privacy-ledger/latest.jsonl.age" \
+            privacy-erasure-ledger.jsonl.age --endpoint-url "$ENDPOINT"
+          aws s3 cp "s3://${BUCKET}/privacy-ledger/latest.jsonl.age.sha256" \
+            privacy-erasure-ledger.jsonl.age.sha256 --endpoint-url "$ENDPOINT"
+          sed -i 's#  .*#  backup.dump.age#' backup.dump.age.sha256
+          sed -i 's#  .*#  privacy-erasure-ledger.jsonl.age#' \
+            privacy-erasure-ledger.jsonl.age.sha256
+          sha256sum -c backup.dump.age.sha256
+          sha256sum -c privacy-erasure-ledger.jsonl.age.sha256
+
+      - name: Decrypt and restore database
+        env:
+          AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+          TARGET_DATABASE_URL: postgresql://restore:restore-test-only@localhost:5432/restore
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s\n' "$AGE_IDENTITY" > age-key.txt
+          age -d -i age-key.txt -o backup.dump backup.dump.age
+          age -d -i age-key.txt -o privacy-erasure-ledger.jsonl \
+            privacy-erasure-ledger.jsonl.age
+          /usr/lib/postgresql/18/bin/pg_restore --clean --if-exists --no-owner --no-acl \
+            -d "$TARGET_DATABASE_URL" backup.dump
+          /usr/lib/postgresql/18/bin/psql "$TARGET_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
+          SELECT COUNT(*) AS users FROM users;
+          SELECT COUNT(*) AS jobs FROM jobs;
+          SELECT COUNT(*) AS seals FROM seals;
+          SELECT COUNT(*) AS photos FROM seal_photos;
+          DO $$
+          DECLARE broken bigint;
+          BEGIN
+            SELECT count(*) INTO broken
+            FROM seals s
+            LEFT JOIN jobs j ON j.id = s.job_id
+            LEFT JOIN job_floors f ON f.id = s.floor_id
+            WHERE j.id IS NULL OR f.id IS NULL;
+            IF broken > 0 THEN
+              RAISE EXCEPTION 'Found % orphan seals', broken;
+            END IF;
+
+            SELECT count(*) INTO broken
+            FROM seal_photos p
+            LEFT JOIN seals s ON s.id = p.seal_id
+            WHERE s.id IS NULL;
+            IF broken > 0 THEN
+              RAISE EXCEPTION 'Found % orphan photos', broken;
+            END IF;
+          END $$;
+          SQL
+          test "$(/usr/lib/postgresql/18/bin/psql "$TARGET_DATABASE_URL" -Atc 'SELECT COUNT(*) FROM users')" -gt 0
+          test "$(/usr/lib/postgresql/18/bin/psql "$TARGET_DATABASE_URL" -Atc 'SELECT COUNT(*) FROM jobs')" -gt 0
+
+      - name: Reapply privacy erasures from current ledger
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql://restore:restore-test-only@localhost:5432/restore
+          PRIVACY_LEDGER_PATH: ../privacy-erasure-ledger.jsonl
+        run: |
+          set -euo pipefail
+          npm ci
+          npx prisma generate
+          npm run privacy:reapply
+          /usr/lib/postgresql/18/bin/psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+            -c "SELECT count(*) AS reapplied_erasures FROM privacy_erasures;"
+
+      - name: Record successful restore
+        run: echo "Restore test completed at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove plaintext
+        if: always()
+        run: |
+          rm -f age-key.txt backup.dump privacy-erasure-ledger.jsonl
+
+      - name: Alert on restore failure
+        if: failure()
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          [ -n "$TOKEN" ] && [ -n "$CHAT" ] || exit 0
+          curl -fsS -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${CHAT}" \
+            --data-urlencode "text=UNIFAST weekly restore test failed. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            >/dev/null

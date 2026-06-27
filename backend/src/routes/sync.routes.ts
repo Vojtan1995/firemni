@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { Prisma, SealStatus, UserRole, JobStatus, SealTrade } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { syncPushRateLimiter } from '../middleware/security.middleware.js';
 import { prisma } from '../lib/prisma.js';
 import { AppError, conflict, forbidden } from '../lib/errors.js';
 import { hasPermission, type Permission } from '../lib/permissions.js';
@@ -103,7 +104,7 @@ function assertSyncSealPermission(operation: string, userRole: UserRole) {
   }
 }
 
-router.post('/push', async (req, res, next) => {
+router.post('/push', syncPushRateLimiter, async (req, res, next) => {
   try {
     const { mutations } = pushSchema.parse(req.body);
     const results: Array<{ mutationId: string; status: string; entityId?: string; conflict?: string }> = [];

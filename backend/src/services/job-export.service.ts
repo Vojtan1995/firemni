@@ -32,6 +32,10 @@ function csvEscape(value: unknown) {
   return `"${String(value ?? '').replace(/"/g, '""')}"`;
 }
 
+function formatDate(value: Date | null | undefined) {
+  return value ? value.toISOString().split('T')[0] : '';
+}
+
 function csvRow(cells: unknown[]) {
   return cells.map(csvEscape).join(';');
 }
@@ -173,7 +177,9 @@ export async function exportJobCsv(jobId: string, role: UserRole, userId: string
       'Patro',
       'Číslo',
       'Stav',
+      'Datum montáže',
       'Systém',
+      'Konstrukce',
       'Umístění',
       'Požární odolnost',
       'Fotek',
@@ -190,7 +196,9 @@ export async function exportJobCsv(jobId: string, role: UserRole, userId: string
         seal.floor.name,
         seal.sealNumber,
         SEAL_STATUS_LABELS[seal.status],
+        formatDate(seal.createdAt),
         seal.system,
+        seal.construction,
         seal.location,
         seal.fireRating,
         seal._count.photos,
@@ -201,7 +209,7 @@ export async function exportJobCsv(jobId: string, role: UserRole, userId: string
         return [[...base, '', '', '', '', '']];
       }
       return seal.entries.map((entry, idx) => [
-        ...(idx === 0 ? base : ['', '', '', '', '', '', '', '', '']),
+        ...(idx === 0 ? base : ['', '', '', '', '', '', '', '', '', '', '']),
         entry.entryType,
         entry.dimension,
         Number(entry.quantity),
@@ -322,9 +330,11 @@ export async function exportJobPdf(
     for (const seal of floorSeals) {
       const note = sealNoteForExport(seal, role);
       const notePart = note ? ` | Pozn.: ${note.slice(0, 100)}${note.length > 100 ? '…' : ''}` : '';
+      const constructionPart = seal.construction ? ` | Konstrukce: ${seal.construction}` : '';
+      const fireRatingPart = seal.fireRating ? ` | Odolnost: ${seal.fireRating}` : '';
       writePdfTextLine(
         doc,
-        `#${seal.sealNumber} | ${SEAL_STATUS_LABELS[seal.status]} | ${seal.system} | ${seal.location} | Fotek: ${seal._count.photos} | ${workerLabel(seal.createdBy, role)}${notePart}`,
+        `#${seal.sealNumber} | ${SEAL_STATUS_LABELS[seal.status]} | Montáž: ${formatDate(seal.createdAt)} | ${seal.system}${constructionPart} | ${seal.location}${fireRatingPart} | Fotek: ${seal._count.photos} | ${workerLabel(seal.createdBy, role)}${notePart}`,
       );
       for (const entry of seal.entries) {
         const mats = entry.materials.map((m) => m.material).join(', ');

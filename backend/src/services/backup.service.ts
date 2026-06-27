@@ -43,18 +43,33 @@ export async function pruneOldBackups() {
   }
 }
 
-const LOG_RETENTION_DAYS = 90;
-
 /**
  * Promaže staré technické logy (přihlášení, chyby, zpracované sync mutace).
  * Audit (ActivityLog / ChangeLog) se záměrně NEMAŽE – je to trvalá historie.
  */
 export async function pruneOldLogs() {
-  const cutoff = new Date(Date.now() - LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const retentionDays = Math.max(1, config.logRetention.days);
+  const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+  const messageCutoff = new Date(
+    Date.now() - Math.max(1, config.logRetention.messageDays) * 24 * 60 * 60 * 1000,
+  );
+  const notificationCutoff = new Date(
+    Date.now() - Math.max(1, config.logRetention.notificationDays) * 24 * 60 * 60 * 1000,
+  );
   await prisma.loginLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
   await prisma.errorLog.deleteMany({ where: { createdAt: { lt: cutoff } } });
   await prisma.syncMutation.deleteMany({
     where: { createdAt: { lt: cutoff }, processedAt: { not: null } },
+  });
+  await prisma.privateMessage.deleteMany({ where: { createdAt: { lt: messageCutoff } } });
+  await prisma.notification.deleteMany({ where: { createdAt: { lt: notificationCutoff } } });
+  await prisma.authChallenge.deleteMany({
+    where: {
+      OR: [
+        { expiresAt: { lt: new Date() } },
+        { consumedAt: { lt: cutoff } },
+      ],
+    },
   });
 }
 
@@ -137,4 +152,31 @@ export function startBackupScheduler() {
 export function stopBackupScheduler() {
   if (backupTimer) clearInterval(backupTimer);
   backupTimer = null;
+}
+
+let logRetentionTimer: NodeJS.Timeout | null = null;
+
+/**
+ * Samostatný scheduler retence logů – běží nezávisle na zálohách, aby se
+ * osobní údaje (IP v login logu) mazaly i bez zapnutého BACKUP_ENABLED.
+ */
+export function startLogRetentionScheduler() {
+  if (!config.logRetention.enabled || config.nodeEnv === 'test') return;
+  const intervalMs = Math.max(1, config.logRetention.intervalHours) * 60 * 60 * 1000;
+  if (logRetentionTimer) clearInterval(logRetentionTimer);
+  const runPrune = () =>
+    void pruneOldLogs().catch((err) =>
+      logger.warn({ err: String(err) }, 'pruneOldLogs failed'),
+    );
+  runPrune(); // jednou krátce po startu
+  logRetentionTimer = setInterval(runPrune, intervalMs);
+  logger.info(
+    { days: config.logRetention.days, intervalHours: config.logRetention.intervalHours },
+    'Log retention scheduler started',
+  );
+}
+
+export function stopLogRetentionScheduler() {
+  if (logRetentionTimer) clearInterval(logRetentionTimer);
+  logRetentionTimer = null;
 }

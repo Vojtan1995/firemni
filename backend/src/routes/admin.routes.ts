@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { config } from '../config.js';
-import { authMiddleware } from '../middleware/auth.middleware.js';
+import { authMiddleware, requireRecentAdminMfa } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { listBackupLogs, runBackup } from '../services/backup.service.js';
 import { verifyObjectStorageAccess } from '../services/storage.service.js';
@@ -18,7 +18,7 @@ router.get('/backups', async (_req, res, next) => {
   }
 });
 
-router.post('/backup', async (req, res, next) => {
+router.post('/backup', requireRecentAdminMfa, async (req, res, next) => {
   try {
     const log = await runBackup(req.user!.id);
     res.status(log.status === 'success' ? 201 : 500).json({
@@ -34,7 +34,7 @@ router.post('/backup', async (req, res, next) => {
   }
 });
 
-router.post('/storage/verify', async (_req, res, next) => {
+router.post('/storage/verify', requireRecentAdminMfa, async (_req, res, next) => {
   try {
     await verifyObjectStorageAccess();
     res.json({

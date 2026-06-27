@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { WorkSheetStatus } from '@prisma/client';
 import { authMiddleware } from '../middleware/auth.middleware.js';
+import { exportRateLimiter } from '../middleware/security.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { paramId } from '../lib/params.js';
 import {
@@ -121,7 +122,7 @@ router.post(
   },
 );
 
-router.get('/:id/export/csv', async (req, res, next) => {
+router.get('/:id/export/csv', exportRateLimiter, async (req, res, next) => {
   try {
     const { csv, filename } = await exportWorksheetCsv(
       paramId(req.params.id),
@@ -136,7 +137,7 @@ router.get('/:id/export/csv', async (req, res, next) => {
   }
 });
 
-router.get('/:id/export/pdf', async (req, res, next) => {
+router.get('/:id/export/pdf', exportRateLimiter, async (req, res, next) => {
   try {
     await exportWorksheetPdf(paramId(req.params.id), req.user!.role, req.user!.id, res);
   } catch (e) {

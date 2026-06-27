@@ -47,6 +47,30 @@ export const config = {
     retentionCount: parseInt(process.env.BACKUP_RETENTION_COUNT || '7', 10),
     intervalHours: parseInt(process.env.BACKUP_INTERVAL_HOURS || '24', 10),
   },
+  // Retence technických logů (přihlášení s IP, chyby, zpracované sync mutace)
+  // kvůli GDPR (data minimization). Běží nezávisle na zálohách.
+  logRetention: {
+    enabled: parseBoolean(process.env.LOG_RETENTION_ENABLED, nodeEnv === 'production'),
+    days: parseInt(process.env.LOG_RETENTION_DAYS || '90', 10),
+    intervalHours: parseInt(process.env.LOG_RETENTION_INTERVAL_HOURS || '24', 10),
+    messageDays: parseInt(process.env.MESSAGE_RETENTION_DAYS || '365', 10),
+    notificationDays: parseInt(process.env.NOTIFICATION_RETENTION_DAYS || '180', 10),
+  },
+  adminMfa: {
+    required: parseBoolean(process.env.ADMIN_MFA_REQUIRED, false),
+    dataKey: process.env.MFA_DATA_KEY || '',
+    issuer: process.env.MFA_ISSUER || 'UNIFAST Ucpavky',
+    challengeMinutes: 5,
+    stepUpMinutes: 15,
+  },
+    privacyNotice: {
+      version: process.env.PRIVACY_NOTICE_VERSION || '2026-06-27',
+      url: process.env.PRIVACY_NOTICE_URL || '',
+    },
+    securityAlerts: {
+      telegramBotToken: process.env.SECURITY_ALERT_TELEGRAM_BOT_TOKEN || '',
+      telegramChatId: process.env.SECURITY_ALERT_TELEGRAM_CHAT_ID || '',
+    },
   appRelease: {
     versionName: process.env.APP_RELEASE_VERSION_NAME || '',
     build: parseInt(process.env.APP_RELEASE_BUILD || '', 10) || 0,
@@ -63,6 +87,12 @@ export function validateConfig() {
   const jwtSecret = process.env.JWT_SECRET || '';
   if (!jwtSecret || jwtSecret === 'dev-secret-change-me' || jwtSecret === 'change-me-in-production') {
     throw new Error('JWT_SECRET must be set to a strong non-default value in production');
+  }
+
+  const adminMfaRequired = parseBoolean(process.env.ADMIN_MFA_REQUIRED, false);
+  const mfaDataKey = process.env.MFA_DATA_KEY || '';
+  if (adminMfaRequired && !/^[A-Fa-f0-9]{64}$/.test(mfaDataKey)) {
+    throw new Error('MFA_DATA_KEY must be a 64-character hex key when ADMIN_MFA_REQUIRED=true');
   }
 
   const corsOriginRaw = process.env.CORS_ORIGIN || '*';

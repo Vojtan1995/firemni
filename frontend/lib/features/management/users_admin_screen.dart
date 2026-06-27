@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api/api_client.dart';
@@ -68,6 +72,101 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  bool _isStepUpRequired(Object e) =>
+      e is DioException &&
+      e.response?.data is Map &&
+      (e.response!.data as Map)['code'] == 'STEP_UP_REQUIRED';
+
+  Future<bool> _requestStepUp() async {
+    final codeCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('Ověření citlivé operace'),
+        content: TextField(
+          controller: codeCtrl,
+          keyboardType: TextInputType.number,
+          obscureText: true,
+          decoration: const InputDecoration(labelText: 'Kód z Authenticatoru'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c, false),
+            child: const Text('Zrušit'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(c, true),
+            child: const Text('Ověřit'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    try {
+      await ref.read(authServiceProvider).stepUpMfa(codeCtrl.text.trim());
+      return true;
+    } catch (e) {
+      _showError(e);
+      return false;
+    }
+  }
+
+  Future<void> _exportPrivacy(Map<String, dynamic> user, {bool retried = false}) async {
+    try {
+      final response = await ref
+          .read(dioProvider)
+          .get('/api/users/${user['id']}/privacy-export');
+      final bytes = Uint8List.fromList(
+        utf8.encode(const JsonEncoder.withIndent('  ').convert(response.data)),
+      );
+      await FilePicker.platform.saveFile(
+        dialogTitle: 'Uložit export osobních údajů',
+        fileName: 'privacy-export-${user['username']}.json',
+        bytes: bytes,
+      );
+    } catch (e) {
+      if (!retried && _isStepUpRequired(e) && await _requestStepUp()) {
+        return _exportPrivacy(user, retried: true);
+      }
+      _showError(e);
+    }
+  }
+
+  Future<void> _anonymizeUser(Map<String, dynamic> user, {bool retried = false}) async {
+    final confirmed = retried ||
+        await showDialog<bool>(
+              context: context,
+              builder: (c) => AlertDialog(
+                title: const Text('Anonymizovat uživatele'),
+                content: Text(
+                  'Účet ${user['username']} bude nevratně deaktivován a osobní '
+                  'údaje budou odstraněny. Business auditní vazby zůstanou anonymní.',
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(c, false),
+                    child: const Text('Zrušit'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.pop(c, true),
+                    child: const Text('Anonymizovat'),
+                  ),
+                ],
+              ),
+            ) ==
+            true;
+    if (!confirmed) return;
+    try {
+      await ref.read(dioProvider).delete('/api/users/${user['id']}');
+      await _load();
+    } catch (e) {
+      if (!retried && _isStepUpRequired(e) && await _requestStepUp()) {
+        return _anonymizeUser(user, retried: true);
+      }
+      _showError(e);
+    }
+  }
+
   Future<void> _load() async {
     try {
       final res = await ref.read(dioProvider).get('/api/users');
@@ -104,10 +203,14 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 ),
                 TextField(
                   controller: pinCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'PIN (6–8 znaků)'),
+                  decoration: InputDecoration(
+                    labelText: role == 'admin'
+                        ? 'Admin heslo (12–128 znaků)'
+                        : 'PIN (6–8 znaků)',
+                  ),
                   obscureText: true,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      role == 'admin' ? TextInputType.text : TextInputType.number,
                 ),
                 DropdownButtonFormField<String>(
                   initialValue: role,
@@ -218,10 +321,14 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                 ),
                 TextField(
                   controller: pinCtrl,
-                  decoration:
-                      const InputDecoration(labelText: 'Nový PIN (volitelně)'),
+                  decoration: InputDecoration(
+                    labelText: role == 'admin'
+                        ? 'Nové admin heslo (volitelně)'
+                        : 'Nový PIN (volitelně)',
+                  ),
                   obscureText: true,
-                  keyboardType: TextInputType.number,
+                  keyboardType:
+                      role == 'admin' ? TextInputType.text : TextInputType.number,
                 ),
                 DropdownButtonFormField<String>(
                   initialValue: roles.contains(role) ? role : roles.first,
@@ -334,13 +441,30 @@ class _UsersAdminScreenState extends ConsumerState<UsersAdminScreen> {
                   title: u['displayName'] as String? ?? '',
                   subtitle:
                       '${u['username']} · ${roleLabel(role)} · ${materialModeLabel(materialMode)}',
-                  trailing: active
-                      ? null
-                      : const StatusBadge(
-                          status: 'inactive',
-                          label: 'neaktivní',
-                          compact: true,
-                        ),
+                  trailing: _isAdmin && u['id'] != _currentUserId
+                      ? PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'export') _exportPrivacy(u);
+                            if (value == 'anonymize') _anonymizeUser(u);
+                          },
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                              value: 'export',
+                              child: Text('Export osobních údajů'),
+                            ),
+                            PopupMenuItem(
+                              value: 'anonymize',
+                              child: Text('Anonymizovat účet'),
+                            ),
+                          ],
+                        )
+                      : active
+                          ? null
+                          : const StatusBadge(
+                              status: 'inactive',
+                              label: 'neaktivní',
+                              compact: true,
+                            ),
                   onTap: () => _editUser(u),
                 );
               },

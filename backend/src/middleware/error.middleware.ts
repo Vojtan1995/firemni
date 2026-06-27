@@ -3,6 +3,7 @@ import { ZodError } from 'zod';
 import { AppError } from '../lib/errors.js';
 import { logError } from '../services/audit.service.js';
 import { logger } from '../lib/logger.js';
+import { redactText, redactUnknown } from '../lib/redaction.js';
 
 export function errorMiddleware(err: unknown, req: Request, res: Response, _next: NextFunction) {
   if (err instanceof AppError) {
@@ -16,11 +17,24 @@ export function errorMiddleware(err: unknown, req: Request, res: Response, _next
     });
   }
 
-  const message = err instanceof Error ? err.message : 'Interní chyba serveru';
-  logger.error({ err, path: req.path }, message);
+  const message = redactText(
+    err instanceof Error ? err.message : 'Interní chyba serveru',
+    2000,
+  )!;
+  logger.error(
+    {
+      error: redactUnknown(
+        err instanceof Error
+          ? { name: err.name, message: err.message, stack: err.stack }
+          : err,
+      ),
+      path: redactText(req.path, 500),
+    },
+    message,
+  );
   logError(message, {
-    stack: err instanceof Error ? err.stack : undefined,
-    path: req.path,
+    stack: redactText(err instanceof Error ? err.stack : undefined),
+    path: redactText(req.path, 500),
     method: req.method,
     userId: req.user?.id,
   }).catch(() => {});

@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { JobStatus, SealStatus, UserRole } from "@prisma/client";
 import { authMiddleware } from "../middleware/auth.middleware.js";
+import { exportRateLimiter } from "../middleware/security.middleware.js";
 import { requirePermission } from "../lib/permissions.js";
 import { prisma } from "../lib/prisma.js";
 import * as jobParticipantService from "../services/job-participant.service.js";
@@ -250,7 +251,7 @@ const CSV_COLUMNS: Record<string, string> = {
   poznamka: "Poznámka",
 };
 
-router.get("/export/csv", async (req, res, next) => {
+router.get("/export/csv", exportRateLimiter, async (req, res, next) => {
   try {
     const query = req.query as Record<string, unknown>;
     await assertReportQueryAccess(query, req.user!.role, req.user!.id);
@@ -283,7 +284,7 @@ router.get("/export/csv", async (req, res, next) => {
   }
 });
 
-router.get("/export/pdf", async (req, res, next) => {
+router.get("/export/pdf", exportRateLimiter, async (req, res, next) => {
   try {
     const query = req.query as Record<string, unknown>;
     const rows = await fetchSummaryRows(query, req.user!.role);

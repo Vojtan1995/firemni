@@ -332,9 +332,15 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     // Vedení: seznam pracovníků, po rozkliknutí jeho soupisy.
     // Soupis s více pracovníky se objeví u každého z nich. Archivované jdou
     // do samostatné složky „Archiv" mimo seznam pracovníků.
-    final active = _worksheets.where((ws) => ws['status'] != 'archived');
+    // Zákaznické soupisy (audience=customer) jsou zcela oddělené – nikdy
+    // nepatří mezi soupisy konkrétního pracovníka ani do obecného archivu,
+    // worker k nim navíc nemá přístup (vynuceno i na backendu).
+    final customer =
+        _worksheets.where((ws) => ws['audience'] == 'customer').toList();
+    final rest = _worksheets.where((ws) => ws['audience'] != 'customer');
+    final active = rest.where((ws) => ws['status'] != 'archived');
     final archived =
-        _worksheets.where((ws) => ws['status'] == 'archived').toList();
+        rest.where((ws) => ws['status'] == 'archived').toList();
 
     final byWorker = <String, _WorkerGroup>{};
     for (final ws in active) {
@@ -358,6 +364,20 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
     return ListView(
       padding: const EdgeInsets.all(AppSpacing.lg),
       children: [
+        if (customer.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+            child: ExpansionTile(
+              leading: const Icon(Icons.folder_shared_outlined),
+              title: Text('Soupisy pro zákazníky (${customer.length})',
+                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              subtitle: const Text('Skryté pro pracovníky'),
+              childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+              children: customer
+                  .map((ws) => _worksheetCard(ws, canSelect: true))
+                  .toList(),
+            ),
+          ),
         for (final g in groups)
           Card(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
