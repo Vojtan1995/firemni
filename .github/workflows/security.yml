@@ -114,9 +114,13 @@ jobs:
                 content_command=(strings "$artifact")
                 ;;
             esac
+            # `<match value=...>` jsou definice magic-patternů z bundlované
+            # shared-mime-info databáze (detekce PEM souborů), ne vložené klíče –
+            # vyloučíme je, skutečný klíč by byl holý řádek bez `<match value=`.
             if "${content_command[@]}" 2>/dev/null \
               | strings \
-              | grep -E -i '(MFA_DATA_KEY|JWT_SECRET|S3_SECRET_ACCESS_KEY|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)'; then
+              | grep -E -i '(MFA_DATA_KEY|JWT_SECRET|S3_SECRET_ACCESS_KEY|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' \
+              | grep -vaE '<match value='; then
               echo "::error::Potential secret embedded in $artifact"
               exit 1
             fi
