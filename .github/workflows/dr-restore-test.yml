@@ -82,8 +82,14 @@ jobs:
           umask 077
           printf '%s\n' "$AGE_IDENTITY" > age-key.txt
           age -d -i age-key.txt -o backup.dump backup.dump.age
-          age -d -i age-key.txt -o privacy-erasure-ledger.jsonl \
-            privacy-erasure-ledger.jsonl.age
+          echo "backup.dump decrypt exit=$? size=$(stat -c%s backup.dump 2>&1)"
+          ls -la privacy-erasure-ledger.jsonl.age
+          set +e
+          age -d -i age-key.txt -o privacy-erasure-ledger.jsonl privacy-erasure-ledger.jsonl.age
+          ledger_rc=$?
+          set -e
+          echo "ledger decrypt exit=$ledger_rc"
+          ls -la . || true
           # Prázdný soubor je validní stav (zatím žádné GDPR výmazy v produkci) –
           # kontrolujeme jen existenci po dešifrování, ne velikost.
           test -f privacy-erasure-ledger.jsonl || { echo "::error::decrypted privacy ledger file is missing"; exit 1; }
