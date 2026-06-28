@@ -84,7 +84,9 @@ jobs:
           age -d -i age-key.txt -o backup.dump backup.dump.age
           age -d -i age-key.txt -o privacy-erasure-ledger.jsonl \
             privacy-erasure-ledger.jsonl.age
-          test -s privacy-erasure-ledger.jsonl || { echo "::error::decrypted privacy ledger is missing or empty"; exit 1; }
+          # Prázdný soubor je validní stav (zatím žádné GDPR výmazy v produkci) –
+          # kontrolujeme jen existenci po dešifrování, ne velikost.
+          test -f privacy-erasure-ledger.jsonl || { echo "::error::decrypted privacy ledger file is missing"; exit 1; }
           /usr/lib/postgresql/18/bin/pg_restore --clean --if-exists --no-owner --no-acl \
             -d "$TARGET_DATABASE_URL" backup.dump
           /usr/lib/postgresql/18/bin/psql "$TARGET_DATABASE_URL" -v ON_ERROR_STOP=1 <<'SQL'
