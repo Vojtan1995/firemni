@@ -131,4 +131,55 @@ void main() {
     expect(seal.sealNumber, '99');
     expect(seal.syncConflict, false);
   });
+
+  test('remap after push moves photos to the server seal id and marks synced',
+      () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+
+    const localId = 'local-seal';
+    const serverId = 'server-seal';
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: localId,
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '7',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            isSynced: const Value(false),
+            updatedAt: DateTime.now(),
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-1',
+            sealId: localId,
+            localPath: '/tmp/p1.webp',
+            createdAt: DateTime.now(),
+          ),
+        );
+
+    await remapLocalSealIdAfterPush(db, localId, serverId);
+
+    // Lokální ucpávka má nově server-id a je označená jako synced.
+    final remapped = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(serverId)))
+        .getSingleOrNull();
+    expect(remapped, isNotNull);
+    expect(remapped!.isSynced, isTrue);
+    final old = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals(localId)))
+        .getSingleOrNull();
+    expect(old == null, isTrue);
+
+    // Fotka následuje ucpávku na nové server-id (žádná osamělá fotka).
+    final photo = await (db.select(db.localPhotos)
+          ..where((p) => p.id.equals('photo-1')))
+        .getSingle();
+    expect(photo.sealId, serverId);
+  });
 }

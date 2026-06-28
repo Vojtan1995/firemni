@@ -463,4 +463,144 @@ describe('POST /api/sync/push (BE-04)', () => {
     const seal = await prisma.seal.findUnique({ where: { id: sealId } });
     expect(seal.status).toBe('checked');
   });
+
+  function sealUpdatePayload(sealId, sealNumber, overrides = {}) {
+    return {
+      id: sealId,
+      jobId,
+      floorId,
+      sealNumber,
+      trade: 'elektrikari',
+      system: 'Sync test',
+      construction: 'Stěna',
+      location: 'Chodba',
+      fireRating: 'EI 60',
+      entries: [
+        {
+          entryType: 'PVC',
+          dimension: 'Ø110',
+          quantity: 1,
+          insulation: 'hořlavá',
+          materials: ['Manzeta'],
+        },
+      ],
+      editReason: 'test edit',
+      ...overrides,
+    };
+  }
+
+  it('auto-merges concurrent edit: keeps server change to a field the client did not touch', async () => {
+    const sealNumber = `${SEAL_PREFIX}31`;
+    const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, sealNumber),
+      }),
+    ]);
+    const sealId = createRes.body.results[0].entityId;
+    const v1 = (await prisma.seal.findUnique({ where: { id: sealId } })).version;
+
+    // Změna A (na verzi v1): mění jen system → server v2, system = 'SYSTEM A'.
+    const aRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: v1,
+        payload: sealUpdatePayload(sealId, sealNumber, {
+          system: 'SYSTEM A',
+          changedFields: ['system'],
+        }),
+      }),
+    ]);
+    expect(aRes.body.results[0].status).toBe('ok');
+
+    // Změna B je „stará" (stále baseVersion v1) a mění jen location. Pole system
+    // posílá zastaralé ('SYSTEM STALE'), ale není v changedFields → musí se
+    // zachovat serverová hodnota 'SYSTEM A'.
+    const bRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: v1,
+        payload: sealUpdatePayload(sealId, sealNumber, {
+          system: 'SYSTEM STALE',
+          location: 'MERGED LOCATION',
+          changedFields: ['location'],
+        }),
+      }),
+    ]);
+    expect(bRes.body.results[0].status).toBe('ok');
+    expect(bRes.body.results[0].autoMerged).toBe(true);
+
+    const merged = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(merged.location).toBe('MERGED LOCATION');
+    expect(merged.system).toBe('SYSTEM A');
+  });
+
+  it('auto-merge: co-edited field is last-write-wins', async () => {
+    const sealNumber = `${SEAL_PREFIX}32`;
+    const createRes = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, sealNumber),
+      }),
+    ]);
+    const sealId = createRes.body.results[0].entityId;
+    const v1 = (await prisma.seal.findUnique({ where: { id: sealId } })).version;
+
+    await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: v1,
+        payload: sealUpdatePayload(sealId, sealNumber, {
+          system: 'FIRST',
+          changedFields: ['system'],
+        }),
+      }),
+    ]);
+
+    // Stará změna stejného pole (system) na základě v1 → vyhrává poslední zápis.
+    const lastRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: v1,
+        payload: sealUpdatePayload(sealId, sealNumber, {
+          system: 'LAST',
+          changedFields: ['system'],
+        }),
+      }),
+    ]);
+    expect(lastRes.body.results[0].status).toBe('ok');
+    const updated = await prisma.seal.findUnique({ where: { id: sealId } });
+    expect(updated.system).toBe('LAST');
+  });
+
+  it('duplicate seal number stays a hard conflict even with changedFields', async () => {
+    const numberA = `${SEAL_PREFIX}33`;
+    const numberB = `${SEAL_PREFIX}34`;
+    await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, numberA),
+      }),
+    ]);
+    const createB = await push(workerToken, [
+      sealMutation({
+        operation: 'create',
+        payload: sealCreatePayload(jobId, floorId, numberB),
+      }),
+    ]);
+    const sealBId = createB.body.results[0].entityId;
+    const vB = (await prisma.seal.findUnique({ where: { id: sealBId } })).version;
+
+    const dupRes = await push(workerToken, [
+      sealMutation({
+        operation: 'update',
+        baseVersion: vB,
+        payload: sealUpdatePayload(sealBId, numberA, {
+          changedFields: ['sealNumber'],
+        }),
+      }),
+    ]);
+    expect(dupRes.body.results[0].status).toBe('conflict');
+    expect(dupRes.body.results[0].conflict).toMatch(/duplicit/i);
+  });
 });

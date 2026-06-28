@@ -76,8 +76,27 @@ jobs:
           set -euo pipefail
           grep -q 'android:allowBackup="false"' frontend/android/app/src/main/AndroidManifest.xml
           grep -q 'cleartextTrafficPermitted="false"' frontend/android/app/src/main/res/xml/network_security_config.xml
-          ! grep -R -nE '(BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|JWT_SECRET=.{20,}|S3_SECRET_ACCESS_KEY=.{12,})' \
-            --exclude='*.example' --exclude-dir=.git .
+
+          # Skenujeme jen verzované soubory (git ls-files) – node_modules je
+          # gitignored, takže odpadnou falešné nálezy z README knihoven (dotenv).
+          # Silný signál: skutečný privátní klíč nepatří do repa nikam (vč. docs).
+          keys="$(git ls-files -z | xargs -0 grep -nE 'BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' || true)"
+          if [ -n "$keys" ]; then
+            echo "::error::Committed private key detected"
+            echo "$keys"
+            exit 1
+          fi
+
+          # Slabší signál: konkrétní tajná HODNOTA v env přiřazení. Dokumentace,
+          # *.example a tento workflow smí ukazovat NÁZVY proměnných i placeholdery
+          # <...>, proto se z tohoto vzoru vylučují a hodnota nesmí začínat '<'.
+          secrets="$(git ls-files -z -- . ':!:*.example' ':!:*.md' ':!:.github/workflows/security.yml' \
+            | xargs -0 grep -nE '(JWT_SECRET=[^<[:space:]"]{20,}|S3_SECRET_ACCESS_KEY=[^<[:space:]"]{12,})' || true)"
+          if [ -n "$secrets" ]; then
+            echo "::error::Potential committed secret value"
+            echo "$secrets"
+            exit 1
+          fi
 
       - name: Scan packaged Android and Windows artifacts for embedded secrets
         shell: bash
@@ -95,9 +114,13 @@ jobs:
                 content_command=(strings "$artifact")
                 ;;
             esac
+            # `<match value=...>` jsou definice magic-patternů z bundlované
+            # shared-mime-info databáze (detekce PEM souborů), ne vložené klíče –
+            # vyloučíme je, skutečný klíč by byl holý řádek bez `<match value=`.
             if "${content_command[@]}" 2>/dev/null \
               | strings \
-              | grep -E -i '(MFA_DATA_KEY|JWT_SECRET|S3_SECRET_ACCESS_KEY|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)'; then
+              | grep -E -i '(MFA_DATA_KEY|JWT_SECRET|S3_SECRET_ACCESS_KEY|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY)' \
+              | grep -vaE '<match value='; then
               echo "::error::Potential secret embedded in $artifact"
               exit 1
             fi

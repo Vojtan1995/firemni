@@ -40,3 +40,11 @@ Komunikační kanál: DOPLNIT.
 
 Zaznamenat datum, účastníky, backup timestamp, začátek, konec, RPO, RTO, počty
 tabulek, vzorek objektů, nalezené problémy a jejich vlastníky.
+
+## Záznam o ověření obnovy
+
+| Datum | Co se dělo | Výsledek |
+|---|---|---|
+| 2026-06-28 | Kontrola běhů `dr-restore-test.yml` a `backup.yml` na GitHub Actions. | **Nalezena CI závada:** krok instalace selhával na `apt-get install awscli` — balík `awscli` už není v repozitáři Ubuntu 24.04. Postihovalo `backup.yml`, `dr-restore-test.yml` i `object-backup.yml`. **Opraveno:** instalace přes oficiální AWS CLI v2 (zip z `awscli.amazonaws.com`). |
+| 2026-06-28 | Kontrola záloh. | `backup.yml` navíc selhával na `Missing AGE_RECIPIENT` — chybí/odstraněn repo secret `BACKUP_AGE_RECIPIENT` (veřejný `age` klíč). Poslední úspěšná záloha: 2026-06-27. **Akce vlastníka:** doplnit secret. |
+| 2026-06-28 | Doplněny secrets (`BACKUP_AGE_RECIPIENT` repo secret, `BACKUP_AGE_IDENTITY` v prostředí `dr-restore`) a opraven CI (AWS CLI v2). Spuštěn `backup.yml`, poté `dr-restore-test.yml` naživo (run [28336839090](https://github.com/Vojtan1995/firemni/actions/runs/28336839090)). | **✅ Úspěšný živý restore test.** Dešifrování `.dump.age` i privacy-erasure ledgeru, `pg_restore`, FK integritní kontroly (0 orphan seals/photos), reapply GDPR výmazů — vše proběhlo bez chyby. Obnovená data: 20 uživatelů, 10 zakázek, 325 ucpávek, 94 fotek, 0 reapplikovaných výmazů (produkce zatím žádné GDPR výmazy neprovedla). Cesta od triggeru do dokončení restore kroku ~70 s — výrazně pod RTO 4 h. RPO dán intervalem denní zálohy (≤24 h), poslední záloha před testem proběhla týž den. Mimochodem objeven a opraven edge-case bug: `age -d` u zcela prázdného plaintextu (žádné GDPR výmazy) nevytvoří výstupní soubor i přes exit 0 (lazy file creation) — workflow nyní v tom případě doplní prázdný soubor sám. |

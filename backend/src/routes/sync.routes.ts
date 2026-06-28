@@ -23,6 +23,7 @@ import { checkDuplicateSealNumber,
 } from '../services/seal.service.js';
 import { touchJobParticipant } from '../services/job-participant.service.js';
 import { priceSealEntries } from '../services/pricing.service.js';
+import { logActivity } from '../services/audit.service.js';
 import {
   entryCreateData,
   refineSealPatch,
@@ -107,7 +108,7 @@ function assertSyncSealPermission(operation: string, userRole: UserRole) {
 router.post('/push', syncPushRateLimiter, async (req, res, next) => {
   try {
     const { mutations } = pushSchema.parse(req.body);
-    const results: Array<{ mutationId: string; status: string; entityId?: string; conflict?: string }> = [];
+    const results: Array<{ mutationId: string; status: string; entityId?: string; conflict?: string; autoMerged?: boolean }> = [];
 
     for (const mut of mutations) {
       const existing = await prisma.syncMutation.findUnique({
@@ -148,7 +149,12 @@ router.post('/push', syncPushRateLimiter, async (req, res, next) => {
           },
           update: { result: storedResult, processedAt: new Date() },
         });
-        results.push({ mutationId: mut.mutationId, status: 'ok', entityId: result.entityId });
+        results.push({
+          mutationId: mut.mutationId,
+          status: 'ok',
+          entityId: result.entityId,
+          ...(result.autoMerged ? { autoMerged: true } : {}),
+        });
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'conflict';
         const isBusinessError = e instanceof AppError;
@@ -196,7 +202,7 @@ async function processMutation(
   mut: z.infer<typeof mutationSchema>,
   userId: string,
   userRole: UserRole,
-): Promise<{ entityId?: string }> {
+): Promise<{ entityId?: string; autoMerged?: boolean }> {
   if (mut.entityType === 'seal_marker') {
     if (!hasPermission(userRole, 'seal.edit')) {
       throw forbidden('Nemáte oprávnění pro umístění značky');
@@ -296,26 +302,50 @@ async function processMutation(
       overrideLocked: true,
       overrideReason: editReason,
     });
-    if (mut.baseVersion !== undefined && mut.baseVersion !== seal.version) {
-      throw conflict('Verze entity se neshoduje');
-    }
+    // Auto-merge souběžné editace: při konfliktu verzí (baseVersion != aktuální)
+    // se mutace nezamítá. S `changedFields` (které pole worker reálně změnil) se
+    // aplikují jen tato pole a ostatní se ponechají ze serveru – tím se nezahodí
+    // cizí souběžná změna. Pole editované oběma stranami vyhrává příchozí (poslední
+    // odeslání). Bez `changedFields` (starší klient) je fallback „client-wins"
+    // re-base na aktuální verzi. Duplicitní číslo zůstává tvrdý konflikt (viz níže).
+    const rawChanged = Array.isArray(
+      (p as Record<string, unknown>).changedFields,
+    )
+      ? ((p as Record<string, unknown>).changedFields as unknown[]).filter(
+          (x): x is string => typeof x === 'string',
+        )
+      : undefined;
+    const versionMismatch =
+      mut.baseVersion !== undefined && mut.baseVersion !== seal.version;
+    const restrictToChanged = versionMismatch && rawChanged !== undefined;
+    const fieldChanged = (f: string) =>
+      !restrictToChanged || rawChanged!.includes(f);
+
     // Snímek stavu před úpravou (dohledatelnost – uloží se jako oprava).
     const beforeSnapshot = await captureSealSnapshot(sealId);
-    if (patch.sealNumber && patch.sealNumber !== seal.sealNumber) {
+    if (
+      fieldChanged('sealNumber') &&
+      patch.sealNumber &&
+      patch.sealNumber !== seal.sealNumber
+    ) {
       await checkDuplicateSealNumber(seal.jobId, seal.floorId, patch.sealNumber, seal.id);
     }
-    const entries = patch.entries;
+    const entries = fieldChanged('entries') ? patch.entries : undefined;
     const nextStatus = statusAfterWorkerEdit(seal.status, userRole);
     const resolvedNotes = applySealNotePatchByRole(
       userRole,
       { note: seal.note, internalNote: seal.internalNote },
       {
-        note: Object.prototype.hasOwnProperty.call(p, 'note')
-          ? (p.note as string | null)
-          : undefined,
-        internalNote: Object.prototype.hasOwnProperty.call(p, 'internalNote')
-          ? (p.internalNote as string | null)
-          : undefined,
+        note:
+          fieldChanged('note') &&
+          Object.prototype.hasOwnProperty.call(p, 'note')
+            ? (p.note as string | null)
+            : undefined,
+        internalNote:
+          fieldChanged('internalNote') &&
+          Object.prototype.hasOwnProperty.call(p, 'internalNote')
+            ? (p.internalNote as string | null)
+            : undefined,
       },
     );
     await prisma.$transaction(async (tx) => {
@@ -352,21 +382,33 @@ async function processMutation(
       await tx.seal.update({
         where: { id: sealId },
         data: {
-          sealNumber: patch.sealNumber ?? seal.sealNumber,
-          trade: patch.trade ?? seal.trade,
-          system: patch.system ?? seal.system,
-          construction: patch.construction ?? seal.construction,
-          location: patch.location ?? seal.location,
-          fireRating: patch.fireRating ?? seal.fireRating,
+          sealNumber: fieldChanged('sealNumber')
+            ? (patch.sealNumber ?? seal.sealNumber)
+            : seal.sealNumber,
+          trade: fieldChanged('trade') ? (patch.trade ?? seal.trade) : seal.trade,
+          system: fieldChanged('system')
+            ? (patch.system ?? seal.system)
+            : seal.system,
+          construction: fieldChanged('construction')
+            ? (patch.construction ?? seal.construction)
+            : seal.construction,
+          location: fieldChanged('location')
+            ? (patch.location ?? seal.location)
+            : seal.location,
+          fireRating: fieldChanged('fireRating')
+            ? (patch.fireRating ?? seal.fireRating)
+            : seal.fireRating,
           note: resolvedNotes.note,
           internalNote: resolvedNotes.internalNote,
-          openingLengthMm: patchPayloadField(p, 'openingLengthMm', seal.openingLengthMm),
-          openingWidthMm: patchPayloadField(p, 'openingWidthMm', seal.openingWidthMm),
-          markerPlacementPending: patchPayloadField(
-            p,
-            'markerPlacementPending',
-            seal.markerPlacementPending,
-          ),
+          openingLengthMm: fieldChanged('openingLengthMm')
+            ? patchPayloadField(p, 'openingLengthMm', seal.openingLengthMm)
+            : seal.openingLengthMm,
+          openingWidthMm: fieldChanged('openingWidthMm')
+            ? patchPayloadField(p, 'openingWidthMm', seal.openingWidthMm)
+            : seal.openingWidthMm,
+          markerPlacementPending: fieldChanged('markerPlacementPending')
+            ? patchPayloadField(p, 'markerPlacementPending', seal.markerPlacementPending)
+            : seal.markerPlacementPending,
           status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,
@@ -379,8 +421,17 @@ async function processMutation(
     if (beforeSnapshot) {
       await recordSealEditRepair(sealId, userId, beforeSnapshot, editReason ?? '');
     }
+    if (versionMismatch) {
+      // Auditní stopa automatického vyřešení konfliktu verzí.
+      await logActivity(userId, 'sync_auto_merge', 'seal', sealId, {
+        mode: restrictToChanged ? 'field_merge' : 'client_wins',
+        changedFields: rawChanged ?? null,
+        baseVersion: mut.baseVersion ?? null,
+        serverVersion: seal.version,
+      });
+    }
     await touchJobParticipant(seal.jobId, userId, 'worker');
-    return { entityId: sealId };
+    return { entityId: sealId, autoMerged: versionMismatch };
   }
 
   if (mut.operation === 'delete') {

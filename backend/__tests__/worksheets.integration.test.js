@@ -387,6 +387,44 @@ describe("Worksheets module integration", () => {
       expect(list.body.find((w) => w.id === custWs.body.id)).toBeUndefined();
     });
 
+    it("vedeni per-worker list excludes customer worksheets but general list includes them", async () => {
+      const worker = await prisma.user.findUnique({
+        where: { username: "worker1" },
+      });
+
+      const workerWs = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${vedeniToken}`)
+        .send({ jobId: jobIdLocal, workerIds: [worker.id], audience: "worker" });
+      expect(workerWs.status).toBe(201);
+
+      const customerWs = await request(app)
+        .post("/api/worksheets")
+        .set("Authorization", `Bearer ${vedeniToken}`)
+        .send({ jobId: jobIdLocal, workerIds: [worker.id], audience: "customer" });
+      expect(customerWs.status).toBe(201);
+
+      // Soupisy pracovníka (filtr workerId) → zákaznický se nezobrazí.
+      const perWorker = await request(app)
+        .get("/api/worksheets")
+        .query({ workerId: worker.id })
+        .set("Authorization", `Bearer ${vedeniToken}`);
+      expect(perWorker.status).toBe(200);
+      expect(perWorker.body.find((w) => w.id === workerWs.body.id)).toBeTruthy();
+      expect(
+        perWorker.body.find((w) => w.id === customerWs.body.id),
+      ).toBeUndefined();
+
+      // Obecný výpis (bez workerId) → vedení zákaznický soupis vidí.
+      const general = await request(app)
+        .get("/api/worksheets")
+        .set("Authorization", `Bearer ${vedeniToken}`);
+      expect(general.status).toBe(200);
+      expect(
+        general.body.find((w) => w.id === customerWs.body.id),
+      ).toBeTruthy();
+    });
+
     it("management can add items to a draft worksheet centrally", async () => {
       const worker = await prisma.user.findUnique({
         where: { username: "worker1" },

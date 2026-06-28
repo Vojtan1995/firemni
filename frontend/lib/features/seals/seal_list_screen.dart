@@ -211,6 +211,36 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       seal['syncConflict'] = local.syncConflict;
       seal['markerPlacementPending'] = local.markerPlacementPending;
     }
+    await _attachUnsentPhotoCounts(db, seals);
+  }
+
+  /// Doplní per-ucpávku počty neodeslaných fotek (čeká/selhalo) pro viditelný
+  /// stav v řádku i v detailu.
+  Future<void> _attachUnsentPhotoCounts(
+    AppDatabase db,
+    List<Map<String, dynamic>> seals,
+  ) async {
+    final ids = seals.map((s) => s['id'] as String).toList();
+    if (ids.isEmpty) return;
+    final unsentPhotos = await (db.select(db.localPhotos)
+          ..where((p) =>
+              p.sealId.isIn(ids) &
+              (p.status.equals('pending') | p.status.equals('failed'))))
+        .get();
+    final pendingBySeal = <String, int>{};
+    final failedBySeal = <String, int>{};
+    for (final p in unsentPhotos) {
+      if (p.status == 'failed') {
+        failedBySeal[p.sealId] = (failedBySeal[p.sealId] ?? 0) + 1;
+      } else {
+        pendingBySeal[p.sealId] = (pendingBySeal[p.sealId] ?? 0) + 1;
+      }
+    }
+    for (final seal in seals) {
+      final id = seal['id'] as String;
+      seal['photoPending'] = pendingBySeal[id] ?? 0;
+      seal['photoFailed'] = failedBySeal[id] ?? 0;
+    }
   }
 
   Future<Map<String, int>> _photoCountsForSeals(
@@ -250,6 +280,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     final conflictIds = await _loadConflictSealIds(db, seals);
     await _persistFloorContext();
     await _enrichWithMarkerPlacement(db, seals);
+    await _attachUnsentPhotoCounts(db, seals);
     final drawingRow = await (db.select(db.localFloorDrawings)
           ..where((d) => d.floorId.equals(widget.floorId)))
         .getSingleOrNull();

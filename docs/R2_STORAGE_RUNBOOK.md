@@ -21,6 +21,22 @@ VERIFY_STORAGE_ON_START=true
 
 Use an R2 S3 API access key pair. Do not use a general Cloudflare dashboard API token as `S3_ACCESS_KEY_ID` or `S3_SECRET_ACCESS_KEY`.
 
+## Šifrování „v klidu" (encryption at rest)
+
+Cloudflare R2 **automaticky šifruje všechny objekty v klidu** (AES-256), nelze to
+vypnout — platí pro fotky i výkresy. Není proto potřeba nastavovat `ServerSideEncryption`
+v `PutObjectCommand` (R2 SSE hlavičky neřeší, šifruje vždy na úrovni platformy).
+Reference: Cloudflare R2 „Data security / Encryption at rest".
+
+Databázové zálohy jsou navíc **šifrované aplikačně** (asymetrické `age`) ještě před
+uploadem do R2 — viz `.github/workflows/backup.yml` a [BACKUP.md](BACKUP.md). Privátní
+`age` klíč je jen v trezoru firmy, ne v repu ani v R2.
+
+Co se tím **neřeší** (akceptované zbytkové riziko pro interní režim): fotky/výkresy
+nejsou šifrované klientsky (end-to-end) — kdo má přístup k R2 účtu, vidí dešifrovaný
+obsah. Plné klientské šifrování by rozbilo přímé servírování náhledů a vyžadovalo by
+správu klíčů; pro interní použití se nezavádí.
+
 To actually configure the live Railway service you need all of these real values:
 
 - Cloudflare account id, used only inside `S3_ENDPOINT`.

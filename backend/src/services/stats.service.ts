@@ -86,13 +86,13 @@ async function sealCounts(
 
 async function photoCount(where: Record<string, unknown>) {
   return prisma.sealPhoto.count({
-    where: { seal: { ...where, deletedAt: null } },
+    where: { deletedAt: null, seal: { ...where, deletedAt: null } },
   });
 }
 
 async function missingPhotoCount(where: Record<string, unknown>) {
   return prisma.seal.count({
-    where: { ...where, deletedAt: null, photos: { none: {} } },
+    where: { ...where, deletedAt: null, photos: { none: { deletedAt: null } } },
   });
 }
 
@@ -136,7 +136,7 @@ async function sealsByJobDetailed(where: Record<string, unknown>) {
     }),
     prisma.seal.groupBy({
       by: ["jobId"],
-      where: { ...where, deletedAt: null, photos: { none: {} } },
+      where: { ...where, deletedAt: null, photos: { none: { deletedAt: null } } },
       _count: { id: true },
     }),
     prisma.seal.groupBy({

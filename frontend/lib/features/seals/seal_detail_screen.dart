@@ -15,6 +15,7 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../../widgets/app_top_actions.dart';
 import '../../widgets/widgets.dart';
+import '../../core/permissions.dart';
 import '../auth/auth_provider.dart';
 import 'seal_constants.dart';
 import '../jobs/work_context_service.dart';
@@ -590,6 +591,76 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     );
   }
 
+  /// Smazání fotky (vedení/admin) — měkké, vyžaduje povinný důvod.
+  Future<void> _deletePhoto(String photoId) async {
+    final reasonCtrl = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Smazat fotku'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Fotka se skryje z evidence i exportů. Napište důvod smazání.',
+            ),
+            const SizedBox(height: AppSpacing.sm),
+            TextField(
+              controller: reasonCtrl,
+              autofocus: true,
+              maxLength: 2000,
+              minLines: 2,
+              maxLines: 4,
+              decoration: const InputDecoration(
+                labelText: 'Důvod smazání (povinné)',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Zrušit'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, reasonCtrl.text.trim()),
+            child: const Text('Smazat'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null || reason.isEmpty) {
+      if (reason != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Důvod smazání je povinný')),
+        );
+      }
+      return;
+    }
+    try {
+      await ref.read(dioProvider).delete(
+        '/api/photos/$photoId',
+        data: {'reason': reason},
+      );
+      final db = ref.read(databaseProvider);
+      await (db.delete(db.localPhotos)..where((p) => p.id.equals(photoId))).go();
+      _photoBytesCache.remove(photoId);
+      if (!mounted) return;
+      await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fotka byla smazána')),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fotku se nepodařilo smazat: $e')),
+        );
+      }
+    }
+  }
+
   String _photoStatusLabel(String? status) {
     switch (status) {
       case 'pending':
@@ -663,10 +734,18 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
   /// Čtvercový náhled fotky pro galerii (klepnutím otevře fullscreen).
   Widget _photoThumb(
-      Map<String, dynamic> m, int index, List<Map<String, dynamic>> allPhotos) {
+      Map<String, dynamic> m, int index, List<Map<String, dynamic>> allPhotos,
+      {bool canDelete = false}) {
     final status = m['status'] as String?;
+    final photoId = m['id'] as String?;
+    // Smazat lze jen fotku, která je už na serveru (má id a není to lokální
+    // pending/failed upload — ten se řeší přes Zkusit znovu).
+    final deletable = canDelete &&
+        photoId != null &&
+        (status == null || status == 'done');
     return GestureDetector(
       onTap: () => _openPhotoGallery(index, allPhotos),
+      onLongPress: deletable ? () => _deletePhoto(photoId) : null,
       child: ClipRRect(
         borderRadius: AppRadius.mdAll,
         child: AspectRatio(
@@ -675,6 +754,24 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             fit: StackFit.expand,
             children: [
               _photoImageWidget(m),
+              if (deletable)
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Material(
+                    color: Colors.black54,
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      customBorder: const CircleBorder(),
+                      onTap: () => _deletePhoto(photoId),
+                      child: const Padding(
+                        padding: EdgeInsets.all(4),
+                        child: Icon(Icons.delete_outline,
+                            color: Colors.white, size: 18),
+                      ),
+                    ),
+                  ),
+                ),
               if (status != null && status.isNotEmpty && status != 'done')
                 Positioned(
                   top: 6,
@@ -699,6 +796,44 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  /// Shrnutí stavu neodeslaných fotek (čeká/selhalo) – aby bylo jasné, že
+  /// ucpávka je uložená, ale fotky se ještě nedostaly na server.
+  Widget _unsentPhotoBanner(List<Map<String, dynamic>> photos) {
+    final pending = photos.where((m) => m['status'] == 'pending').length;
+    final failed = photos.where((m) => m['status'] == 'failed').length;
+    if (pending == 0 && failed == 0) return const SizedBox.shrink();
+    final parts = <String>[];
+    if (pending > 0) parts.add('$pending čeká na nahrání');
+    if (failed > 0) parts.add('$failed se nepodařilo nahrát');
+    final color = failed > 0 ? AppColors.error : AppColors.warning;
+    return Container(
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.sm),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: AppRadius.mdAll,
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(failed > 0 ? Icons.error_outline : Icons.cloud_upload_outlined,
+              size: 18, color: color),
+          const SizedBox(width: AppSpacing.sm),
+          Expanded(
+            child: Text(
+              'Fotky: ${parts.join(', ')}. Ucpávka je uložená, fotky se '
+              'odešlou při synchronizaci.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: color),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1119,6 +1254,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               ),
             const SizedBox(height: AppSpacing.sm),
           ],
+          _unsentPhotoBanner(photos),
           if (photos.isEmpty)
             const Text('Neuvedeno')
           else
@@ -1130,7 +1266,9 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               crossAxisSpacing: AppSpacing.sm,
               children: [
                 for (var i = 0; i < photos.length; i++)
-                  _photoThumb(photos[i], i, photos),
+                  _photoThumb(photos[i], i, photos,
+                      canDelete:
+                          AppPermissions.has(auth.role, 'photo.delete')),
               ],
             ),
           ..._failedPhotoRows(photos),

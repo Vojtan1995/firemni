@@ -9,6 +9,8 @@ void main() {
     expect(AppPermissions.canViewStats('worker'), isTrue);
     expect(AppPermissions.canManageJobs('worker'), isFalse);
     expect(AppPermissions.canViewSealHistory('worker'), isFalse);
+    // Worker nesmí mazat fotky.
+    expect(AppPermissions.has('worker', 'photo.delete'), isFalse);
   });
 
   test('ucetni role no longer exists', () {
@@ -27,10 +29,13 @@ void main() {
     expect(AppPermissions.canChangeSealStatus('vedeni'), isTrue);
     expect(AppPermissions.canManageFloorDrawings('vedeni'), isTrue);
     expect(AppPermissions.has('vedeni', 'worksheet.invoice'), isTrue);
+    // Vedení má kompletní práva k soupisům včetně odeslání a smí mazat fotky.
+    expect(AppPermissions.canSubmitWorksheet('vedeni'), isTrue);
+    expect(AppPermissions.has('vedeni', 'photo.delete'), isTrue);
   });
 
   test('admin permissions', () {
     expect(AppPermissions.canAccessTrash('admin'), isTrue);
-    expect(AppPermissions.has('admin', 'photo.delete'), isFalse);
+    expect(AppPermissions.has('admin', 'photo.delete'), isTrue);
   });
 }

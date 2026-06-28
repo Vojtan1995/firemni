@@ -96,7 +96,7 @@ export async function loadSealForCheckedValidation(sealId: string) {
         },
         orderBy: { sortOrder: 'asc' },
       },
-      photos: { select: { id: true } },
+      photos: { where: { deletedAt: null }, select: { id: true } },
     },
   });
 }

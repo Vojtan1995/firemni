@@ -285,6 +285,7 @@ router.get("/:id", async (req, res, next) => {
           orderBy: { sortOrder: "asc" },
         },
         photos: {
+          where: { deletedAt: null },
           orderBy: { createdAt: "asc" },
           include: { uploadedBy: { select: { id: true, displayName: true } } },
         },

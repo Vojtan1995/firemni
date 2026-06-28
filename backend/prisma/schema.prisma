@@ -66,7 +66,8 @@ model User {
   createdJobs  Job[]     @relation("JobCreator")
   sealsCreated Seal[]    @relation("SealCreator")
   sealsUpdated Seal[]    @relation("SealUpdater")
-  photos       SealPhoto[]
+  photos       SealPhoto[] @relation("SealPhotoUploader")
+  photosDeleted SealPhoto[] @relation("SealPhotoDeleter")
   activityLogs ActivityLog[]
   changeLogs   ChangeLog[]
   loginLogs    LoginLog[]
@@ -324,11 +325,17 @@ model SealPhoto {
   fileSize   Int      @map("file_size")
   uploadedById String @map("uploaded_by_id")
   createdAt  DateTime @default(now()) @map("created_at")
+  // Měkké smazání (vedení/admin) – soubor v úložišti zůstává kvůli auditní stopě.
+  deletedAt    DateTime? @map("deleted_at")
+  deletedById  String?   @map("deleted_by_id")
+  deleteReason String?   @map("delete_reason")
 
   seal       Seal @relation(fields: [sealId], references: [id], onDelete: Cascade)
-  uploadedBy User @relation(fields: [uploadedById], references: [id])
+  uploadedBy User @relation("SealPhotoUploader", fields: [uploadedById], references: [id])
+  deletedBy  User? @relation("SealPhotoDeleter", fields: [deletedById], references: [id])
 
   @@index([sealId])
+  @@index([sealId, deletedAt])
   @@map("seal_photos")
 }
 

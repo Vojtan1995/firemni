@@ -204,4 +204,57 @@ describe('Photos upload integration', () => {
     expect(res.status).toBe(413);
     expect(res.body.code).toBe('UPLOAD_TOO_LARGE');
   });
+
+  it('vedeni soft-delete requires a reason (400 without it)', async () => {
+    const res = await request(app)
+      .delete(`/api/photos/${photoId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe('BAD_REQUEST');
+  });
+
+  it('vedeni soft-deletes a photo (audit kept, file retained, hidden from views)', async () => {
+    const res = await request(app)
+      .delete(`/api/photos/${photoId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ reason: 'Rozmazaná fotka' });
+    expect(res.status).toBe(204);
+
+    const vedeni = await prisma.user.findUnique({
+      where: { username: 'vedeni' },
+    });
+    const stored = await prisma.sealPhoto.findUnique({ where: { id: photoId } });
+    expect(stored.deletedAt).toBeTruthy();
+    expect(stored.deletedById).toBe(vedeni.id);
+    expect(stored.deleteReason).toBe('Rozmazaná fotka');
+    // Soubor v úložišti zůstává (auditní stopa).
+    expect(await getObjectStorage().exists(stored.filePath)).toBe(true);
+
+    // Smazaná fotka se nestáhne ani neukáže v detailu ucpávky.
+    const fileRes = await request(app)
+      .get(`/api/photos/${photoId}/file`)
+      .set('Authorization', `Bearer ${managementToken}`);
+    expect(fileRes.status).toBe(404);
+
+    const detail = await request(app)
+      .get(`/api/seals/${sealId}`)
+      .set('Authorization', `Bearer ${managementToken}`);
+    expect(detail.status).toBe(200);
+    expect(detail.body.photos.find((p) => p.id === photoId)).toBeUndefined();
+
+    // Audit zapsán.
+    const log = await prisma.activityLog.findFirst({
+      where: { action: 'photo_delete', entityId: photoId },
+    });
+    expect(log).toBeTruthy();
+  });
+
+  it('returns 404 when deleting an already-deleted photo', async () => {
+    const res = await request(app)
+      .delete(`/api/photos/${photoId}`)
+      .set('Authorization', `Bearer ${managementToken}`)
+      .send({ reason: 'znovu' });
+    expect(res.status).toBe(404);
+  });
 });
