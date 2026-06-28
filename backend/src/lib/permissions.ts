@@ -44,7 +44,8 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   'seal.history': [UserRole.vedeni, UserRole.admin],
   'seal.override_locked': [UserRole.vedeni, UserRole.admin],
   'photo.upload': [UserRole.worker, UserRole.vedeni, UserRole.admin],
-  'photo.delete': [],
+  // Mazání je měkké (soft-delete + audit), soubor v úložišti zůstává. Worker nesmí.
+  'photo.delete': [UserRole.vedeni, UserRole.admin],
   'job.manage': [UserRole.vedeni, UserRole.admin],
   'floor.manage': [UserRole.vedeni, UserRole.admin],
   'floor.drawing.manage': [UserRole.vedeni, UserRole.admin],
@@ -61,7 +62,7 @@ const PERMISSION_MATRIX: Record<Permission, UserRole[]> = {
   // Mazat lze jen rozpracovaný (draft) soupis. Worker je navíc omezen na soupisy,
   // jichž je účastníkem (vynuceno v assertWorksheetAccess).
   'worksheet.delete': [UserRole.worker, UserRole.vedeni, UserRole.admin],
-  'worksheet.submit': [UserRole.worker, UserRole.admin],
+  'worksheet.submit': [UserRole.worker, UserRole.vedeni, UserRole.admin],
   'worksheet.review': [UserRole.vedeni, UserRole.admin],
   'worksheet.invoice': [UserRole.vedeni, UserRole.admin],
   'worksheet.archive': [UserRole.vedeni, UserRole.admin],

@@ -14,7 +14,14 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Install AWS CLI and PostgreSQL client
-        run: sudo apt-get update -qq && sudo apt-get install -y awscli postgresql-client
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          # awscli již není v apt repozitáři Ubuntu 24.04 – instalujeme oficiální AWS CLI v2.
+          sudo apt-get install -y curl ca-certificates unzip postgresql-client
+          curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+          unzip -q /tmp/awscliv2.zip -d /tmp
+          sudo /tmp/aws/install --update
 
       - name: Configure isolated source and destination profiles
         env:

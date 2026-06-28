@@ -7,6 +7,7 @@ import { prisma } from '../lib/prisma.js';
 import { AppError, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { assertSealReadable } from '../services/authorization.service.js';
 import { assertSealEditable } from '../services/seal.service.js';
+import { requirePermission } from '../lib/permissions.js';
 import { getObjectStorage, sanitizeObjectKey } from '../services/storage.service.js';
 import { logActivity, logChange } from '../services/audit.service.js';
 import { UserRole } from '@prisma/client';
@@ -125,7 +126,8 @@ router.get('/photos/:photoId/file', async (req, res, next) => {
       where: { id: paramId(req.params.photoId) },
       include: { seal: true },
     });
-    if (!photo || photo.seal.deletedAt) throw notFound('Fotka nenalezena');
+    if (!photo || photo.deletedAt || photo.seal.deletedAt)
+      throw notFound('Fotka nenalezena');
     await assertSealReadable(photo.sealId, req.user!.role, req.user!.id);
 
     const storage = getObjectStorage();
@@ -141,8 +143,42 @@ router.get('/photos/:photoId/file', async (req, res, next) => {
   }
 });
 
-router.delete('/photos/:photoId', async (_req, _res, next) => {
-  next(forbidden('Fotografie nelze mazat – historie musí zůstat zachována'));
-});
+// Měkké smazání fotky (vedení/admin). Soubor v úložišti zůstává kvůli auditní
+// stopě; v UI i v exportech se smazaná fotka nezobrazuje. Důvod je povinný.
+router.delete(
+  '/photos/:photoId',
+  requirePermission('photo.delete'),
+  async (req, res, next) => {
+    try {
+      const photo = await prisma.sealPhoto.findUnique({
+        where: { id: paramId(req.params.photoId) },
+        include: { seal: true },
+      });
+      if (!photo || photo.deletedAt || photo.seal.deletedAt)
+        throw notFound('Fotka nenalezena');
+      // Vedení/admin mají přístup ke čtení všech ucpávek; nemažeme soubor, jen
+      // záznam označíme jako smazaný (i u zamčené/vyfakturované ucpávky).
+      await assertSealReadable(photo.sealId, req.user!.role, req.user!.id);
+      const reason =
+        typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+      if (!reason) throw badRequest('Důvod smazání fotky je povinný');
+      await prisma.sealPhoto.update({
+        where: { id: photo.id },
+        data: {
+          deletedAt: new Date(),
+          deletedById: req.user!.id,
+          deleteReason: reason.slice(0, 2000),
+        },
+      });
+      await logActivity(req.user!.id, 'photo_delete', 'seal_photo', photo.id, {
+        sealId: photo.sealId,
+        reason: reason.slice(0, 2000),
+      });
+      res.status(204).send();
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 export default router;

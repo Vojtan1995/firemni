@@ -67,6 +67,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
   bool _isDirty = false;
   bool _showPhotoWarning = false;
   int _baseVersion = 1;
+  // Původní (serverem načtené) hodnoty pro výpočet changedFields při editaci –
+  // backend pak při souběžné editaci slučuje jen reálně změněná pole.
+  String? _origSealNumber;
+  String? _origTrade;
+  String? _origSystem;
+  String? _origConstruction;
+  String? _origLocation;
+  String? _origFireRating;
+  String _origNote = '';
+  String _origInternalNote = '';
+  String _origEntriesSig = '';
   String? _duplicateNumberError;
   String? _floorName;
   FloorDrawingState? _drawingState;
@@ -175,6 +186,17 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _entries
       ..clear()
       ..addAll(entryDraftsFromSealMap(seal));
+
+    // Snapshot původních hodnot pro pozdější výpočet changedFields (auto-merge).
+    _origSealNumber = seal['sealNumber'] as String? ?? '';
+    _origTrade = _trade;
+    _origSystem = _system;
+    _origConstruction = _construction;
+    _origLocation = loadedLocation;
+    _origFireRating = _fireRating;
+    _origNote = _noteCtrl.text;
+    _origInternalNote = _internalNoteCtrl.text;
+    _origEntriesSig = jsonEncode(_buildEntriesPayload());
 
     await _loadFloorContext(db);
     final marker = await (db.select(db.localSealMarkers)
@@ -562,7 +584,33 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
 
     setState(() => _saving = true);
-    final entriesPayload = sealEntriesWithSharedMaterials(
+    final entriesPayload = _buildEntriesPayload();
+
+    try {
+      if (widget.isEdit) {
+        await _saveEdit(db, sealNumber, entriesPayload, editReason!);
+      } else {
+        await _saveCreate(
+          db,
+          sealNumber,
+          entriesPayload,
+          markerPlacementPending: placementPending,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = apiErrorMessage(e, fallback: 'Chyba: $e');
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(msg)));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  /// Sestaví payload prostupů (entries) z aktuálních formulářových konceptů.
+  List<Map<String, dynamic>> _buildEntriesPayload() {
+    return sealEntriesWithSharedMaterials(
       _entries.asMap().entries.map((i) {
         final e = i.value;
         final calc = computeSealEntryPreview(
@@ -589,27 +637,26 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         };
       }).toList(),
     );
+  }
 
-    try {
-      if (widget.isEdit) {
-        await _saveEdit(db, sealNumber, entriesPayload, editReason!);
-      } else {
-        await _saveCreate(
-          db,
-          sealNumber,
-          entriesPayload,
-          markerPlacementPending: placementPending,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        final msg = apiErrorMessage(e, fallback: 'Chyba: $e');
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(msg)));
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
+  /// Seznam reálně změněných polí (proti serverem načteným hodnotám). Použije se
+  /// jako `changedFields` v sync payloadu pro auto-merge souběžných editací.
+  List<String> _computeChangedFields(
+    String sealNumber,
+    String effectiveLocation,
+    List<Map<String, dynamic>> entriesPayload,
+  ) {
+    final changed = <String>[];
+    if (sealNumber != (_origSealNumber ?? '')) changed.add('sealNumber');
+    if (_trade != _origTrade) changed.add('trade');
+    if (_system != _origSystem) changed.add('system');
+    if (_construction != _origConstruction) changed.add('construction');
+    if (effectiveLocation != (_origLocation ?? '')) changed.add('location');
+    if (_fireRating != _origFireRating) changed.add('fireRating');
+    if (_noteCtrl.text != _origNote) changed.add('note');
+    if (_internalNoteCtrl.text != _origInternalNote) changed.add('internalNote');
+    if (jsonEncode(entriesPayload) != _origEntriesSig) changed.add('entries');
+    return changed;
   }
 
   Future<void> _saveCreate(
@@ -813,6 +860,11 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     final existing = await (db.select(db.localSeals)
           ..where((s) => s.id.equals(sealId)))
         .getSingleOrNull();
+    final changedFields = _computeChangedFields(
+      sealNumber,
+      _effectiveLocation ?? '',
+      entriesPayload,
+    );
     final payload = {
       'id': sealId,
       'jobId': widget.jobId,
@@ -825,6 +877,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       'fireRating': _fireRating,
       'entries': entriesPayload,
       'editReason': editReason,
+      'changedFields': changedFields,
     };
     SealNoteHelpers.applyNotesToPayload(
       payload,

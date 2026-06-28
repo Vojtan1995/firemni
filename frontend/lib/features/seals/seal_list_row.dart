@@ -36,6 +36,8 @@ class SealListRow extends StatelessWidget {
     final unplaced = !placementPending && seal['hasMarker'] == false;
     final number = seal['sealNumber'] as String? ?? '?';
     final trade = sealTradeLabel(seal['trade'] as String?);
+    final photoPending = seal['photoPending'] as int? ?? 0;
+    final photoFailed = seal['photoFailed'] as int? ?? 0;
 
     return AppCard(
       borderColor: selected
@@ -80,6 +82,12 @@ class SealListRow extends StatelessWidget {
           ),
           if (photoCount > 0)
             _iconBadge(Icons.photo_camera_outlined, AppColors.textMuted),
+          if (photoFailed > 0)
+            _photoStateBadge(Icons.broken_image_outlined, AppColors.error,
+                photoFailed, 'Fotky se nepodařilo nahrát'),
+          if (photoPending > 0)
+            _photoStateBadge(Icons.cloud_upload_outlined, AppColors.warning,
+                photoPending, 'Fotky čekají na nahrání'),
           if (hasNote) _iconBadge(Icons.sticky_note_2_outlined, AppColors.textMuted),
           if (pendingSync)
             _iconBadge(Icons.cloud_upload_outlined, AppColors.warning),
@@ -110,6 +118,28 @@ class SealListRow extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: AppSpacing.sm),
       child: Icon(icon, size: 16, color: color),
+    );
+  }
+
+  Widget _photoStateBadge(
+      IconData icon, Color color, int count, String tooltip) {
+    return Padding(
+      padding: const EdgeInsets.only(right: AppSpacing.sm),
+      child: Tooltip(
+        message: tooltip,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: color),
+            const SizedBox(width: 2),
+            Text(
+              '$count',
+              style: TextStyle(
+                  fontSize: 11, fontWeight: FontWeight.w700, color: color),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

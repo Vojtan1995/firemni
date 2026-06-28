@@ -12,6 +12,8 @@ describe('permissions matrix', () => {
     expect(hasPermission(UserRole.worker, 'stats.view')).toBe(true);
     expect(hasPermission(UserRole.worker, 'worksheet.create')).toBe(true);
     expect(hasPermission(UserRole.worker, 'seal.history')).toBe(false);
+    // Worker nesmí mazat fotky (mazání je pro vedení/admin).
+    expect(hasPermission(UserRole.worker, 'photo.delete')).toBe(false);
   });
 
   it('ucetni role no longer exists', () => {
@@ -26,6 +28,10 @@ describe('permissions matrix', () => {
     expect(hasPermission(UserRole.vedeni, 'admin.trash')).toBe(false);
     expect(hasPermission(UserRole.vedeni, 'seal.history')).toBe(true);
     expect(hasPermission(UserRole.vedeni, 'worksheet.review')).toBe(true);
+    // Vedení má kompletní práva k soupisům včetně odeslání.
+    expect(hasPermission(UserRole.vedeni, 'worksheet.submit')).toBe(true);
+    // Vedení/admin smí mazat fotky (měkké smazání + audit).
+    expect(hasPermission(UserRole.vedeni, 'photo.delete')).toBe(true);
     // Oprávnění zděděná po bývalé roli účetní:
     expect(hasPermission(UserRole.vedeni, 'worksheet.invoice')).toBe(true);
     expect(hasPermission(UserRole.vedeni, 'seal.status')).toBe(true);
@@ -37,6 +43,6 @@ describe('permissions matrix', () => {
     expect(hasPermission(UserRole.admin, 'admin.trash')).toBe(true);
     expect(hasPermission(UserRole.admin, 'seal.restore')).toBe(true);
     expect(hasPermission(UserRole.admin, 'worksheet.submit')).toBe(true);
-    expect(hasPermission(UserRole.admin, 'photo.delete')).toBe(false);
+    expect(hasPermission(UserRole.admin, 'photo.delete')).toBe(true);
   });
 });

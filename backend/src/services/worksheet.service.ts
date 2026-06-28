@@ -286,6 +286,11 @@ export async function listWorksheets(
     where.audience = "worker";
   } else if (filters.workerId) {
     where.workers = { some: { userId: filters.workerId } };
+    // Soupisy pracovníka: zákaznické soupisy (interní podklad pro fakturaci
+    // směrem k zákazníkovi) se ve výpisu konkrétního pracovníka nezobrazují,
+    // ani když je v nich pracovník obsazen jménem. Vedení je vidí v obecném
+    // (per-worker nefiltrovaném) výpisu.
+    where.audience = "worker";
   }
 
   return prisma.workSheet

@@ -37,7 +37,9 @@ export function buildSealFilterWhere(
   for (const f of filters) {
     switch (f) {
       case 'no_photo':
-        and.push({ photos: { none: {} } });
+        // Smazané (soft-delete) fotky se nepočítají – ucpávka jen se smazanými
+        // fotkami je „bez fotky".
+        and.push({ photos: { none: { deletedAt: null } } });
         break;
       case 'awaiting_review':
         and.push({ status: 'draft' });
