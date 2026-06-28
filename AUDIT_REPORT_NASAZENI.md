@@ -129,7 +129,7 @@ Nesrovnalosti k diskusi (ne nutně chyby):
 4. ☑ HTTPS produkce (Railway); APK release-podepsané. ☐ Windows exe podpis (nízká priorita) (3.1)
 5. ☑ Produkce: `STORAGE_DRIVER=s3` (R2), `PUBLIC_UPLOADS=false`, konkrétní `CORS_ORIGIN` (3.2, 3.3)
 6. ☑ Git repozitář zdravý, binárky uklizené, `releases/` drží poslední 2 verze (3.4)
-7. ◑ **Otestovat obnovu ze zálohy** (pg_dump → restore) — automatizovaný workflow `dr-restore-test.yml` (týdně + ruční spuštění) i šifrované zálohy `backup.yml` **existují**. Při kontrole 2026-06-28 byla nalezena a opravena CI závada (instalace `awscli` selhávala na Ubuntu 24.04 → přechod na AWS CLI v2). K „zelenému" živému testu zbývá: sloučit opravu do `main`, doplnit chybějící secrets (`BACKUP_AGE_RECIPIENT`, prostředí `dr-restore`) a spustit běh. Detaily a postup v `docs/DR_RUNBOOK.md` → „Záznam o ověření obnovy". *(zbývá živý zelený běh)*
+7. ☑ **Otestovat obnovu ze zálohy** (pg_dump → restore) — živý test proveden a prošel 2026-06-28 (run [28336839090](https://github.com/Vojtan1995/firemni/actions/runs/28336839090)): dešifrování `.dump.age`, `pg_restore`, FK integritní kontroly i reapply GDPR výmazů bez chyby (20 uživatelů, 10 zakázek, 325 ucpávek, 94 fotek). Detaily v `docs/DR_RUNBOOK.md` → „Záznam o ověření obnovy".
 8. ☐ Smoke test celé cesty: login → sync → fotka → export PDF na produkční URL *(průběžně)*
 
 Body 1–6 jsou splněné a produkce je živá → aplikace je způsobilá pro produkční interní nasazení (desítky uživatelů). Zbývají provozní body 7–8. Rate limiting (3.5) je doplněn na nejnáročnější endpointy; globální limiter na celé `/api` zvážit pro veřejné vystavení.

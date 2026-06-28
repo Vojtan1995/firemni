@@ -47,12 +47,4 @@ tabulek, vzorek objektů, nalezené problémy a jejich vlastníky.
 |---|---|---|
 | 2026-06-28 | Kontrola běhů `dr-restore-test.yml` a `backup.yml` na GitHub Actions. | **Nalezena CI závada:** krok instalace selhával na `apt-get install awscli` — balík `awscli` už není v repozitáři Ubuntu 24.04. Postihovalo `backup.yml`, `dr-restore-test.yml` i `object-backup.yml`. **Opraveno:** instalace přes oficiální AWS CLI v2 (zip z `awscli.amazonaws.com`). |
 | 2026-06-28 | Kontrola záloh. | `backup.yml` navíc selhával na `Missing AGE_RECIPIENT` — chybí/odstraněn repo secret `BACKUP_AGE_RECIPIENT` (veřejný `age` klíč). Poslední úspěšná záloha: 2026-06-27. **Akce vlastníka:** doplnit secret. |
-
-### Co zbývá k „zelenému" živému testu obnovy
-
-1. Sloučit opravu workflow (AWS CLI v2) do `main` — bez ní se `dr-restore-test` ani `backup` nedostanou za instalační krok.
-2. Doplnit chybějící secrets:
-   - `backup.yml`: `BACKUP_AGE_RECIPIENT` (+ `PROD_DATABASE_URL`, `BACKUP_S3_*`).
-   - prostředí `dr-restore`: `AGE_IDENTITY` (privátní klíč), `BACKUP_S3_*`, `TARGET_DATABASE_URL`.
-3. Spustit ručně: `gh workflow run dr-restore-test.yml` (potřebuje existující šifrovanou zálohu v R2 — tj. nejdřív zelený `backup.yml`).
-4. Po zeleném běhu sem zapsat dosažené RPO/RTO a počty tabulek a teprve pak v `AUDIT_REPORT_NASAZENI.md` přepnout bod „test obnovy" na ☑.
+| 2026-06-28 | Doplněny secrets (`BACKUP_AGE_RECIPIENT` repo secret, `BACKUP_AGE_IDENTITY` v prostředí `dr-restore`) a opraven CI (AWS CLI v2). Spuštěn `backup.yml`, poté `dr-restore-test.yml` naživo (run [28336839090](https://github.com/Vojtan1995/firemni/actions/runs/28336839090)). | **✅ Úspěšný živý restore test.** Dešifrování `.dump.age` i privacy-erasure ledgeru, `pg_restore`, FK integritní kontroly (0 orphan seals/photos), reapply GDPR výmazů — vše proběhlo bez chyby. Obnovená data: 20 uživatelů, 10 zakázek, 325 ucpávek, 94 fotek, 0 reapplikovaných výmazů (produkce zatím žádné GDPR výmazy neprovedla). Cesta od triggeru do dokončení restore kroku ~70 s — výrazně pod RTO 4 h. RPO dán intervalem denní zálohy (≤24 h), poslední záloha před testem proběhla týž den. Mimochodem objeven a opraven edge-case bug: `age -d` u zcela prázdného plaintextu (žádné GDPR výmazy) nevytvoří výstupní soubor i přes exit 0 (lazy file creation) — workflow nyní v tom případě doplní prázdný soubor sám. |
