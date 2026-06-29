@@ -89,6 +89,7 @@ class FloorPlanViewer extends StatefulWidget {
     this.onTapPlan,
     this.onMarkerTap,
     this.highlightSealId,
+    this.markerSizeFactor = 1.0,
   });
 
   final Uint8List bytes;
@@ -105,6 +106,10 @@ class FloorPlanViewer extends StatefulWidget {
   final void Function(Offset local, Size canvasSize)? onTapPlan;
   final void Function(Map<String, dynamic> marker)? onMarkerTap;
   final String? highlightSealId;
+
+  /// Ruční násobič velikosti značek (tlačítka +/−), nad automatickým
+  /// škálováním podle zoomu. 1.0 = výchozí.
+  final double markerSizeFactor;
 
   bool get isPdf => mimeType.toLowerCase().contains('pdf');
 
@@ -211,7 +216,8 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                     ValueListenableBuilder<double>(
                       valueListenable: widget.viewerScale,
                       builder: (context, viewerScale, _) {
-                        final markerScale = markerScaleForViewer(viewerScale);
+                        final markerScale = markerScaleForViewer(viewerScale) *
+                            widget.markerSizeFactor;
                         return Stack(
                           clipBehavior: Clip.none,
                           children: widget.markers.map((m) {

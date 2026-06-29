@@ -151,13 +151,46 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   final ValueNotifier<double> _viewerScale = ValueNotifier(1);
   Size? _canvasSize;
 
+  // Ruční velikost značek (tlačítka +/−), násobič nad auto-škálováním.
+  // Ukládá se lokálně na zařízení a platí pro všechny výkresy.
+  static const String _markerSizePrefKey = 'marker_size_factor';
+  static const double _markerSizeMin = 0.5;
+  static const double _markerSizeMax = 3.0;
+  static const double _markerSizeStep = 0.25;
+  double _markerSizeFactor = 1.0;
+
   @override
   void initState() {
     super.initState();
     _placingSealId = widget.placeSealId;
     _highlightSealId = widget.focusSealId;
     _transformController.addListener(_onTransformChanged);
+    _loadMarkerSizeFactor();
     _load();
+  }
+
+  Future<void> _loadMarkerSizeFactor() async {
+    final db = ref.read(databaseProvider);
+    final row = await (db.select(db.localUserPrefs)
+          ..where((p) => p.key.equals(_markerSizePrefKey)))
+        .getSingleOrNull();
+    final value = double.tryParse(row?.value ?? '');
+    if (value != null && mounted) {
+      setState(() => _markerSizeFactor =
+          value.clamp(_markerSizeMin, _markerSizeMax).toDouble());
+    }
+  }
+
+  Future<void> _setMarkerSizeFactor(double next) async {
+    final clamped = next.clamp(_markerSizeMin, _markerSizeMax).toDouble();
+    setState(() => _markerSizeFactor = clamped);
+    final db = ref.read(databaseProvider);
+    await db.into(db.localUserPrefs).insertOnConflictUpdate(
+          LocalUserPrefsCompanion.insert(
+            key: _markerSizePrefKey,
+            value: clamped.toString(),
+          ),
+        );
   }
 
   @override
@@ -1129,32 +1162,90 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                                       )
                                     : null,
                           )
-                        : FloorPlanViewer(
-                            bytes: _imageBytes!,
-                            mimeType: _drawing?['mimeType'] as String? ??
-                                'image/webp',
-                            intrinsicWidth: width,
-                            intrinsicHeight: height,
-                            transformationController: _transformController,
-                            viewerScale: _viewerScale,
-                            markers: _displayMarkers,
-                            highlightSealId: _highlightSealId,
-                            onCanvasSizeChanged: (size) {
-                              if (_canvasSize != size) {
-                                setState(() => _canvasSize = size);
-                              }
-                            },
-                            onTapPlan: (_isDraftMode ||
-                                    _placingSealId != null ||
-                                    _movingSealId != null)
-                                ? _onTapPlan
-                                : null,
-                            onMarkerTap: _onMarkerTap,
+                        : Stack(
+                            children: [
+                              FloorPlanViewer(
+                                bytes: _imageBytes!,
+                                mimeType: _drawing?['mimeType'] as String? ??
+                                    'image/webp',
+                                intrinsicWidth: width,
+                                intrinsicHeight: height,
+                                transformationController: _transformController,
+                                viewerScale: _viewerScale,
+                                markers: _displayMarkers,
+                                highlightSealId: _highlightSealId,
+                                markerSizeFactor: _markerSizeFactor,
+                                onCanvasSizeChanged: (size) {
+                                  if (_canvasSize != size) {
+                                    setState(() => _canvasSize = size);
+                                  }
+                                },
+                                onTapPlan: (_isDraftMode ||
+                                        _placingSealId != null ||
+                                        _movingSealId != null)
+                                    ? _onTapPlan
+                                    : null,
+                                onMarkerTap: _onMarkerTap,
+                              ),
+                              _buildMarkerSizeControls(),
+                            ],
                           ),
                   ),
                 ],
               ),
         bottomNavigationBar: _buildBottomBar(),
+      ),
+    );
+  }
+
+  /// Plovoucí ovládání velikosti značek (+/−) v rohu výkresu. Mění ruční
+  /// násobič nad automatickým škálováním a ukládá se na zařízení.
+  Widget _buildMarkerSizeControls() {
+    final canEnlarge = _markerSizeFactor < _markerSizeMax - 0.001;
+    final canShrink = _markerSizeFactor > _markerSizeMin + 0.001;
+    return Positioned(
+      right: AppSpacing.md,
+      bottom: AppSpacing.md,
+      child: SafeArea(
+        child: Card(
+          elevation: 3,
+          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.92),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.add),
+                tooltip: 'Zvětšit značky',
+                onPressed: canEnlarge
+                    ? () => _setMarkerSizeFactor(
+                        _markerSizeFactor + _markerSizeStep)
+                    : null,
+              ),
+              GestureDetector(
+                onTap: _markerSizeFactor != 1.0
+                    ? () => _setMarkerSizeFactor(1.0)
+                    : null,
+                child: Tooltip(
+                  message: 'Velikost značek (klepnutím na 100 %)',
+                  child: Text(
+                    '${(_markerSizeFactor * 100).round()}%',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.remove),
+                tooltip: 'Zmenšit značky',
+                onPressed: canShrink
+                    ? () => _setMarkerSizeFactor(
+                        _markerSizeFactor - _markerSizeStep)
+                    : null,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
