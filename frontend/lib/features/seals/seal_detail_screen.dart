@@ -1339,12 +1339,13 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.sm),
               child: FilledButton.icon(
-                onPressed: () {
+                onPressed: () async {
                   final jId = seal['jobId'] as String? ?? '';
                   final fId = seal['floorId'] as String? ?? '';
-                  context.push(
+                  final changed = await context.push<bool>(
                     '/seal/${widget.sealId}/edit?jobId=$jId&floorId=$fId',
                   );
+                  if (changed == true) _load();
                 },
                 icon: const Icon(Icons.edit),
                 label: Text(status == 'checked'

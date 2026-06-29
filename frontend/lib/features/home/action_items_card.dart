@@ -99,7 +99,7 @@ class _ActionItemsCardState extends ConsumerState<ActionItemsCard> {
         count: jobsWithoutActivityCount,
         icon: Icons.warning_amber_outlined,
         color: AppColors.warning,
-        onTap: () => context.go(jobsWithoutActivityRoute),
+        onTap: () => context.push(jobsWithoutActivityRoute),
       ),
     ].where((i) => i.count > 0).toList();
   }

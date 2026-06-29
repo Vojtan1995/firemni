@@ -20,6 +20,7 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
   List<Map<String, dynamic>> _workers = [];
   bool _loading = true;
   String? _statusFilter;
+  String _audience = 'worker';
 
   static const _statusLabels = {
     'draft': 'Rozpracovaný',
@@ -56,7 +57,11 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
     } catch (_) {}
 
     try {
-      final query = _statusFilter != null ? '?status=$_statusFilter' : '';
+      final params = <String, String>{};
+      if (_statusFilter != null) params['status'] = _statusFilter!;
+      if (!auth.isWorker) params['audience'] = _audience;
+      final query =
+          params.isEmpty ? '' : '?${Uri(queryParameters: params).query}';
       final res = await dio.get('/api/worksheets$query');
       if (!mounted) return;
       setState(() {
@@ -113,6 +118,7 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
 
                   final body = <String, dynamic>{'jobId': selectedJobId};
                   if (workerIds != null) body['workerIds'] = workerIds;
+                  if (!auth.isWorker) body['audience'] = _audience;
 
                   final res = await ref.read(dioProvider).post('/api/worksheets', data: body);
                   final ws = res.data as Map<String, dynamic>;
@@ -181,36 +187,68 @@ class _WorksheetsScreenState extends ConsumerState<WorksheetsScreen> {
               label: const Text('Nový soupis'),
             )
           : null,
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _worksheets.isEmpty
-              ? const Center(child: Text('Žádné soupisy'))
-              : ListView.builder(
-                  itemCount: _worksheets.length,
-                  itemBuilder: (_, i) {
-                    final ws = _worksheets[i];
-                    final job = ws['job'] as Map<String, dynamic>?;
-                    final status = ws['status'] as String? ?? 'draft';
-                    final count = ws['_count']?['items'] ?? 0;
-                    final id = ws['id'] as String;
-                    return Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: ListTile(
-                        title: Text(
-                          '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'.trim(),
-                        ),
-                        subtitle: Text(
-                          '${_statusLabels[status] ?? status} · $count položek',
-                        ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: () async {
-                          final changed = await context.push<bool>('/worksheets/$id');
-                          if (changed == true && mounted) _load();
+      body: Column(
+        children: [
+          if (!auth.isWorker)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                    value: 'worker',
+                    label: Text('Pro pracovníky'),
+                    icon: Icon(Icons.engineering_outlined),
+                  ),
+                  ButtonSegment(
+                    value: 'customer',
+                    label: Text('Pro zákazníka'),
+                    icon: Icon(Icons.storefront_outlined),
+                  ),
+                ],
+                selected: {_audience},
+                onSelectionChanged: (s) {
+                  setState(() => _audience = s.first);
+                  _load();
+                },
+              ),
+            ),
+          Expanded(
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _worksheets.isEmpty
+                    ? const Center(child: Text('Žádné soupisy'))
+                    : ListView.builder(
+                        itemCount: _worksheets.length,
+                        itemBuilder: (_, i) {
+                          final ws = _worksheets[i];
+                          final job = ws['job'] as Map<String, dynamic>?;
+                          final status = ws['status'] as String? ?? 'draft';
+                          final count = ws['_count']?['items'] ?? 0;
+                          final id = ws['id'] as String;
+                          return Card(
+                            margin: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            child: ListTile(
+                              title: Text(
+                                '${job?['projectNumber'] ?? ''} ${job?['name'] ?? ''}'
+                                    .trim(),
+                              ),
+                              subtitle: Text(
+                                '${_statusLabels[status] ?? status} · $count položek',
+                              ),
+                              trailing: const Icon(Icons.chevron_right),
+                              onTap: () async {
+                                final changed =
+                                    await context.push<bool>('/worksheets/$id');
+                                if (changed == true && mounted) _load();
+                              },
+                            ),
+                          );
                         },
                       ),
-                    );
-                  },
-                ),
+          ),
+        ],
+      ),
     );
   }
 }

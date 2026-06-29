@@ -14,7 +14,11 @@ import { assertSealEditable } from "./seal.service.js";
 import { getObjectStorage, sanitizeObjectKey } from "./storage.service.js";
 import { logActivity } from "./audit.service.js";
 
-const maxDrawingBytes = 25 * 1024 * 1024;
+const maxDrawingBytes = 50 * 1024 * 1024;
+
+/** Strop delší strany rastrového výkresu v px — nad tuto hranici se výkres
+ *  při uploadu zmenší (rychlejší dekódování/render na mobilu). */
+const maxDrawingRasterDim = 4000;
 
 /** Max. doba na render/parsování PDF stránky — chrání před zaseknutím requestu
  *  (a vyčerpáním connection poolu) na poškozeném/obřím PDF. */
@@ -197,7 +201,12 @@ export async function getFloorDrawingFile(
     throw notFound("Soubor výkresu nenalezen");
   }
   const body = await storage.get(drawing.filePath);
-  return { body, mimeType: drawing.mimeType, filePath: drawing.filePath };
+  return {
+    body,
+    mimeType: drawing.mimeType,
+    filePath: drawing.filePath,
+    updatedAt: drawing.updatedAt,
+  };
 }
 
 export async function uploadFloorDrawing(
@@ -228,7 +237,29 @@ export async function uploadFloorDrawing(
     file.mimetype,
     file.originalname,
   );
-  const output = file.buffer;
+
+  // Příliš velké rastrové výkresy (skeny/fotky z mobilu) zastropujeme na
+  // ~4000 px delší strany — zásadně zrychlí dekódování/render na mobilu. Malé
+  // výkresy (pod stropem) procházejí beze změny formátu i bajtů (zachovává
+  // se přesně nahraný originál, např. pro přesnost technického výkresu).
+  let output = file.buffer;
+  if (mimeType !== "application/pdf") {
+    const { width: origWidth, height: origHeight } =
+      await getImageDimensions(output);
+    if (origWidth > maxDrawingRasterDim || origHeight > maxDrawingRasterDim) {
+      const resized = sharp(output, { failOn: "error" }).resize(
+        maxDrawingRasterDim,
+        maxDrawingRasterDim,
+        { fit: "inside", withoutEnlargement: true },
+      );
+      output =
+        mimeType === "image/png"
+          ? await resized.png().toBuffer()
+          : mimeType === "image/jpeg"
+            ? await resized.jpeg({ quality: 90 }).toBuffer()
+            : await resized.webp({ quality: 90 }).toBuffer();
+    }
+  }
 
   const dimensions =
     mimeType === "application/pdf"

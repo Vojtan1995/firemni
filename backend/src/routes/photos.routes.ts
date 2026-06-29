@@ -9,13 +9,13 @@ import { assertSealReadable } from '../services/authorization.service.js';
 import { assertSealEditable } from '../services/seal.service.js';
 import { requirePermission } from '../lib/permissions.js';
 import { getObjectStorage, sanitizeObjectKey } from '../services/storage.service.js';
-import { logActivity, logChange } from '../services/audit.service.js';
+import { logActivity } from '../services/audit.service.js';
 import { UserRole } from '@prisma/client';
 import { paramId } from '../lib/params.js';
 
 const router = Router();
 router.use(authMiddleware);
-const maxPhotoSizeBytes = 15 * 1024 * 1024;
+const maxPhotoSizeBytes = 50 * 1024 * 1024;
 
 function isAllowedImageMime(mimetype: string, originalname: string): boolean {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg'];
@@ -99,10 +99,6 @@ router.post('/seals/:sealId/photos', photoUploadMiddleware, async (req, res, nex
     });
 
     await logActivity(req.user!.id, 'photo_upload', 'seal', sealId, { photoId: photo.id });
-    await logChange(req.user!.id, 'seal', sealId, 'photos', null, 'added', {
-      photoId: photo.id,
-      uploadedById: req.user!.id,
-    });
     res.status(201).json({
       ...photo,
       url: `/uploads/${outputName}`,

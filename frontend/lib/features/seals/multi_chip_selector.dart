@@ -10,6 +10,7 @@ class MultiChipSelector extends StatelessWidget {
     required this.selected,
     required this.onChanged,
     this.allowCustom = false,
+    this.emphasize = false,
   });
 
   final String label;
@@ -17,6 +18,9 @@ class MultiChipSelector extends StatelessWidget {
   final List<String> selected;
   final ValueChanged<List<String>> onChanged;
   final bool allowCustom;
+
+  /// Zvýrazní název kategorie (barva + podtržení) — pro klíčové sekce formuláře.
+  final bool emphasize;
 
   List<String> get _displayOptions {
     final seen = <String>{};
@@ -67,10 +71,17 @@ class MultiChipSelector extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
+          style: emphasize
+              ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.accent,
+                  )
+              : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
         ),
         if (selected.isNotEmpty) ...[
           const SizedBox(height: AppSpacing.xs),

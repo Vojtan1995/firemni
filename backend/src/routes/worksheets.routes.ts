@@ -27,6 +27,10 @@ router.get('/', async (req, res, next) => {
   try {
     const query = req.query as Record<string, string>;
     const status = query.status ? (query.status as WorkSheetStatus) : undefined;
+    const audience =
+      query.audience === 'worker' || query.audience === 'customer'
+        ? query.audience
+        : undefined;
     const worksheets = await listWorksheets(req.user!.role, req.user!.id, {
       jobId: query.jobId,
       status,
@@ -40,6 +44,7 @@ router.get('/', async (req, res, next) => {
           : query.invoiced === 'false'
             ? false
             : undefined,
+      audience,
     });
     res.json(worksheets);
   } catch (e) {

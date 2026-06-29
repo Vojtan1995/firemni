@@ -6,7 +6,12 @@ import { forbidden } from '../lib/errors.js';
 import { prisma } from '../lib/prisma.js';
 import { anonymizeUserForViewer, mapLogUsers } from '../lib/user-privacy.js';
 import { parseIsoDateTimeQuery } from '../lib/zod-helpers.js';
-import { describeActivity, describeChange, isDataMutation } from '../lib/log-labels.js';
+import {
+  describeActivity,
+  describeChange,
+  isDataMutation,
+  isNoiseChangeField,
+} from '../lib/log-labels.js';
 
 const userLogSelect = { id: true, displayName: true, username: true, role: true } as const;
 
@@ -187,17 +192,19 @@ router.get('/history', async (req, res, next) => {
     ]);
 
     const entries = [
-      ...changes.map((c) => {
-        const d = describeChange(c);
-        return {
-          id: c.id,
-          timestamp: c.createdAt,
-          title: d.title,
-          entity: d.entity,
-          category: d.category,
-          user: anonymizeUserForViewer(c.user, role),
-        };
-      }),
+      ...changes
+        .filter((c) => !isNoiseChangeField(c.fieldName))
+        .map((c) => {
+          const d = describeChange(c);
+          return {
+            id: c.id,
+            timestamp: c.createdAt,
+            title: d.title,
+            entity: d.entity,
+            category: d.category,
+            user: anonymizeUserForViewer(c.user, role),
+          };
+        }),
       ...activities
         .filter((a) => isDataMutation(a.action))
         .map((a) => {

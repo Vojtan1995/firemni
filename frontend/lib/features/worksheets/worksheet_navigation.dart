@@ -16,5 +16,5 @@ void goToSoupisy(
   if (reportStatus != null) params['reportStatus'] = reportStatus;
   if (workerId != null) params['workerId'] = workerId;
   final uri = Uri(path: '/soupisy', queryParameters: params.isEmpty ? null : params);
-  context.go(uri.toString());
+  context.push(uri.toString());
 }

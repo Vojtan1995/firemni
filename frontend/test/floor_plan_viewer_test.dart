@@ -7,8 +7,8 @@ void main() {
       expect(floorPlanPdfRenderBucket(0.75), 1);
       expect(floorPlanPdfRenderBucket(1.2), 1.5);
       expect(floorPlanPdfRenderBucket(2.4), 3);
-      expect(floorPlanPdfRenderBucket(7.2), 8);
-      expect(floorPlanPdfRenderBucket(24), 8);
+      expect(floorPlanPdfRenderBucket(7.2), 4);
+      expect(floorPlanPdfRenderBucket(24), 4);
     });
 
     test('caps longest rendered side', () {

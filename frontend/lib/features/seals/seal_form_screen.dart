@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../../core/api/api_client.dart';
 import '../../core/api/api_error.dart';
 import '../../widgets/widgets.dart';
+import '../../core/design_tokens.dart';
 import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../sync/sync_service.dart';
@@ -316,6 +317,46 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     }
   }
 
+  Future<void> _addPhotosFromGallery() async {
+    try {
+      final picker = ImagePicker();
+      final imgs = await picker.pickMultiImage(imageQuality: 85);
+      if (imgs.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Žádná fotka nebyla vybrána')),
+          );
+        }
+        return;
+      }
+      var failed = 0;
+      for (final img in imgs) {
+        final persistedPath = await compressAndPersistSealPhoto(img.path);
+        if (persistedPath == null) {
+          failed++;
+          continue;
+        }
+        if (!mounted) return;
+        setState(() {
+          _photoPaths.add(persistedPath);
+          _showPhotoWarning = false;
+        });
+      }
+      _markDirty();
+      if (failed > 0 && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('$failed fotek se nepodařilo zpracovat')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Fotky se nepodařilo přidat: $e')),
+        );
+      }
+    }
+  }
+
   void _removePhotoAt(int index) {
     setState(() => _photoPaths.removeAt(index));
     _markDirty();
@@ -408,7 +449,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 child: OutlinedButton.icon(
                   style:
                       OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
-                  onPressed: () => _addPhotoFromSource(ImageSource.gallery),
+                  onPressed: _addPhotosFromGallery,
                   icon: const Icon(Icons.photo_library),
                   label: const Text('Galerie'),
                 ),
@@ -780,10 +821,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
         ),
       );
       if (!mounted) return;
+      _isDirty = false;
       if (addAnother == true) {
-        context.go('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+        context.pushReplacement(
+            '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
       } else {
-        context.go('/seals/${widget.floorId}?jobId=${widget.jobId}');
+        context.pop(true);
       }
       return;
     }
@@ -806,10 +849,12 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       ),
     );
     if (!mounted) return;
+    _isDirty = false;
     if (addAnother == true) {
-      context.go('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
+      context.pushReplacement(
+          '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}');
     } else {
-      context.go('/seals/${widget.floorId}?jobId=${widget.jobId}');
+      context.pop(true);
     }
   }
 
@@ -932,7 +977,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
-    context.go('/seal/$sealId');
+    _isDirty = false;
+    if (context.mounted) Navigator.of(context).pop(true);
   }
 
   void _removeEntry(int index) {
@@ -1004,12 +1050,15 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   title: Text(
                     'Patro',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
+                          fontWeight: FontWeight.w700,
+                          color: Theme.of(context).colorScheme.primary,
+                          decoration: TextDecoration.underline,
+                          decorationColor: Theme.of(context).colorScheme.primary,
                         ),
                   ),
                   subtitle: Text(_floorName!),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
               ],
               TextField(
                 controller: _numberCtrl,
@@ -1023,47 +1072,80 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 ),
                 keyboardType: TextInputType.number,
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ChipSelector(
                 label: 'Řemeslo *',
                 options: sealTrades,
                 selected: _trade,
                 labelFor: sealTradeLabel,
+                emphasize: true,
                 onSelected: (v) {
                   setState(() => _trade = v);
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ChipSelector(
                 label: 'Systém *',
                 options: sealSystems,
                 selected: _system,
+                emphasize: true,
                 onSelected: (v) {
                   setState(() => _system = v);
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              if (_system != null)
+                MultiChipSelector(
+                  label: 'Materiály',
+                  options: systemMaterials[_system] ?? ['Jiný'],
+                  selected: _entries.isNotEmpty ? _entries.first.materials : const [],
+                  allowCustom: true,
+                  emphasize: true,
+                  onChanged: (v) {
+                    setState(() => _entries.first.materials = v);
+                    _markDirty();
+                  },
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Text(
+                    'Nejdřív vyberte systém',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              const SizedBox(height: 24),
               const SectionHeader(
                 title: 'Hlavní prostup',
                 subtitle: 'Technické údaje',
                 style: SectionHeaderStyle.h3,
               ),
               if (_entries.isNotEmpty)
-                _EntryEditor(
-                  index: 0,
-                  entry: _entries.first,
-                  system: _system,
-                  allEntries: _entries,
-                  canRemove: false,
-                  onChanged: () {
-                    setState(() {});
-                    _markDirty();
-                  },
+                Container(
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    borderRadius: AppRadius.mdAll,
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: _EntryEditor(
+                    index: 0,
+                    entry: _entries.first,
+                    system: _system,
+                    allEntries: _entries,
+                    canRemove: false,
+                    onChanged: () {
+                      setState(() {});
+                      _markDirty();
+                    },
+                  ),
                 ),
               if (_entries.length > 1) ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 const SectionHeader(
                   title: 'Další prostupy',
                   style: SectionHeaderStyle.h3,
@@ -1091,7 +1173,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 icon: const Icon(Icons.add),
                 label: const Text('Přidat prostup'),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
               const SectionHeader(
                 title: 'Umístění',
                 style: SectionHeaderStyle.h3,
@@ -1100,16 +1182,18 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 label: 'Konstrukce *',
                 options: constructions,
                 selected: _construction,
+                emphasize: true,
                 onSelected: (v) {
                   setState(() => _construction = v);
                   _markDirty();
                 },
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ChipSelector(
                 label: 'Umístění *',
                 options: locations,
                 selected: _location,
+                emphasize: true,
                 onSelected: (v) {
                   setState(() {
                     _location = v;
@@ -1120,22 +1204,24 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 },
               ),
               if (_location == 'Šachta') ...[
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
                 ChipSelector(
                   label: 'Část šachty *',
                   options: shaftParts,
                   selected: _shaftPart,
+                  emphasize: true,
                   onSelected: (v) {
                     setState(() => _shaftPart = v);
                     _markDirty();
                   },
                 ),
               ],
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               ChipSelector(
                 label: 'Požární odolnost *',
                 options: fireRatings,
                 selected: _fireRating,
+                emphasize: true,
                 onSelected: (v) {
                   setState(() => _fireRating = v);
                   _markDirty();
@@ -1509,27 +1595,7 @@ class _EntryEditorState extends State<_EntryEditor> {
                   ),
               ],
             ),
-            if (widget.index == 0) ...[
-              if (widget.system != null)
-                MultiChipSelector(
-                  label: 'Materiály',
-                  options: systemMaterials[widget.system] ?? ['Jiný'],
-                  selected: entry.materials,
-                  allowCustom: true,
-                  onChanged: (v) {
-                    entry.materials = v;
-                    widget.onChanged();
-                  },
-                )
-              else
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  child: Text(
-                    'Nejdřív vyberte systém',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                ),
-            ] else
+            if (widget.index > 0)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Text(
@@ -1538,11 +1604,11 @@ class _EntryEditorState extends State<_EntryEditor> {
                 ),
               ),
             const SizedBox(height: 8),
-            _subLabel('Typ / instalace'),
             ChipSelector(
               label: 'Typ',
               options: entryTypes,
               selected: entry.entryType,
+              emphasize: true,
               onSelected: _applyEntryType,
             ),
             if (entry.entryType == 'OCEL') ...[
@@ -1571,14 +1637,7 @@ class _EntryEditorState extends State<_EntryEditor> {
                 },
               ),
             ],
-            const SizedBox(height: 8),
-            ChipSelector(
-              label: 'Izolace',
-              options: insulations,
-              selected: entry.insulation.isEmpty ? null : entry.insulation,
-              onSelected: _applyInsulation,
-            ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             _subLabel('Rozměry'),
             _dimensionSection(),
             if (_calc.unit == 'kus')
@@ -1612,6 +1671,14 @@ class _EntryEditorState extends State<_EntryEditor> {
                 ),
                 subtitle: const Text('Vypočteno automaticky z rozměrů'),
               ),
+            const SizedBox(height: 12),
+            ChipSelector(
+              label: 'Izolace',
+              options: insulations,
+              selected: entry.insulation.isEmpty ? null : entry.insulation,
+              emphasize: true,
+              onSelected: _applyInsulation,
+            ),
           ],
         ),
       ),
@@ -1626,6 +1693,8 @@ class _EntryEditorState extends State<_EntryEditor> {
         style: Theme.of(context).textTheme.labelLarge?.copyWith(
               fontWeight: FontWeight.w700,
               color: Theme.of(context).colorScheme.primary,
+              decoration: TextDecoration.underline,
+              decorationColor: Theme.of(context).colorScheme.primary,
             ),
       ),
     );

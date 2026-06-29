@@ -259,6 +259,7 @@ export async function listWorksheets(
     from?: string;
     to?: string;
     invoiced?: boolean;
+    audience?: "worker" | "customer";
   },
 ) {
   const where: Record<string, unknown> = {};
@@ -291,6 +292,9 @@ export async function listWorksheets(
     // ani když je v nich pracovník obsazen jménem. Vedení je vidí v obecném
     // (per-worker nefiltrovaném) výpisu.
     where.audience = "worker";
+  } else if (filters.audience) {
+    // Vedení/admin: explicitní přepínač „Pro pracovníky" / „Pro zákazníka".
+    where.audience = filters.audience;
   }
 
   return prisma.workSheet

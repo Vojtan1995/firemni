@@ -10,9 +10,11 @@ const double kFloorPlanMinScale = 0.5;
 const double kFloorPlanMaxScale = 24.0;
 
 /// Maximální delší strana vyrenderované PDF bitmapy v px. Strop chrání RAM na
-/// mobilu — i při velkém zoomu se nikdy nerenderuje extrémně velký obraz.
-const double kPdfMaxRenderDim = 8000.0;
-const List<double> kPdfRenderScaleBuckets = [1, 1.5, 2, 3, 4, 6, 8];
+/// mobilu i rychlost — i při velkém zoomu se nikdy nerenderuje extrémně velký
+/// obraz. Běžný zoom (buckety do 4×) zůstává ostrý, jen extrémní max-zoom je
+/// o něco méně ostrý výměnou za výrazně rychlejší načtení/render.
+const double kPdfMaxRenderDim = 4000.0;
+const List<double> kPdfRenderScaleBuckets = [1, 1.5, 2, 3, 4];
 
 double floorPlanPdfRenderBucket(double viewerScale) {
   if (!viewerScale.isFinite || viewerScale <= 1) return 1;
@@ -32,6 +34,38 @@ Size floorPlanPdfRenderSize({
   final bucket = floorPlanPdfRenderBucket(viewerScale);
   double renderW = width * devicePixelRatio * bucket;
   double renderH = height * devicePixelRatio * bucket;
+  final longest = math.max(renderW, renderH);
+  if (longest > maxRenderDim) {
+    final k = maxRenderDim / longest;
+    renderW *= k;
+    renderH *= k;
+  }
+  return Size(renderW, renderH);
+}
+
+/// Statický strop pro [Image.memory.cacheWidth/cacheHeight] u rastrových
+/// výkresů (PNG/JPG). Na rozdíl od PDF se rastr nepřerenderovává podle zoomu
+/// (InteractiveViewer jen transformuje hotovou bitmapu), proto stačí jedno
+/// pevné rozlišení — dost ostré i pro přiblížení, ale bez dekódování celého
+/// velkého zdrojového souboru (až 50 MB) v plné velikosti.
+const double kRasterZoomHeadroom = 4.0;
+
+Size floorPlanRasterCacheSize({
+  required double width,
+  required double height,
+  required double devicePixelRatio,
+  required int intrinsicWidth,
+  required int intrinsicHeight,
+  double maxRenderDim = kPdfMaxRenderDim,
+}) {
+  double renderW = math.min(
+    width * devicePixelRatio * kRasterZoomHeadroom,
+    intrinsicWidth.toDouble(),
+  );
+  double renderH = math.min(
+    height * devicePixelRatio * kRasterZoomHeadroom,
+    intrinsicHeight.toDouble(),
+  );
   final longest = math.max(renderW, renderH);
   if (longest > maxRenderDim) {
     final k = maxRenderDim / longest;
@@ -141,14 +175,25 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                       height: h,
                       viewerScale: widget.viewerScale,
                     )
-                  : Image.memory(
-                      widget.bytes,
-                      width: w,
-                      height: h,
-                      fit: BoxFit.fill,
-                      filterQuality: FilterQuality.high,
-                      gaplessPlayback: true,
-                    ),
+                  : Builder(builder: (context) {
+                      final cacheSize = floorPlanRasterCacheSize(
+                        width: w,
+                        height: h,
+                        devicePixelRatio: MediaQuery.of(context).devicePixelRatio,
+                        intrinsicWidth: widget.intrinsicWidth,
+                        intrinsicHeight: widget.intrinsicHeight,
+                      );
+                      return Image.memory(
+                        widget.bytes,
+                        width: w,
+                        height: h,
+                        fit: BoxFit.fill,
+                        filterQuality: FilterQuality.high,
+                        gaplessPlayback: true,
+                        cacheWidth: cacheSize.width.round(),
+                        cacheHeight: cacheSize.height.round(),
+                      );
+                    }),
             );
 
             return GestureDetector(
@@ -248,7 +293,7 @@ class _PdfCanvas extends StatelessWidget {
             return PdfPageView(
               document: document,
               pageNumber: 1,
-              maximumDpi: 2400,
+              maximumDpi: 1200,
               decoration: const BoxDecoration(color: Colors.white),
               pageSizeCallback: (_, __) => renderSize,
               decorationBuilder: (context, pageSize, page, pageImage) {

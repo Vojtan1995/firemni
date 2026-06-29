@@ -7,6 +7,7 @@
 export type LogEntityType =
   | 'seal'
   | 'seal_repair'
+  | 'seal_photo'
   | 'job'
   | 'job_floor'
   | 'worksheet'
@@ -46,6 +47,21 @@ const NON_MUTATION_ACTIONS = new Set(['login', 'logout', 'change_pin']);
 
 export function isDataMutation(action: string): boolean {
   return !NON_MUTATION_ACTIONS.has(action);
+}
+
+/**
+ * Pole ChangeLogu, která jsou jen interní technické účetnictví (odvozené
+ * příznaky), ne skutečná úprava, kterou udělal člověk — v „Historii změn" je
+ * potlačíme, aby tam nebyl šum vedle smysluplných akcí (vytvoření, úprava,
+ * stav, foto, výkres…). `markerPlacementPending` se přepočítá automaticky při
+ * každém umístění značky / nahrání výkresu, takže by zaplevelovalo log
+ * duplicitním záznamem ke každé takové akci, která už má svůj vlastní
+ * ActivityLog popis.
+ */
+const NOISY_CHANGE_FIELDS = new Set(['markerPlacementPending']);
+
+export function isNoiseChangeField(fieldName: string | null): boolean {
+  return fieldName != null && NOISY_CHANGE_FIELDS.has(fieldName);
 }
 
 function refFor(entityType: string | null, entityId: string | null): EntityRef | null {
@@ -138,6 +154,13 @@ export function describeActivity(
 
     case 'seal_repair:create':
       return { title: 'Vytvořil opravu ucpávky', entity, category };
+
+    case 'seal_photo:photo_delete':
+      return {
+        title: 'Smazal fotku ucpávky',
+        entity: meta.sealId ? { type: 'seal', id: String(meta.sealId) } : null,
+        category,
+      };
 
     case 'job:create':
       return { title: 'Vytvořil zakázku', entity, category };

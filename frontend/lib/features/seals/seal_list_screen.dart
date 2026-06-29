@@ -697,8 +697,9 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       ),
       floatingActionButton: auth.isWorker || auth.isVedeni || auth.isAdmin
           ? FloatingActionButton.extended(
-              onPressed: () => context.push(
-                  '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}'),
+              onPressed: () => context
+                  .push('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}')
+                  .then((_) => _load()),
               icon: const Icon(Icons.add, size: 20),
               label: const Text('Nová'),
             )

@@ -26,7 +26,7 @@ import { SealStatus } from '@prisma/client';
 const router = Router({ mergeParams: true });
 router.use(authMiddleware);
 
-const maxDrawingSizeBytes = 25 * 1024 * 1024;
+const maxDrawingSizeBytes = 50 * 1024 * 1024;
 
 function isAllowedDrawingMime(mimetype: string, originalname: string): boolean {
   const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg', 'application/pdf'];
@@ -156,6 +156,15 @@ router.get('/:floorId/drawing/file', async (req, res, next) => {
   try {
     const floorId = paramId(req.params.floorId);
     const file = await getFloorDrawingFile(floorId, req.user!.role, req.user!.id);
+    // Obsah na dané filePath je neměnný (nový upload dostane nový filePath),
+    // takže lze bezpečně dlouze cachovat a vracet 304 při opakovaném stažení.
+    const etag = `"${file.filePath}-${file.updatedAt.getTime()}"`;
+    res.set('Cache-Control', 'private, max-age=31536000, immutable');
+    res.set('ETag', etag);
+    if (req.headers['if-none-match'] === etag) {
+      res.status(304).end();
+      return;
+    }
     res.type(file.mimeType);
     res.send(file.body);
   } catch (e) {

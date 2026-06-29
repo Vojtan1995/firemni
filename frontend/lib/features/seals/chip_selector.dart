@@ -10,6 +10,7 @@ class ChipSelector extends StatelessWidget {
     required this.onSelected,
     this.allowCustom = false,
     this.labelFor,
+    this.emphasize = false,
   });
 
   final String label;
@@ -21,6 +22,9 @@ class ChipSelector extends StatelessWidget {
   /// Optional mapping from internal option value to a display label.
   final String Function(String)? labelFor;
 
+  /// Zvýrazní název kategorie (barva + podtržení) — pro klíčové sekce formuláře.
+  final bool emphasize;
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -28,10 +32,17 @@ class ChipSelector extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
+          style: emphasize
+              ? Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.accent,
+                    decoration: TextDecoration.underline,
+                    decorationColor: AppColors.accent,
+                  )
+              : Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
         ),
         const SizedBox(height: AppSpacing.xs),
         Wrap(

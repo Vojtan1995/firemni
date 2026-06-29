@@ -125,10 +125,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         context.push('/seal/$id');
         break;
       case 'job':
-        context.go('/floors/$id');
+        context.push('/floors/$id');
         break;
       case 'job_floor':
-        context.go('/seals/$id');
+        context.push('/seals/$id');
         break;
       case 'worksheet':
         context.push('/worksheets/$id');

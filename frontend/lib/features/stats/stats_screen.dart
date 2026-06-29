@@ -202,7 +202,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             final jobId = m['jobId'] as String?;
             return AppCard(
               showChevron: jobId != null,
-              onTap: jobId != null ? () => context.go('/floors/$jobId') : null,
+              onTap: jobId != null ? () => context.push('/floors/$jobId') : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -305,7 +305,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
             final jobId = m['jobId'] as String?;
             return AppCard(
               showChevron: jobId != null,
-              onTap: jobId != null ? () => context.go('/floors/$jobId') : null,
+              onTap: jobId != null ? () => context.push('/floors/$jobId') : null,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -362,7 +362,7 @@ class _StatsScreenState extends ConsumerState<StatsScreen> {
               leading:
                   const Icon(Icons.warning_amber, color: AppColors.warning),
               title: '${m['projectNumber']} ${m['name']}',
-              onTap: () => context.go(jobsWithoutActivityRoute),
+              onTap: () => context.push(jobsWithoutActivityRoute),
             );
           }),
         ],

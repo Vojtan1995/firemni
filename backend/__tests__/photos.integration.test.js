@@ -192,7 +192,7 @@ describe('Photos upload integration', () => {
   });
 
   it('rejects oversized uploads with 413', async () => {
-    const oversized = Buffer.alloc(16 * 1024 * 1024, 1);
+    const oversized = Buffer.alloc(51 * 1024 * 1024, 1);
     const res = await request(app)
       .post(`/api/seals/${sealId}/photos`)
       .set('Authorization', `Bearer ${managementToken}`)
