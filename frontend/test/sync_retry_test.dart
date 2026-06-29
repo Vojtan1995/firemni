@@ -2,6 +2,7 @@ import 'package:drift/drift.dart' hide isNotNull, isNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ucpavky/database/database.dart';
 import 'package:ucpavky/features/sync/sync_retry.dart';
+import 'package:ucpavky/features/sync/sync_service.dart';
 
 /// FE-06: retry intervaly a stav outboxu dle docs/SYNC.md.
 void main() {
@@ -16,6 +17,28 @@ void main() {
     expect(pushResultGapIndices(5, 5), isEmpty);
     expect(pushResultGapIndices(5, 3), [3, 4]);
     expect(pushResultGapIndices(1, 0), [0]);
+  });
+
+  test('outbox push ordering sends new seal before its marker', () {
+    final now = DateTime(2026, 6, 28, 10);
+    final marker = _outboxRow(
+      id: 'out-marker',
+      entityType: 'seal_marker',
+      operation: 'update',
+      payload: '{"sealId":"seal-local","floorId":"floor-1","x":0.2,"y":0.7}',
+      createdAt: now,
+    );
+    final seal = _outboxRow(
+      id: 'out-seal',
+      entityType: 'seal',
+      operation: 'create',
+      payload: '{"id":"seal-local","jobId":"job-1","floorId":"floor-1"}',
+      createdAt: now.add(const Duration(seconds: 1)),
+    );
+
+    final ordered = orderOutboxRowsForPush([marker, seal]);
+
+    expect(ordered.map((row) => row.id), ['out-seal', 'out-marker']);
   });
 
   test('pending row is due for retry immediately when nextRetryAt is null',
@@ -357,4 +380,30 @@ void main() {
             userId: 'user-1'),
         isTrue);
   });
+}
+
+LocalOutboxData _outboxRow({
+  required String id,
+  required String entityType,
+  required String operation,
+  required String payload,
+  required DateTime createdAt,
+}) {
+  return LocalOutboxData(
+    id: id,
+    mutationId: '$id-mut',
+    userId: 'user-1',
+    deviceId: 'device-1',
+    entityType: entityType,
+    operation: operation,
+    payload: payload,
+    baseVersion: null,
+    status: 'pending',
+    conflictMessage: null,
+    dismissedAt: null,
+    createdAt: createdAt,
+    nextRetryAt: null,
+    retryCount: 0,
+    lastError: null,
+  );
 }

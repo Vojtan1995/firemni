@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show OrderingTerm, Value;
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -59,6 +59,44 @@ final connectivityProvider = StreamProvider<bool>((ref) async* {
     yield r.any((e) => e != ConnectivityResult.none);
   }
 });
+
+String? _outboxPayloadString(LocalOutboxData row, String key) {
+  try {
+    final payload = jsonDecode(row.payload) as Map<String, dynamic>;
+    final value = payload[key];
+    return value is String ? value : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+String? _sealCreateId(LocalOutboxData row) {
+  if (row.entityType != 'seal' || row.operation != 'create') return null;
+  return _outboxPayloadString(row, 'id');
+}
+
+String? _markerSealId(LocalOutboxData row) {
+  if (row.entityType != 'seal_marker') return null;
+  return _outboxPayloadString(row, 'sealId');
+}
+
+List<LocalOutboxData> orderOutboxRowsForPush(List<LocalOutboxData> rows) {
+  final indexed = rows.asMap().entries.toList();
+  indexed.sort((a, b) {
+    final aCreateId = _sealCreateId(a.value);
+    final bCreateId = _sealCreateId(b.value);
+    final aMarkerSealId = _markerSealId(a.value);
+    final bMarkerSealId = _markerSealId(b.value);
+
+    if (aCreateId != null && bMarkerSealId == aCreateId) return -1;
+    if (bCreateId != null && aMarkerSealId == bCreateId) return 1;
+
+    final byCreatedAt = a.value.createdAt.compareTo(b.value.createdAt);
+    if (byCreatedAt != 0) return byCreatedAt;
+    return a.key.compareTo(b.key);
+  });
+  return indexed.map((entry) => entry.value).toList();
+}
 
 class SyncService {
   SyncService(this._ref);
@@ -133,12 +171,14 @@ class SyncService {
     final userId = _ref.read(currentUserIdProvider);
     final rows = filterOutboxForUser(
       await (_db.select(_db.localOutbox)
-            ..where((o) => o.status.isIn(['pending', 'failed'])))
+            ..where((o) => o.status.isIn(['pending', 'failed']))
+            ..orderBy([(o) => OrderingTerm.asc(o.createdAt)]))
           .get(),
       userId,
     );
-    if (force) return rows;
-    return rows.where((o) => outboxIsDueForRetry(o, now)).toList();
+    final due =
+        force ? rows : rows.where((o) => outboxIsDueForRetry(o, now)).toList();
+    return orderOutboxRowsForPush(due);
   }
 
   Future<void> _pushOutbox({required bool force, required DateTime now}) async {

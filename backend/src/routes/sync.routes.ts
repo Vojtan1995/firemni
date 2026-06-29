@@ -68,6 +68,42 @@ const pushSchema = z.object({
   mutations: z.array(mutationSchema).max(SYNC_PUSH_BATCH_LIMIT),
 });
 
+function payloadString(
+  payload: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  const value = payload[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function createSealId(mut: z.infer<typeof mutationSchema>) {
+  if (mut.entityType !== 'seal' || mut.operation !== 'create') return undefined;
+  return payloadString(mut.payload, 'id');
+}
+
+function markerSealId(mut: z.infer<typeof mutationSchema>) {
+  if (mut.entityType !== 'seal_marker') return undefined;
+  return payloadString(mut.payload, 'sealId');
+}
+
+function orderMutationsForProcessing(
+  mutations: Array<z.infer<typeof mutationSchema>>,
+) {
+  return mutations
+    .map((mut, index) => ({ mut, index }))
+    .sort((a, b) => {
+      const aCreateId = createSealId(a.mut);
+      const bCreateId = createSealId(b.mut);
+      const aMarkerSealId = markerSealId(a.mut);
+      const bMarkerSealId = markerSealId(b.mut);
+
+      if (aCreateId && bMarkerSealId === aCreateId) return -1;
+      if (bCreateId && aMarkerSealId === bCreateId) return 1;
+
+      return a.index - b.index;
+    });
+}
+
 const sealCreatePayloadSchema = z
   .object({
     id: z.string().uuid().optional(),
@@ -108,26 +144,35 @@ function assertSyncSealPermission(operation: string, userRole: UserRole) {
 router.post('/push', syncPushRateLimiter, async (req, res, next) => {
   try {
     const { mutations } = pushSchema.parse(req.body);
-    const results: Array<{ mutationId: string; status: string; entityId?: string; conflict?: string; autoMerged?: boolean }> = [];
+    const results: Array<
+      | {
+          mutationId: string;
+          status: string;
+          entityId?: string;
+          conflict?: string;
+          autoMerged?: boolean;
+        }
+      | undefined
+    > = new Array(mutations.length);
 
-    for (const mut of mutations) {
+    for (const { mut, index } of orderMutationsForProcessing(mutations)) {
       const existing = await prisma.syncMutation.findUnique({
         where: { mutationId: mut.mutationId },
       });
       if (existing?.processedAt) {
         const stored = existing.result as { status?: string; entityId?: string; error?: string } | null;
         if (stored?.status === 'conflict') {
-          results.push({
+          results[index] = {
             mutationId: mut.mutationId,
             status: 'conflict',
             conflict: stored.error ?? 'Konflikt',
-          });
+          };
         } else {
-          results.push({
+          results[index] = {
             mutationId: mut.mutationId,
             status: 'already_processed',
             entityId: stored?.entityId,
-          });
+          };
         }
         continue;
       }
@@ -149,12 +194,12 @@ router.post('/push', syncPushRateLimiter, async (req, res, next) => {
           },
           update: { result: storedResult, processedAt: new Date() },
         });
-        results.push({
+        results[index] = {
           mutationId: mut.mutationId,
           status: 'ok',
           entityId: result.entityId,
           ...(result.autoMerged ? { autoMerged: true } : {}),
-        });
+        };
       } catch (e) {
         const msg = e instanceof Error ? e.message : 'conflict';
         const isBusinessError = e instanceof AppError;
@@ -177,11 +222,15 @@ router.post('/push', syncPushRateLimiter, async (req, res, next) => {
             ...(isBusinessError ? { processedAt: new Date() } : {}),
           },
         });
-        results.push({ mutationId: mut.mutationId, status: code, conflict: msg });
+        results[index] = {
+          mutationId: mut.mutationId,
+          status: code,
+          conflict: msg,
+        };
       }
     }
 
-    res.json({ results });
+    res.json({ results: results.filter(Boolean) });
   } catch (e) {
     next(e);
   }
@@ -249,6 +298,10 @@ async function processMutation(
       note: createPayload.note,
       internalNote: createPayload.internalNote,
     });
+    const floorHasDrawing = await prisma.floorDrawing.findUnique({
+      where: { floorId: createPayload.floorId },
+      select: { id: true },
+    });
 
     const seal = await prisma.$transaction(async (tx) => {
       const created = await tx.seal.create({
@@ -266,7 +319,7 @@ async function processMutation(
           internalNote: notes.internalNote,
           openingLengthMm: createPayload.openingLengthMm ?? null,
           openingWidthMm: createPayload.openingWidthMm ?? null,
-          markerPlacementPending: createPayload.markerPlacementPending ?? false,
+          markerPlacementPending: floorHasDrawing != null,
           createdById: userId,
           updatedById: userId,
           entries: {
@@ -348,6 +401,27 @@ async function processMutation(
             : undefined,
       },
     );
+    let markerPlacementPending = seal.markerPlacementPending;
+    if (fieldChanged('markerPlacementPending')) {
+      markerPlacementPending = patchPayloadField(
+        p,
+        'markerPlacementPending',
+        seal.markerPlacementPending,
+      );
+      if (markerPlacementPending === false) {
+        const [drawing, marker] = await Promise.all([
+          prisma.floorDrawing.findUnique({
+            where: { floorId: seal.floorId },
+            select: { id: true },
+          }),
+          prisma.sealMarker.findUnique({
+            where: { sealId },
+            select: { id: true },
+          }),
+        ]);
+        if (drawing && !marker) markerPlacementPending = true;
+      }
+    }
     await prisma.$transaction(async (tx) => {
       if (entries?.length) {
         await tx.sealEntry.updateMany({
@@ -406,9 +480,7 @@ async function processMutation(
           openingWidthMm: fieldChanged('openingWidthMm')
             ? patchPayloadField(p, 'openingWidthMm', seal.openingWidthMm)
             : seal.openingWidthMm,
-          markerPlacementPending: fieldChanged('markerPlacementPending')
-            ? patchPayloadField(p, 'markerPlacementPending', seal.markerPlacementPending)
-            : seal.markerPlacementPending,
+          markerPlacementPending,
           status: nextStatus,
           version: { increment: 1 },
           updatedById: userId,

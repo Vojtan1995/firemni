@@ -273,15 +273,15 @@ export async function uploadFloorDrawing(
 
       if (existing) {
         await tx.sealMarker.deleteMany({ where: { floorId } });
-        await tx.seal.updateMany({
-          where: { floorId, deletedAt: null },
-          data: {
-            markerPlacementPending: true,
-            updatedById: userId,
-            version: { increment: 1 },
-          },
-        });
       }
+      await tx.seal.updateMany({
+        where: { floorId, deletedAt: null },
+        data: {
+          markerPlacementPending: true,
+          updatedById: userId,
+          version: { increment: 1 },
+        },
+      });
 
       return upserted;
     });
@@ -382,7 +382,21 @@ export async function deleteSealMarker(
   const existing = await prisma.sealMarker.findUnique({ where: { sealId } });
   if (!existing) throw notFound("Značka nenalezena");
 
-  await prisma.sealMarker.delete({ where: { sealId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.sealMarker.delete({ where: { sealId } });
+    const drawing = await tx.floorDrawing.findUnique({
+      where: { floorId: existing.floorId },
+      select: { id: true },
+    });
+    await tx.seal.update({
+      where: { id: sealId },
+      data: {
+        markerPlacementPending: drawing != null,
+        updatedById: userId,
+        version: { increment: 1 },
+      },
+    });
+  });
   await logActivity(userId, "seal_marker_delete", "seal", seal.id);
   return { ok: true };
 }
@@ -412,8 +426,18 @@ export async function deleteFloorDrawing(
     // best effort
   }
 
-  await prisma.sealMarker.deleteMany({ where: { floorId } });
-  await prisma.floorDrawing.delete({ where: { floorId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.sealMarker.deleteMany({ where: { floorId } });
+    await tx.floorDrawing.delete({ where: { floorId } });
+    await tx.seal.updateMany({
+      where: { floorId, deletedAt: null },
+      data: {
+        markerPlacementPending: false,
+        updatedById: userId,
+        version: { increment: 1 },
+      },
+    });
+  });
   await logActivity(userId, "floor_drawing_delete", "job_floor", floorId, {
     drawingId: drawing.id,
   });

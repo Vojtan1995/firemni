@@ -345,6 +345,10 @@ router.post("/", requirePermission("seal.create"), async (req, res, next) => {
       note: body.note,
       internalNote: body.internalNote,
     });
+    const floorHasDrawing = await prisma.floorDrawing.findUnique({
+      where: { floorId: body.floorId },
+      select: { id: true },
+    });
 
     const priced = await prisma
       .$transaction(async (tx) => {
@@ -362,7 +366,7 @@ router.post("/", requirePermission("seal.create"), async (req, res, next) => {
             internalNote: notes.internalNote,
             openingLengthMm: body.openingLengthMm ?? null,
             openingWidthMm: body.openingWidthMm ?? null,
-            markerPlacementPending: body.markerPlacementPending ?? false,
+            markerPlacementPending: floorHasDrawing != null,
             status: SealStatus.draft,
             createdById: req.user!.id,
             updatedById: req.user!.id,
@@ -501,17 +505,31 @@ router.patch("/:id", requirePermission("seal.edit"), async (req, res, next) => {
     ] as const;
     for (const f of fields) {
       if (body[f] !== undefined) {
-        if (String(existing[f]) !== String(body[f])) {
+        let nextValue = body[f];
+        if (f === "markerPlacementPending" && body[f] === false) {
+          const [drawing, marker] = await Promise.all([
+            prisma.floorDrawing.findUnique({
+              where: { floorId: existing.floorId },
+              select: { id: true },
+            }),
+            prisma.sealMarker.findUnique({
+              where: { sealId: existing.id },
+              select: { id: true },
+            }),
+          ]);
+          nextValue = drawing && !marker ? true : body[f];
+        }
+        if (String(existing[f]) !== String(nextValue)) {
           await logChange(
             req.user!.id,
             "seal",
             existing.id,
             f,
             String(existing[f] ?? ""),
-            String(body[f]),
+            String(nextValue),
           );
         }
-        updateData[f] = body[f];
+        updateData[f] = nextValue;
       }
     }
 

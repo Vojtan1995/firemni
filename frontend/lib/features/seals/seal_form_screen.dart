@@ -712,6 +712,13 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
             updatedAt: DateTime.now(),
           ));
 
+      await ref.read(syncServiceProvider).enqueueMutation(
+            db: db,
+            entityType: 'seal',
+            operation: 'create',
+            payload: payload,
+          );
+
       if (_markerPlacementConfirmed &&
           _draftMarkerX != null &&
           _draftMarkerY != null) {
@@ -746,13 +753,6 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
               createdAt: DateTime.now(),
             ));
       }
-
-      await ref.read(syncServiceProvider).enqueueMutation(
-            db: db,
-            entityType: 'seal',
-            operation: 'create',
-            payload: payload,
-          );
     });
 
     await ref.read(syncServiceProvider).syncAll();

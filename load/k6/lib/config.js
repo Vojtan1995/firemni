@@ -7,14 +7,19 @@ export function loadConfig() {
   if (!baseUrl || !expectedHost) {
     throw new Error('BASE_URL and TARGET_HOST are required');
   }
-  const parsed = new URL(baseUrl);
-  if (parsed.hostname.toLowerCase() !== expectedHost) {
-    throw new Error(`TARGET_HOST (${expectedHost}) does not match BASE_URL (${parsed.hostname})`);
+  const parsed = baseUrl.match(
+    /^([a-z][a-z0-9+.-]*):\/\/([^/:?#]+)(?::\d+)?(?:[/?#]|$)/i,
+  );
+  if (!parsed) throw new Error('BASE_URL must be an absolute HTTP(S) URL');
+  const protocol = `${parsed[1].toLowerCase()}:`;
+  const hostname = parsed[2].toLowerCase();
+  if (hostname !== expectedHost) {
+    throw new Error(`TARGET_HOST (${expectedHost}) does not match BASE_URL (${hostname})`);
   }
-  if (parsed.protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(parsed.hostname)) {
+  if (protocol !== 'https:' && !['localhost', '127.0.0.1'].includes(hostname)) {
     throw new Error('Remote load tests require HTTPS');
   }
-  if (/(^|[.-])(prod|production)([.-]|$)/i.test(parsed.hostname)) {
+  if (/(^|[.-])(prod|production)([.-]|$)/i.test(hostname)) {
     throw new Error('Production-looking host rejected by the load-test safety guard');
   }
   return {
@@ -36,6 +41,17 @@ export function scenarioFor(profile) {
       { duration: '3m', target: 25 },
       { duration: '3m', target: 50 },
       { duration: '2m', target: 0 },
+    ],
+    capacity: [
+      { duration: '1m', target: 12 },
+      { duration: '2m', target: 12 },
+      { duration: '1m', target: 14 },
+      { duration: '2m', target: 14 },
+      { duration: '1m', target: 16 },
+      { duration: '2m', target: 16 },
+      { duration: '1m', target: 18 },
+      { duration: '2m', target: 18 },
+      { duration: '1m', target: 0 },
     ],
     stress: [
       { duration: '2m', target: 25 },

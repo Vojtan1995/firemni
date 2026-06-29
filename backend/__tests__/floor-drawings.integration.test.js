@@ -391,6 +391,130 @@ describe("Floor drawings and markers (task 5.3)", () => {
     expect(res.body.results[0].status).toBe("ok");
   });
 
+  it("sync push handles a marker queued before its new seal", async () => {
+    const floorRes = await request(app)
+      .post(`/api/jobs/${jobId}/floors`)
+      .set("Authorization", `Bearer ${managementToken}`)
+      .send({ name: `Queued marker ${SEAL_PREFIX}` });
+    expect(floorRes.status).toBe(201);
+    const localFloorId = floorRes.body.id;
+    const localSealId = crypto.randomUUID();
+    const sealNumber = `${SEAL_PREFIX}71`;
+
+    try {
+      const upload = await request(app)
+        .post(`/api/jobs/${jobId}/floors/${localFloorId}/drawing`)
+        .set("Authorization", `Bearer ${managementToken}`)
+        .attach("drawing", tinyPng, {
+          filename: "plan.png",
+          contentType: "image/png",
+        });
+      expect(upload.status).toBe(201);
+
+      const markerMutationId = crypto.randomUUID();
+      const sealMutationId = crypto.randomUUID();
+      const res = await request(app)
+        .post("/api/sync/push")
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({
+          mutations: [
+            {
+              mutationId: markerMutationId,
+              deviceId: "test-device",
+              entityType: "seal_marker",
+              operation: "update",
+              payload: {
+                sealId: localSealId,
+                floorId: localFloorId,
+                x: 0.25,
+                y: 0.75,
+              },
+            },
+            {
+              mutationId: sealMutationId,
+              deviceId: "test-device",
+              entityType: "seal",
+              operation: "create",
+              payload: {
+                id: localSealId,
+                ...sealBody(jobId, localFloorId, sealNumber),
+                markerPlacementPending: false,
+              },
+            },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.results).toHaveLength(2);
+      expect(res.body.results[0]).toMatchObject({
+        mutationId: markerMutationId,
+        status: "ok",
+        entityId: localSealId,
+      });
+      expect(res.body.results[1]).toMatchObject({
+        mutationId: sealMutationId,
+        status: "ok",
+        entityId: localSealId,
+      });
+
+      const seal = await prisma.seal.findUnique({
+        where: { id: localSealId },
+        include: { marker: true },
+      });
+      expect(seal).toBeTruthy();
+      expect(seal.markerPlacementPending).toBe(false);
+      expect(seal.marker).toMatchObject({
+        floorId: localFloorId,
+        x: 0.25,
+        y: 0.75,
+      });
+    } finally {
+      await prisma.seal.deleteMany({ where: { id: localSealId } });
+      await prisma.floorDrawing.deleteMany({ where: { floorId: localFloorId } });
+      await prisma.jobFloor.deleteMany({ where: { id: localFloorId } });
+    }
+  });
+
+  it("marks a new seal as placement-pending when the floor has a drawing", async () => {
+    const floorRes = await request(app)
+      .post(`/api/jobs/${jobId}/floors`)
+      .set("Authorization", `Bearer ${managementToken}`)
+      .send({ name: `Pending marker ${SEAL_PREFIX}` });
+    expect(floorRes.status).toBe(201);
+    const localFloorId = floorRes.body.id;
+    const sealNumber = `${SEAL_PREFIX}72`;
+
+    try {
+      const upload = await request(app)
+        .post(`/api/jobs/${jobId}/floors/${localFloorId}/drawing`)
+        .set("Authorization", `Bearer ${managementToken}`)
+        .attach("drawing", tinyPng, {
+          filename: "plan.png",
+          contentType: "image/png",
+        });
+      expect(upload.status).toBe(201);
+
+      const created = await request(app)
+        .post("/api/seals")
+        .set("Authorization", `Bearer ${workerToken}`)
+        .send({
+          ...sealBody(jobId, localFloorId, sealNumber),
+          markerPlacementPending: false,
+        });
+      expect(created.status).toBe(201);
+
+      const seal = await prisma.seal.findUnique({
+        where: { id: created.body.id },
+        select: { markerPlacementPending: true },
+      });
+      expect(seal?.markerPlacementPending).toBe(true);
+    } finally {
+      await prisma.seal.deleteMany({ where: { sealNumber } });
+      await prisma.floorDrawing.deleteMany({ where: { floorId: localFloorId } });
+      await prisma.jobFloor.deleteMany({ where: { id: localFloorId } });
+    }
+  });
+
   it("vedení can delete marker and drawing", async () => {
     const delMarker = await request(app)
       .delete(`/api/jobs/${jobId}/floors/${floor1Id}/markers/${sealId}`)
