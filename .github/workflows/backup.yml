@@ -119,10 +119,34 @@ jobs:
           aws s3 cp "${BACKUP_FILE}.sha256" "s3://${BUCKET}/${prefix}/${BACKUP_FILE}.sha256" --endpoint-url "$ENDPOINT"
           aws s3 cp "$MANIFEST_FILE" "s3://${BUCKET}/${prefix}/${MANIFEST_FILE}" --endpoint-url "$ENDPOINT"
           aws s3 cp privacy-erasure-ledger.jsonl.age \
+            "s3://${BUCKET}/${prefix}/privacy-erasure-ledger.jsonl.age" --endpoint-url "$ENDPOINT"
+          aws s3 cp privacy-erasure-ledger.jsonl.age.sha256 \
+            "s3://${BUCKET}/${prefix}/privacy-erasure-ledger.jsonl.age.sha256" --endpoint-url "$ENDPOINT"
+          aws s3 cp privacy-erasure-ledger.jsonl.age \
             "s3://${BUCKET}/privacy-ledger/latest.jsonl.age" --endpoint-url "$ENDPOINT"
           aws s3 cp privacy-erasure-ledger.jsonl.age.sha256 \
             "s3://${BUCKET}/privacy-ledger/latest.jsonl.age.sha256" --endpoint-url "$ENDPOINT"
+          echo "BACKUP_PREFIX=$prefix" >> "$GITHUB_ENV"
           echo "Encrypted backup uploaded: ${prefix}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify uploaded backup from R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          mkdir -p verify
+          aws s3 cp "s3://${BUCKET}/${BACKUP_PREFIX}/${BACKUP_FILE}" \
+            "verify/${BACKUP_FILE}" --endpoint-url "$ENDPOINT"
+          aws s3 cp "s3://${BUCKET}/${BACKUP_PREFIX}/${BACKUP_FILE}.sha256" \
+            "verify/${BACKUP_FILE}.sha256" --endpoint-url "$ENDPOINT"
+          aws s3 cp "s3://${BUCKET}/${BACKUP_PREFIX}/${MANIFEST_FILE}" \
+            "verify/${MANIFEST_FILE}" --endpoint-url "$ENDPOINT"
+          (cd verify && sha256sum -c "${BACKUP_FILE}.sha256")
+          grep -q "\"encryptedFile\": \"${BACKUP_FILE}\"" "verify/${MANIFEST_FILE}"
 
       - name: Prune snapshots older than 30 days
         env:
@@ -132,13 +156,48 @@ jobs:
           BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
           ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
         run: |
-          cutoff="$(date -u -d '30 days ago' +%Y-%m-%dT%H:%M:%SZ)"
+          set -euo pipefail
+          cutoff="$(date -u -d '30 days ago' +%s)"
           aws s3api list-objects-v2 --bucket "$BUCKET" --prefix backups/ \
             --endpoint-url "$ENDPOINT" \
-            --query "Contents[?LastModified<='${cutoff}'].Key" --output text |
-          tr '\t' '\n' | grep -v '^$' | while read -r key; do
-            aws s3 rm "s3://${BUCKET}/${key}" --endpoint-url "$ENDPOINT"
-          done || true
+            --query 'Contents[].Key' --output text |
+          tr '\t' '\n' | grep -E '^backups/ucpavky_[0-9]{8}_[0-9]{6}/' |
+          cut -d/ -f1,2 | sort -u > backup-prefixes.txt || true
+          sort -r backup-prefixes.txt | head -n 7 > keep-prefixes.txt || true
+          while read -r prefix; do
+            [ -n "$prefix" ] || continue
+            grep -qx "$prefix" keep-prefixes.txt && continue
+            ts="${prefix#backups/ucpavky_}"
+            snapshot_epoch="$(date -u -d "${ts:0:8} ${ts:9:2}:${ts:11:2}:${ts:13:2}" +%s 2>/dev/null || echo 0)"
+            [ "$snapshot_epoch" -le "$cutoff" ] || continue
+            aws s3 rm "s3://${BUCKET}/${prefix}/" --recursive --endpoint-url "$ENDPOINT"
+          done < backup-prefixes.txt || true
+
+      - name: Report backup success
+        if: success()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || { echo "Backup report skipped: missing BACKUP_REPORT_URL or BACKUP_REPORT_TOKEN" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"db\",\"status\":\"success\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"r2Prefix\":\"${BACKUP_PREFIX}\",\"manifestKey\":\"${BACKUP_PREFIX}/${MANIFEST_FILE}\",\"bytes\":\"$(stat -c %s "$BACKUP_FILE")\",\"finishedAt\":\"$(date -u +%FT%TZ)\"}" \
+            >/dev/null
+
+      - name: Report backup failure
+        if: failure()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || exit 0
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"db\",\"status\":\"failed\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"r2Prefix\":\"${BACKUP_PREFIX:-}\",\"manifestKey\":\"${BACKUP_PREFIX:-}/${MANIFEST_FILE:-}\",\"errorMessage\":\"GitHub Actions DB backup failed\",\"finishedAt\":\"$(date -u +%FT%TZ)\"}" \
+            >/dev/null || true
 
       - name: Telegram alert on failure
         if: failure()

@@ -61,6 +61,7 @@ jobs:
             --query 'reverse(sort_by(Contents,&LastModified))[?ends_with(Key, `.dump.age`)]|[0].Key' \
             --output text)"
           [ "$key" != "None" ] || { echo "::error::No encrypted backup found"; exit 1; }
+          echo "RESTORE_BACKUP_PREFIX=${key%/*}" >> "$GITHUB_ENV"
           aws s3 cp "s3://${BUCKET}/${key}" backup.dump.age --endpoint-url "$ENDPOINT"
           aws s3 cp "s3://${BUCKET}/${key}.sha256" backup.dump.age.sha256 --endpoint-url "$ENDPOINT"
           aws s3 cp "s3://${BUCKET}/privacy-ledger/latest.jsonl.age" \
@@ -135,12 +136,40 @@ jobs:
             -c "SELECT count(*) AS reapplied_erasures FROM privacy_erasures;"
 
       - name: Record successful restore
-        run: echo "Restore test completed at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
+        run: |
+          echo "RESTORE_FINISHED_AT=$(date -u +%FT%TZ)" >> "$GITHUB_ENV"
+          echo "Restore test completed at $(date -u +%FT%TZ)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove plaintext
         if: always()
         run: |
           rm -f age-key.txt backup.dump privacy-erasure-ledger.jsonl
+
+      - name: Report restore success
+        if: success()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || { echo "Restore report skipped: missing BACKUP_REPORT_URL or BACKUP_REPORT_TOKEN" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"restore_test\",\"status\":\"success\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"r2Prefix\":\"${RESTORE_BACKUP_PREFIX:-}\",\"finishedAt\":\"${RESTORE_FINISHED_AT:-$(date -u +%FT%TZ)}\"}" \
+            >/dev/null
+
+      - name: Report restore failure
+        if: failure()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || exit 0
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"restore_test\",\"status\":\"failed\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"errorMessage\":\"GitHub Actions restore test failed\",\"finishedAt\":\"$(date -u +%FT%TZ)\"}" \
+            >/dev/null || true
 
       - name: Alert on restore failure
         if: failure()

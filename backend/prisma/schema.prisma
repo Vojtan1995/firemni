@@ -363,6 +363,8 @@ model SealMarker {
   floorId     String   @map("floor_id")
   x           Float
   y           Float
+  labelOffsetX Float?  @map("label_offset_x")
+  labelOffsetY Float?  @map("label_offset_y")
   createdById String   @map("created_by_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
@@ -658,4 +660,23 @@ model BackupLog {
 
   @@index([createdAt])
   @@map("backup_logs")
+}
+
+model BackupRun {
+  id            String    @id @default(uuid())
+  type          String
+  status        String
+  githubRunUrl  String?   @map("github_run_url")
+  r2Prefix      String?   @map("r2_prefix")
+  manifestKey   String?   @map("manifest_key")
+  bytes         BigInt?
+  objectCount   Int?      @map("object_count")
+  errorMessage  String?   @map("error_message")
+  startedAt     DateTime? @map("started_at")
+  finishedAt    DateTime? @map("finished_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@index([status, createdAt])
+  @@map("backup_runs")
 }

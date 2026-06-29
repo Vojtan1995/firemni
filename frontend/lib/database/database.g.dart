@@ -2748,6 +2748,11 @@ class $LocalPhotosTable extends LocalPhotos
   late final GeneratedColumn<String> id = GeneratedColumn<String>(
       'id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _userIdMeta = const VerificationMeta('userId');
+  @override
+  late final GeneratedColumn<String> userId = GeneratedColumn<String>(
+      'user_id', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _sealIdMeta = const VerificationMeta('sealId');
   @override
   late final GeneratedColumn<String> sealId = GeneratedColumn<String>(
@@ -2801,6 +2806,7 @@ class $LocalPhotosTable extends LocalPhotos
   @override
   List<GeneratedColumn> get $columns => [
         id,
+        userId,
         sealId,
         localPath,
         serverPath,
@@ -2824,6 +2830,10 @@ class $LocalPhotosTable extends LocalPhotos
       context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
     } else if (isInserting) {
       context.missing(_idMeta);
+    }
+    if (data.containsKey('user_id')) {
+      context.handle(_userIdMeta,
+          userId.isAcceptableOrUnknown(data['user_id']!, _userIdMeta));
     }
     if (data.containsKey('seal_id')) {
       context.handle(_sealIdMeta,
@@ -2880,6 +2890,8 @@ class $LocalPhotosTable extends LocalPhotos
     return LocalPhoto(
       id: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}id'])!,
+      userId: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}user_id']),
       sealId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}seal_id'])!,
       localPath: attachedDatabase.typeMapping
@@ -2907,6 +2919,7 @@ class $LocalPhotosTable extends LocalPhotos
 
 class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   final String id;
+  final String? userId;
   final String sealId;
   final String localPath;
   final String? serverPath;
@@ -2917,6 +2930,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   final String? lastError;
   const LocalPhoto(
       {required this.id,
+      this.userId,
       required this.sealId,
       required this.localPath,
       this.serverPath,
@@ -2929,6 +2943,9 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   Map<String, Expression> toColumns(bool nullToAbsent) {
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
+    if (!nullToAbsent || userId != null) {
+      map['user_id'] = Variable<String>(userId);
+    }
     map['seal_id'] = Variable<String>(sealId);
     map['local_path'] = Variable<String>(localPath);
     if (!nullToAbsent || serverPath != null) {
@@ -2949,6 +2966,8 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   LocalPhotosCompanion toCompanion(bool nullToAbsent) {
     return LocalPhotosCompanion(
       id: Value(id),
+      userId:
+          userId == null && nullToAbsent ? const Value.absent() : Value(userId),
       sealId: Value(sealId),
       localPath: Value(localPath),
       serverPath: serverPath == null && nullToAbsent
@@ -2971,6 +2990,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return LocalPhoto(
       id: serializer.fromJson<String>(json['id']),
+      userId: serializer.fromJson<String?>(json['userId']),
       sealId: serializer.fromJson<String>(json['sealId']),
       localPath: serializer.fromJson<String>(json['localPath']),
       serverPath: serializer.fromJson<String?>(json['serverPath']),
@@ -2986,6 +3006,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
     serializer ??= driftRuntimeOptions.defaultSerializer;
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
+      'userId': serializer.toJson<String?>(userId),
       'sealId': serializer.toJson<String>(sealId),
       'localPath': serializer.toJson<String>(localPath),
       'serverPath': serializer.toJson<String?>(serverPath),
@@ -2999,6 +3020,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
 
   LocalPhoto copyWith(
           {String? id,
+          Value<String?> userId = const Value.absent(),
           String? sealId,
           String? localPath,
           Value<String?> serverPath = const Value.absent(),
@@ -3009,6 +3031,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
           Value<String?> lastError = const Value.absent()}) =>
       LocalPhoto(
         id: id ?? this.id,
+        userId: userId.present ? userId.value : this.userId,
         sealId: sealId ?? this.sealId,
         localPath: localPath ?? this.localPath,
         serverPath: serverPath.present ? serverPath.value : this.serverPath,
@@ -3021,6 +3044,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   LocalPhoto copyWithCompanion(LocalPhotosCompanion data) {
     return LocalPhoto(
       id: data.id.present ? data.id.value : this.id,
+      userId: data.userId.present ? data.userId.value : this.userId,
       sealId: data.sealId.present ? data.sealId.value : this.sealId,
       localPath: data.localPath.present ? data.localPath.value : this.localPath,
       serverPath:
@@ -3039,6 +3063,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   String toString() {
     return (StringBuffer('LocalPhoto(')
           ..write('id: $id, ')
+          ..write('userId: $userId, ')
           ..write('sealId: $sealId, ')
           ..write('localPath: $localPath, ')
           ..write('serverPath: $serverPath, ')
@@ -3052,13 +3077,14 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
   }
 
   @override
-  int get hashCode => Object.hash(id, sealId, localPath, serverPath, status,
-      createdAt, nextRetryAt, retryCount, lastError);
+  int get hashCode => Object.hash(id, userId, sealId, localPath, serverPath,
+      status, createdAt, nextRetryAt, retryCount, lastError);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is LocalPhoto &&
           other.id == this.id &&
+          other.userId == this.userId &&
           other.sealId == this.sealId &&
           other.localPath == this.localPath &&
           other.serverPath == this.serverPath &&
@@ -3071,6 +3097,7 @@ class LocalPhoto extends DataClass implements Insertable<LocalPhoto> {
 
 class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   final Value<String> id;
+  final Value<String?> userId;
   final Value<String> sealId;
   final Value<String> localPath;
   final Value<String?> serverPath;
@@ -3082,6 +3109,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   final Value<int> rowid;
   const LocalPhotosCompanion({
     this.id = const Value.absent(),
+    this.userId = const Value.absent(),
     this.sealId = const Value.absent(),
     this.localPath = const Value.absent(),
     this.serverPath = const Value.absent(),
@@ -3094,6 +3122,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   });
   LocalPhotosCompanion.insert({
     required String id,
+    this.userId = const Value.absent(),
     required String sealId,
     required String localPath,
     this.serverPath = const Value.absent(),
@@ -3109,6 +3138,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
         createdAt = Value(createdAt);
   static Insertable<LocalPhoto> custom({
     Expression<String>? id,
+    Expression<String>? userId,
     Expression<String>? sealId,
     Expression<String>? localPath,
     Expression<String>? serverPath,
@@ -3121,6 +3151,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
+      if (userId != null) 'user_id': userId,
       if (sealId != null) 'seal_id': sealId,
       if (localPath != null) 'local_path': localPath,
       if (serverPath != null) 'server_path': serverPath,
@@ -3135,6 +3166,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
 
   LocalPhotosCompanion copyWith(
       {Value<String>? id,
+      Value<String?>? userId,
       Value<String>? sealId,
       Value<String>? localPath,
       Value<String?>? serverPath,
@@ -3146,6 +3178,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
       Value<int>? rowid}) {
     return LocalPhotosCompanion(
       id: id ?? this.id,
+      userId: userId ?? this.userId,
       sealId: sealId ?? this.sealId,
       localPath: localPath ?? this.localPath,
       serverPath: serverPath ?? this.serverPath,
@@ -3163,6 +3196,9 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
     final map = <String, Expression>{};
     if (id.present) {
       map['id'] = Variable<String>(id.value);
+    }
+    if (userId.present) {
+      map['user_id'] = Variable<String>(userId.value);
     }
     if (sealId.present) {
       map['seal_id'] = Variable<String>(sealId.value);
@@ -3198,6 +3234,7 @@ class LocalPhotosCompanion extends UpdateCompanion<LocalPhoto> {
   String toString() {
     return (StringBuffer('LocalPhotosCompanion(')
           ..write('id: $id, ')
+          ..write('userId: $userId, ')
           ..write('sealId: $sealId, ')
           ..write('localPath: $localPath, ')
           ..write('serverPath: $serverPath, ')
@@ -3850,6 +3887,18 @@ class $LocalSealMarkersTable extends LocalSealMarkers
   late final GeneratedColumn<double> y = GeneratedColumn<double>(
       'y', aliasedName, false,
       type: DriftSqlType.double, requiredDuringInsert: true);
+  static const VerificationMeta _labelOffsetXMeta =
+      const VerificationMeta('labelOffsetX');
+  @override
+  late final GeneratedColumn<double> labelOffsetX = GeneratedColumn<double>(
+      'label_offset_x', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
+  static const VerificationMeta _labelOffsetYMeta =
+      const VerificationMeta('labelOffsetY');
+  @override
+  late final GeneratedColumn<double> labelOffsetY = GeneratedColumn<double>(
+      'label_offset_y', aliasedName, true,
+      type: DriftSqlType.double, requiredDuringInsert: false);
   static const VerificationMeta _updatedAtMeta =
       const VerificationMeta('updatedAt');
   @override
@@ -3857,8 +3906,16 @@ class $LocalSealMarkersTable extends LocalSealMarkers
       'updated_at', aliasedName, false,
       type: DriftSqlType.dateTime, requiredDuringInsert: true);
   @override
-  List<GeneratedColumn> get $columns =>
-      [sealId, floorId, sealNumber, x, y, updatedAt];
+  List<GeneratedColumn> get $columns => [
+        sealId,
+        floorId,
+        sealNumber,
+        x,
+        y,
+        labelOffsetX,
+        labelOffsetY,
+        updatedAt
+      ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -3899,6 +3956,18 @@ class $LocalSealMarkersTable extends LocalSealMarkers
     } else if (isInserting) {
       context.missing(_yMeta);
     }
+    if (data.containsKey('label_offset_x')) {
+      context.handle(
+          _labelOffsetXMeta,
+          labelOffsetX.isAcceptableOrUnknown(
+              data['label_offset_x']!, _labelOffsetXMeta));
+    }
+    if (data.containsKey('label_offset_y')) {
+      context.handle(
+          _labelOffsetYMeta,
+          labelOffsetY.isAcceptableOrUnknown(
+              data['label_offset_y']!, _labelOffsetYMeta));
+    }
     if (data.containsKey('updated_at')) {
       context.handle(_updatedAtMeta,
           updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta));
@@ -3924,6 +3993,10 @@ class $LocalSealMarkersTable extends LocalSealMarkers
           .read(DriftSqlType.double, data['${effectivePrefix}x'])!,
       y: attachedDatabase.typeMapping
           .read(DriftSqlType.double, data['${effectivePrefix}y'])!,
+      labelOffsetX: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}label_offset_x']),
+      labelOffsetY: attachedDatabase.typeMapping
+          .read(DriftSqlType.double, data['${effectivePrefix}label_offset_y']),
       updatedAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}updated_at'])!,
     );
@@ -3941,6 +4014,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
   final String sealNumber;
   final double x;
   final double y;
+  final double? labelOffsetX;
+  final double? labelOffsetY;
   final DateTime updatedAt;
   const LocalSealMarker(
       {required this.sealId,
@@ -3948,6 +4023,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
       required this.sealNumber,
       required this.x,
       required this.y,
+      this.labelOffsetX,
+      this.labelOffsetY,
       required this.updatedAt});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -3957,6 +4034,12 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
     map['seal_number'] = Variable<String>(sealNumber);
     map['x'] = Variable<double>(x);
     map['y'] = Variable<double>(y);
+    if (!nullToAbsent || labelOffsetX != null) {
+      map['label_offset_x'] = Variable<double>(labelOffsetX);
+    }
+    if (!nullToAbsent || labelOffsetY != null) {
+      map['label_offset_y'] = Variable<double>(labelOffsetY);
+    }
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
   }
@@ -3968,6 +4051,12 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
       sealNumber: Value(sealNumber),
       x: Value(x),
       y: Value(y),
+      labelOffsetX: labelOffsetX == null && nullToAbsent
+          ? const Value.absent()
+          : Value(labelOffsetX),
+      labelOffsetY: labelOffsetY == null && nullToAbsent
+          ? const Value.absent()
+          : Value(labelOffsetY),
       updatedAt: Value(updatedAt),
     );
   }
@@ -3981,6 +4070,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
       sealNumber: serializer.fromJson<String>(json['sealNumber']),
       x: serializer.fromJson<double>(json['x']),
       y: serializer.fromJson<double>(json['y']),
+      labelOffsetX: serializer.fromJson<double?>(json['labelOffsetX']),
+      labelOffsetY: serializer.fromJson<double?>(json['labelOffsetY']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
   }
@@ -3993,6 +4084,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
       'sealNumber': serializer.toJson<String>(sealNumber),
       'x': serializer.toJson<double>(x),
       'y': serializer.toJson<double>(y),
+      'labelOffsetX': serializer.toJson<double?>(labelOffsetX),
+      'labelOffsetY': serializer.toJson<double?>(labelOffsetY),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
   }
@@ -4003,6 +4096,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
           String? sealNumber,
           double? x,
           double? y,
+          Value<double?> labelOffsetX = const Value.absent(),
+          Value<double?> labelOffsetY = const Value.absent(),
           DateTime? updatedAt}) =>
       LocalSealMarker(
         sealId: sealId ?? this.sealId,
@@ -4010,6 +4105,10 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
         sealNumber: sealNumber ?? this.sealNumber,
         x: x ?? this.x,
         y: y ?? this.y,
+        labelOffsetX:
+            labelOffsetX.present ? labelOffsetX.value : this.labelOffsetX,
+        labelOffsetY:
+            labelOffsetY.present ? labelOffsetY.value : this.labelOffsetY,
         updatedAt: updatedAt ?? this.updatedAt,
       );
   LocalSealMarker copyWithCompanion(LocalSealMarkersCompanion data) {
@@ -4020,6 +4119,12 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
           data.sealNumber.present ? data.sealNumber.value : this.sealNumber,
       x: data.x.present ? data.x.value : this.x,
       y: data.y.present ? data.y.value : this.y,
+      labelOffsetX: data.labelOffsetX.present
+          ? data.labelOffsetX.value
+          : this.labelOffsetX,
+      labelOffsetY: data.labelOffsetY.present
+          ? data.labelOffsetY.value
+          : this.labelOffsetY,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
   }
@@ -4032,13 +4137,16 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
           ..write('sealNumber: $sealNumber, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
+          ..write('labelOffsetX: $labelOffsetX, ')
+          ..write('labelOffsetY: $labelOffsetY, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(sealId, floorId, sealNumber, x, y, updatedAt);
+  int get hashCode => Object.hash(
+      sealId, floorId, sealNumber, x, y, labelOffsetX, labelOffsetY, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -4048,6 +4156,8 @@ class LocalSealMarker extends DataClass implements Insertable<LocalSealMarker> {
           other.sealNumber == this.sealNumber &&
           other.x == this.x &&
           other.y == this.y &&
+          other.labelOffsetX == this.labelOffsetX &&
+          other.labelOffsetY == this.labelOffsetY &&
           other.updatedAt == this.updatedAt);
 }
 
@@ -4057,6 +4167,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
   final Value<String> sealNumber;
   final Value<double> x;
   final Value<double> y;
+  final Value<double?> labelOffsetX;
+  final Value<double?> labelOffsetY;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const LocalSealMarkersCompanion({
@@ -4065,6 +4177,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
     this.sealNumber = const Value.absent(),
     this.x = const Value.absent(),
     this.y = const Value.absent(),
+    this.labelOffsetX = const Value.absent(),
+    this.labelOffsetY = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -4074,6 +4188,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
     required String sealNumber,
     required double x,
     required double y,
+    this.labelOffsetX = const Value.absent(),
+    this.labelOffsetY = const Value.absent(),
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
   })  : sealId = Value(sealId),
@@ -4088,6 +4204,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
     Expression<String>? sealNumber,
     Expression<double>? x,
     Expression<double>? y,
+    Expression<double>? labelOffsetX,
+    Expression<double>? labelOffsetY,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
   }) {
@@ -4097,6 +4215,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
       if (sealNumber != null) 'seal_number': sealNumber,
       if (x != null) 'x': x,
       if (y != null) 'y': y,
+      if (labelOffsetX != null) 'label_offset_x': labelOffsetX,
+      if (labelOffsetY != null) 'label_offset_y': labelOffsetY,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -4108,6 +4228,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
       Value<String>? sealNumber,
       Value<double>? x,
       Value<double>? y,
+      Value<double?>? labelOffsetX,
+      Value<double?>? labelOffsetY,
       Value<DateTime>? updatedAt,
       Value<int>? rowid}) {
     return LocalSealMarkersCompanion(
@@ -4116,6 +4238,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
       sealNumber: sealNumber ?? this.sealNumber,
       x: x ?? this.x,
       y: y ?? this.y,
+      labelOffsetX: labelOffsetX ?? this.labelOffsetX,
+      labelOffsetY: labelOffsetY ?? this.labelOffsetY,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -4139,6 +4263,12 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
     if (y.present) {
       map['y'] = Variable<double>(y.value);
     }
+    if (labelOffsetX.present) {
+      map['label_offset_x'] = Variable<double>(labelOffsetX.value);
+    }
+    if (labelOffsetY.present) {
+      map['label_offset_y'] = Variable<double>(labelOffsetY.value);
+    }
     if (updatedAt.present) {
       map['updated_at'] = Variable<DateTime>(updatedAt.value);
     }
@@ -4156,6 +4286,8 @@ class LocalSealMarkersCompanion extends UpdateCompanion<LocalSealMarker> {
           ..write('sealNumber: $sealNumber, ')
           ..write('x: $x, ')
           ..write('y: $y, ')
+          ..write('labelOffsetX: $labelOffsetX, ')
+          ..write('labelOffsetY: $labelOffsetY, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -5862,6 +5994,7 @@ typedef $$LocalOutboxTableProcessedTableManager = ProcessedTableManager<
 typedef $$LocalPhotosTableCreateCompanionBuilder = LocalPhotosCompanion
     Function({
   required String id,
+  Value<String?> userId,
   required String sealId,
   required String localPath,
   Value<String?> serverPath,
@@ -5875,6 +6008,7 @@ typedef $$LocalPhotosTableCreateCompanionBuilder = LocalPhotosCompanion
 typedef $$LocalPhotosTableUpdateCompanionBuilder = LocalPhotosCompanion
     Function({
   Value<String> id,
+  Value<String?> userId,
   Value<String> sealId,
   Value<String> localPath,
   Value<String?> serverPath,
@@ -5897,6 +6031,9 @@ class $$LocalPhotosTableFilterComposer
   });
   ColumnFilters<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get sealId => $composableBuilder(
       column: $table.sealId, builder: (column) => ColumnFilters(column));
@@ -5935,6 +6072,9 @@ class $$LocalPhotosTableOrderingComposer
   ColumnOrderings<String> get id => $composableBuilder(
       column: $table.id, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get userId => $composableBuilder(
+      column: $table.userId, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get sealId => $composableBuilder(
       column: $table.sealId, builder: (column) => ColumnOrderings(column));
 
@@ -5971,6 +6111,9 @@ class $$LocalPhotosTableAnnotationComposer
   });
   GeneratedColumn<String> get id =>
       $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get userId =>
+      $composableBuilder(column: $table.userId, builder: (column) => column);
 
   GeneratedColumn<String> get sealId =>
       $composableBuilder(column: $table.sealId, builder: (column) => column);
@@ -6021,6 +6164,7 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
               $$LocalPhotosTableAnnotationComposer($db: db, $table: table),
           updateCompanionCallback: ({
             Value<String> id = const Value.absent(),
+            Value<String?> userId = const Value.absent(),
             Value<String> sealId = const Value.absent(),
             Value<String> localPath = const Value.absent(),
             Value<String?> serverPath = const Value.absent(),
@@ -6033,6 +6177,7 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
           }) =>
               LocalPhotosCompanion(
             id: id,
+            userId: userId,
             sealId: sealId,
             localPath: localPath,
             serverPath: serverPath,
@@ -6045,6 +6190,7 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
           ),
           createCompanionCallback: ({
             required String id,
+            Value<String?> userId = const Value.absent(),
             required String sealId,
             required String localPath,
             Value<String?> serverPath = const Value.absent(),
@@ -6057,6 +6203,7 @@ class $$LocalPhotosTableTableManager extends RootTableManager<
           }) =>
               LocalPhotosCompanion.insert(
             id: id,
+            userId: userId,
             sealId: sealId,
             localPath: localPath,
             serverPath: serverPath,
@@ -6375,6 +6522,8 @@ typedef $$LocalSealMarkersTableCreateCompanionBuilder
   required String sealNumber,
   required double x,
   required double y,
+  Value<double?> labelOffsetX,
+  Value<double?> labelOffsetY,
   required DateTime updatedAt,
   Value<int> rowid,
 });
@@ -6385,6 +6534,8 @@ typedef $$LocalSealMarkersTableUpdateCompanionBuilder
   Value<String> sealNumber,
   Value<double> x,
   Value<double> y,
+  Value<double?> labelOffsetX,
+  Value<double?> labelOffsetY,
   Value<DateTime> updatedAt,
   Value<int> rowid,
 });
@@ -6412,6 +6563,12 @@ class $$LocalSealMarkersTableFilterComposer
 
   ColumnFilters<double> get y => $composableBuilder(
       column: $table.y, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get labelOffsetX => $composableBuilder(
+      column: $table.labelOffsetX, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<double> get labelOffsetY => $composableBuilder(
+      column: $table.labelOffsetY, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnFilters(column));
@@ -6441,6 +6598,14 @@ class $$LocalSealMarkersTableOrderingComposer
   ColumnOrderings<double> get y => $composableBuilder(
       column: $table.y, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<double> get labelOffsetX => $composableBuilder(
+      column: $table.labelOffsetX,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<double> get labelOffsetY => $composableBuilder(
+      column: $table.labelOffsetY,
+      builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
       column: $table.updatedAt, builder: (column) => ColumnOrderings(column));
 }
@@ -6468,6 +6633,12 @@ class $$LocalSealMarkersTableAnnotationComposer
 
   GeneratedColumn<double> get y =>
       $composableBuilder(column: $table.y, builder: (column) => column);
+
+  GeneratedColumn<double> get labelOffsetX => $composableBuilder(
+      column: $table.labelOffsetX, builder: (column) => column);
+
+  GeneratedColumn<double> get labelOffsetY => $composableBuilder(
+      column: $table.labelOffsetY, builder: (column) => column);
 
   GeneratedColumn<DateTime> get updatedAt =>
       $composableBuilder(column: $table.updatedAt, builder: (column) => column);
@@ -6505,6 +6676,8 @@ class $$LocalSealMarkersTableTableManager extends RootTableManager<
             Value<String> sealNumber = const Value.absent(),
             Value<double> x = const Value.absent(),
             Value<double> y = const Value.absent(),
+            Value<double?> labelOffsetX = const Value.absent(),
+            Value<double?> labelOffsetY = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -6514,6 +6687,8 @@ class $$LocalSealMarkersTableTableManager extends RootTableManager<
             sealNumber: sealNumber,
             x: x,
             y: y,
+            labelOffsetX: labelOffsetX,
+            labelOffsetY: labelOffsetY,
             updatedAt: updatedAt,
             rowid: rowid,
           ),
@@ -6523,6 +6698,8 @@ class $$LocalSealMarkersTableTableManager extends RootTableManager<
             required String sealNumber,
             required double x,
             required double y,
+            Value<double?> labelOffsetX = const Value.absent(),
+            Value<double?> labelOffsetY = const Value.absent(),
             required DateTime updatedAt,
             Value<int> rowid = const Value.absent(),
           }) =>
@@ -6532,6 +6709,8 @@ class $$LocalSealMarkersTableTableManager extends RootTableManager<
             sealNumber: sealNumber,
             x: x,
             y: y,
+            labelOffsetX: labelOffsetX,
+            labelOffsetY: labelOffsetY,
             updatedAt: updatedAt,
             rowid: rowid,
           ),

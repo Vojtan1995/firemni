@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
-import 'package:drift/drift.dart' show OrderingTerm, Value;
+import 'package:drift/drift.dart' show Expression, OrderingTerm, Value;
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -11,6 +11,7 @@ import '../../database/database.dart';
 import '../../database/database_provider.dart';
 import '../auth/auth_provider.dart';
 import '../jobs/floor_plan/floor_drawing_download_service.dart';
+import '../jobs/work_context_service.dart';
 import '../seals/seal_detail_screen.dart';
 import '../seals/seal_note_helpers.dart';
 import '../seals/seal_photo_upload.dart';
@@ -40,16 +41,20 @@ final syncQueuedOutboxCountProvider = StreamProvider<int>((ref) async* {
 
 final unsentPhotosCountProvider = StreamProvider<int>((ref) async* {
   final db = ref.watch(databaseProvider);
+  final userId = ref.watch(currentUserIdProvider);
   while (true) {
-    yield await countUnsentPhotos(db);
+    yield await countUnsentPhotos(db, userId: userId);
     await Future.delayed(const Duration(seconds: 5));
   }
 });
 
-final unsentPhotosProvider = StreamProvider<List<({LocalPhoto photo, String? sealNumber})>>((ref) async* {
+final unsentPhotosProvider =
+    StreamProvider<List<({LocalPhoto photo, String? sealNumber})>>(
+        (ref) async* {
   final db = ref.watch(databaseProvider);
+  final userId = ref.watch(currentUserIdProvider);
   while (true) {
-    yield await loadUnsentPhotosWithSeal(db);
+    yield await loadUnsentPhotosWithSeal(db, userId: userId);
     await Future.delayed(const Duration(seconds: 5));
   }
 });
@@ -127,7 +132,9 @@ class SyncService {
     final database = db ?? _db;
     final deviceId = await _deviceId();
     final userId = _ref.read(currentUserIdProvider);
-    await database.into(database.localOutbox).insert(LocalOutboxCompanion.insert(
+    await database
+        .into(database.localOutbox)
+        .insert(LocalOutboxCompanion.insert(
           id: _uuid.v4(),
           mutationId: _uuid.v4(),
           userId: Value(userId),
@@ -158,8 +165,14 @@ class SyncService {
     try {
       await _pushOutbox(force: force, now: now);
       await _uploadPendingPhotos(force: force, now: now);
-      await _pullChanges();
-      await processPendingDrawingDownloads(dio: _dio, db: _db, now: now);
+      await _pullChanges(scope: 'global', includeAssets: false);
+      final contextUserId = _ref.read(currentUserIdProvider);
+      if (contextUserId != null) {
+        final ctx = await WorkContextService(_db).load(contextUserId);
+        if (ctx != null) {
+          await pullJobChanges(ctx.jobId);
+        }
+      }
       return SyncResult(success: true);
     } on DioException catch (e) {
       return SyncResult(success: false, error: e.message);
@@ -278,10 +291,24 @@ class SyncService {
     }
   }
 
-  Future<void> _pullChanges() async {
+  Future<void> pullJobChanges(String jobId, {bool includeAssets = true}) {
+    return _pullChanges(
+      scope: 'job',
+      jobId: jobId,
+      includeAssets: includeAssets,
+    );
+  }
+
+  Future<void> _pullChanges({
+    required String scope,
+    String? jobId,
+    bool includeAssets = true,
+  }) async {
     final userId = _ref.read(currentUserIdProvider);
     if (userId == null) return;
-    final cursorKey = 'last_pull_$userId';
+    final cursorKey = scope == 'job' && jobId != null
+        ? 'last_pull_job_${userId}_$jobId'
+        : 'last_pull_global_$userId';
 
     var hasMore = true;
     while (hasMore) {
@@ -292,6 +319,9 @@ class SyncService {
 
       final res = await _dio.get('/api/sync/pull', queryParameters: {
         'since': since.toIso8601String(),
+        'scope': scope,
+        'includeAssets': includeAssets ? 'metadata' : 'none',
+        if (jobId != null) 'jobId': jobId,
       });
       final data = res.data as Map<String, dynamic>;
       hasMore = data['hasMore'] as bool? ?? false;
@@ -314,7 +344,9 @@ class SyncService {
               isArchived: Value(m['isArchived'] as bool? ?? false),
               status: Value(
                 m['status'] as String? ??
-                    ((m['isArchived'] as bool? ?? false) ? 'archived' : 'active'),
+                    ((m['isArchived'] as bool? ?? false)
+                        ? 'archived'
+                        : 'active'),
               ),
               deletedAt: const Value(null),
               updatedAt: DateTime.parse(m['updatedAt'] as String),
@@ -357,7 +389,8 @@ class SyncService {
               jobId: m['jobId'] as String,
               floorId: m['floorId'] as String,
               sealNumber: m['sealNumber'] as String,
-              trade: Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
+              trade:
+                  Value(m['trade'] as String? ?? existing?.trade ?? 'neurceno'),
               system: m['system'] as String,
               construction: m['construction'] as String,
               location: m['location'] as String,
@@ -376,14 +409,16 @@ class SyncService {
               deletedAt: const Value(null),
               updatedAt: DateTime.parse(m['updatedAt'] as String),
             ));
-        if (existing?.jsonPayload != null && existing!.jsonPayload!.isNotEmpty) {
+        if (existing?.jsonPayload != null &&
+            existing!.jsonPayload!.isNotEmpty) {
           final patched = patchSealJsonPayloadNotes(
             jsonPayload: existing.jsonPayload,
             note: m['note'] as String?,
             internalNote: m['internalNote'] as String?,
           );
           if (patched != null && patched != existing.jsonPayload) {
-            await (_db.update(_db.localSeals)..where((row) => row.id.equals(sealId)))
+            await (_db.update(_db.localSeals)
+                  ..where((row) => row.id.equals(sealId)))
                 .write(LocalSealsCompanion(jsonPayload: Value(patched)));
           }
         }
@@ -391,6 +426,7 @@ class SyncService {
           _db,
           sealId,
           m['photos'] as List?,
+          userId: userId,
         );
       }
 
@@ -406,13 +442,6 @@ class SyncService {
           _db,
           floorId: floorId,
           jobId: jobId,
-          meta: m,
-        );
-        await downloadFloorDrawingFile(
-          dio: _dio,
-          db: _db,
-          jobId: jobId,
-          floorId: floorId,
           meta: m,
         );
       }
@@ -443,10 +472,12 @@ class SyncService {
               ..where((row) => row.id.equals(m['id'] as String)))
             .write(
           LocalJobsCompanion(
-            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-                DateTime.now()),
-            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-                DateTime.now()),
+            deletedAt: Value(
+                DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                    DateTime.now()),
+            updatedAt: Value(
+                DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now()),
           ),
         );
       }
@@ -456,10 +487,12 @@ class SyncService {
               ..where((row) => row.id.equals(m['id'] as String)))
             .write(
           LocalFloorsCompanion(
-            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-                DateTime.now()),
-            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-                DateTime.now()),
+            deletedAt: Value(
+                DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                    DateTime.now()),
+            updatedAt: Value(
+                DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now()),
           ),
         );
       }
@@ -470,10 +503,12 @@ class SyncService {
               ..where((row) => row.id.equals(sealId)))
             .write(
           LocalSealsCompanion(
-            deletedAt: Value(DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
-                DateTime.now()),
-            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-                DateTime.now()),
+            deletedAt: Value(
+                DateTime.tryParse(m['deletedAt'] as String? ?? '') ??
+                    DateTime.now()),
+            updatedAt: Value(
+                DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now()),
           ),
         );
         // Smazat i marker, aby na výkrese nezůstala fantomová značka.
@@ -491,8 +526,9 @@ class SyncService {
           LocalJobsCompanion(
             isArchived: const Value(true),
             status: Value(m['status'] as String? ?? 'archived'),
-            updatedAt: Value(DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
-                DateTime.now()),
+            updatedAt: Value(
+                DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
+                    DateTime.now()),
           ),
         );
       }
@@ -505,8 +541,13 @@ class SyncService {
 
   Future<void> _uploadPendingPhotos(
       {required bool force, required DateTime now}) async {
+    final userId = _ref.read(currentUserIdProvider);
+    if (userId == null) return;
     final all = await (_db.select(_db.localPhotos)
-          ..where((p) => p.status.isIn(['pending', 'failed'])))
+          ..where((p) => Expression.and([
+                p.userId.equals(userId),
+                p.status.isIn(['pending', 'failed']),
+              ])))
         .get();
     final pending =
         force ? all : all.where((p) => photoIsDueForRetry(p, now)).toList();
@@ -543,8 +584,8 @@ class SyncService {
           'photo': upload.multipart,
           'photoType': 'detail',
         });
-        final res = await _dio.post('/api/seals/$sealId/photos',
-            data: formData);
+        final res =
+            await _dio.post('/api/seals/$sealId/photos', data: formData);
         final data = res.data is Map ? res.data as Map : const {};
         await markPhotoSyncSuccess(
           _db,
@@ -565,7 +606,6 @@ class SyncService {
       }
     }
   }
-
 }
 
 class SyncResult {

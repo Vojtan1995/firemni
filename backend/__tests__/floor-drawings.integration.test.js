@@ -281,6 +281,37 @@ describe("Floor drawings and markers (task 5.3)", () => {
     expect(bundle.body.markers[0].createdByName).toBeTruthy();
   });
 
+  it("marker label offset round-trips and is preserved when only the point moves", async () => {
+    // Reuses the marker placed by the previous test (x: 0.42, y: 0.58) and
+    // restores those coordinates afterwards so later tests relying on this
+    // shared sealId/marker aren't affected.
+    const put = await request(app)
+      .put(`/api/jobs/${jobId}/floors/${floor1Id}/markers/${sealId}`)
+      .set("Authorization", `Bearer ${workerToken}`)
+      .send({ x: 0.42, y: 0.58, labelOffsetX: 0.1, labelOffsetY: -0.05 });
+
+    expect(put.status).toBe(200);
+    expect(put.body.labelOffsetX).toBeCloseTo(0.1);
+    expect(put.body.labelOffsetY).toBeCloseTo(-0.05);
+
+    const bundle = await request(app)
+      .get(`/api/jobs/${jobId}/floors/${floor1Id}/drawing`)
+      .set("Authorization", `Bearer ${managementToken}`);
+    const marker = bundle.body.markers.find((m) => m.sealId === sealId);
+    expect(marker.labelOffsetX).toBeCloseTo(0.1);
+    expect(marker.labelOffsetY).toBeCloseTo(-0.05);
+
+    // Moving just the point (no offset in payload) must not wipe the label offset.
+    const move = await request(app)
+      .put(`/api/jobs/${jobId}/floors/${floor1Id}/markers/${sealId}`)
+      .set("Authorization", `Bearer ${workerToken}`)
+      .send({ x: 0.42, y: 0.58 });
+    expect(move.status).toBe(200);
+    expect(move.body.x).toBeCloseTo(0.42);
+    expect(move.body.labelOffsetX).toBeCloseTo(0.1);
+    expect(move.body.labelOffsetY).toBeCloseTo(-0.05);
+  });
+
   it("replacing a drawing clears old markers and marks seals for placement", async () => {
     const localSealNumber = `${SEAL_PREFIX}9`;
     const created = await request(app)

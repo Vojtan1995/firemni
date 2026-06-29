@@ -94,6 +94,8 @@ Future<void> markPhotoSyncSuccess(
       await db.into(db.localPhotos).insert(
             LocalPhotosCompanion.insert(
               id: targetId,
+              userId:
+                  row.userId == null ? const Value.absent() : Value(row.userId),
               sealId: row.sealId,
               localPath: row.localPath,
               serverPath: resolvedServerPath == null
@@ -124,19 +126,27 @@ Future<void> markPhotoSyncSuccess(
 }
 
 /// All photos waiting for upload (including blocked-by-seal and backoff).
-Future<int> countUnsentPhotos(AppDatabase db) async {
+Future<int> countUnsentPhotos(AppDatabase db, {String? userId}) async {
+  if (userId == null) return 0;
   final photos = await (db.select(db.localPhotos)
-        ..where((p) => p.status.isIn(['pending', 'failed'])))
+        ..where((p) => Expression.and([
+              p.userId.equals(userId),
+              p.status.isIn(['pending', 'failed']),
+            ])))
       .get();
   return photos.length;
 }
 
 /// Pending/failed photos with seal number for SyncScreen.
 Future<List<({LocalPhoto photo, String? sealNumber})>> loadUnsentPhotosWithSeal(
-  AppDatabase db,
-) async {
+    AppDatabase db,
+    {String? userId}) async {
+  if (userId == null) return [];
   final photos = await (db.select(db.localPhotos)
-        ..where((p) => p.status.isIn(['pending', 'failed']))
+        ..where((p) => Expression.and([
+              p.userId.equals(userId),
+              p.status.isIn(['pending', 'failed']),
+            ]))
         ..orderBy([(p) => OrderingTerm.desc(p.createdAt)]))
       .get();
   final result = <({LocalPhoto photo, String? sealNumber})>[];
@@ -187,15 +197,20 @@ Future<int> countDueSyncItems(
   );
   var count = outbox.where((o) => outboxIsDueForRetry(o, now)).length;
 
-  final photos = await (db.select(db.localPhotos)
-        ..where((p) => p.status.isIn(['pending', 'failed'])))
-      .get();
-  for (final photo in photos) {
-    if (!photoIsDueForRetry(photo, now)) continue;
-    final seal = await (db.select(db.localSeals)
-          ..where((s) => s.id.equals(photo.sealId)))
-        .getSingleOrNull();
-    if (!isPhotoUploadBlockedBySeal(seal)) count++;
+  if (userId != null) {
+    final photos = await (db.select(db.localPhotos)
+          ..where((p) => Expression.and([
+                p.userId.equals(userId),
+                p.status.isIn(['pending', 'failed']),
+              ])))
+        .get();
+    for (final photo in photos) {
+      if (!photoIsDueForRetry(photo, now)) continue;
+      final seal = await (db.select(db.localSeals)
+            ..where((s) => s.id.equals(photo.sealId)))
+          .getSingleOrNull();
+      if (!isPhotoUploadBlockedBySeal(seal)) count++;
+    }
   }
   return count;
 }

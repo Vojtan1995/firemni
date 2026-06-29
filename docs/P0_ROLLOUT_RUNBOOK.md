@@ -12,16 +12,19 @@ export, anonymizace, restore, load test, pentest retest a hlavní business flow.
 
 ## Produkce
 
-1. Nasadit backend s `ADMIN_MFA_REQUIRED=false`.
+1. Bootstrap pouze pred verejnym provozem: docasne nasadit backend s `ADMIN_MFA_REQUIRED=false`, kompatibilnim klientem a platnym `MFA_DATA_KEY`.
 2. Vydat kompatibilní Android/Windows klient.
 3. Nastavit silná hesla minimálně dvěma adminům.
 4. Enrollovat TOTP a ověřit recovery kódy v trezoru.
-5. Nastavit platný `MFA_DATA_KEY`.
-6. Zapnout `ADMIN_MFA_REQUIRED=true`.
+5. Ověřit, že platný `MFA_DATA_KEY` je nastavený i pro live konfiguraci.
+6. Zapnout `ADMIN_MFA_REQUIRED=true` před zpřístupněním produkce uživatelům.
 7. Zvýšit minimální podporovaný klientský build.
 8. Ověřit backup/restore monitoring.
 9. Spustit login → sync → foto → export smoke.
 10. Monitorovat chyby, výkon a login failures nejméně 72 hodin.
+
+Produkční env example je fail-closed (`ADMIN_MFA_REQUIRED=true`). Hodnota `false`
+je povolena jen pro výše popsaný bootstrap a nesmí zůstat v live provozu.
 
 Backend při kroku 6 provede startup gate: vyžaduje nejméně dva aktivní adminy,
 u každého heslo, aktivní TOTP, nepoužitý recovery kód a auditní událost

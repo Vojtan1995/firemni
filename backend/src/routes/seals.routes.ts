@@ -139,8 +139,7 @@ router.get("/floors/:floorId/seals", async (req, res, next) => {
       trade,
     });
 
-    res.json(
-      seals.map((s) => ({
+    const items = seals.map((s) => ({
         id: s.id,
         sealNumber: s.sealNumber,
         trade: s.trade,
@@ -156,8 +155,25 @@ router.get("/floors/:floorId/seals", async (req, res, next) => {
         worksheetStatus: canSeeSealOwner(role, userId, s.createdById)
           ? s.worksheetStatus
           : null,
-      })),
-    );
+      }));
+
+    if (req.query.includeMeta === "1" || req.query.includeMeta === "true") {
+      const floor = await prisma.jobFloor.findUnique({
+        where: { id: floorId },
+        select: {
+          name: true,
+          drawing: { select: { id: true } },
+        },
+      });
+      res.json({
+        items,
+        floorName: floor?.name ?? null,
+        hasDrawing: !!floor?.drawing,
+      });
+      return;
+    }
+
+    res.json(items);
   } catch (e) {
     next(e);
   }

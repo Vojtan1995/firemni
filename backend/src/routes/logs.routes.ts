@@ -12,6 +12,7 @@ import {
   isDataMutation,
   isNoiseChangeField,
 } from '../lib/log-labels.js';
+import { listBackupRuns } from '../services/backup-run.service.js';
 
 const userLogSelect = { id: true, displayName: true, username: true, role: true } as const;
 
@@ -164,9 +165,19 @@ router.get('/history', async (req, res, next) => {
     if (!HISTORY_ROLES.includes(role)) throw forbidden();
     const since = parseIsoDateTimeQuery(req.query.since);
     const entityTypeFilter = req.query.entityType as string | undefined;
+    const entityTypesFilter = (req.query.entityTypes as string | undefined)
+      ?.split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const categoryFilter = req.query.category as string | undefined;
+    const excludeCategory = req.query.excludeCategory as string | undefined;
     const userId = req.query.userId as string | undefined;
 
-    const entityTypeWhere = entityTypeFilter ? { entityType: entityTypeFilter } : {};
+    const entityTypeWhere = entityTypesFilter?.length
+      ? { entityType: { in: entityTypesFilter } }
+      : entityTypeFilter
+        ? { entityType: entityTypeFilter }
+        : {};
 
     const [changes, activities] = await Promise.all([
       prisma.changeLog.findMany({
@@ -218,7 +229,10 @@ router.get('/history', async (req, res, next) => {
             user: anonymizeUserForViewer(a.user, role),
           };
         }),
-    ].sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
+    ]
+      .filter((entry) => !categoryFilter || entry.category === categoryFilter)
+      .filter((entry) => !excludeCategory || entry.category !== excludeCategory)
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime());
 
     res.json(entries);
   } catch (e) {
@@ -290,6 +304,53 @@ router.get('/user-activity', requireLogsView, async (req, res, next) => {
 /**
  * „Systém" – chyby, sync fronta a zálohy. Pouze admin.
  */
+function backupTypeLabel(type: string) {
+  switch (type) {
+    case 'db':
+      return 'DB záloha';
+    case 'object':
+      return 'Záloha fotek/výkresů';
+    case 'restore_test':
+      return 'Restore test';
+    default:
+      return 'Záloha';
+  }
+}
+
+function backupDetail(run: Awaited<ReturnType<typeof listBackupRuns>>[number]) {
+  const parts = [
+    run.r2Prefix,
+    run.manifestKey,
+    run.bytes ? `${run.bytes} B` : null,
+    run.objectCount != null ? `${run.objectCount} objektů` : null,
+    run.errorMessage,
+  ];
+  return parts.filter(Boolean).join(' · ') || null;
+}
+
+router.get('/backups', async (req, res, next) => {
+  try {
+    if (req.user!.role !== UserRole.admin) throw forbidden();
+    const since = parseIsoDateTimeQuery(req.query.since);
+    const runs = (await listBackupRuns(100)).filter(
+      (run) => !since || new Date(run.createdAt).getTime() >= since.getTime(),
+    );
+    res.json(
+      runs.map((run) => ({
+        id: run.id,
+        timestamp: run.finishedAt ?? run.createdAt,
+        kind: 'backup' as const,
+        backupType: run.type,
+        title: `${backupTypeLabel(run.type)}: ${run.status === 'success' ? 'prošlo' : 'selhalo'}`,
+        detail: backupDetail(run),
+        githubRunUrl: run.githubRunUrl,
+      })),
+    );
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get('/system', async (req, res, next) => {
   try {
     if (req.user!.role !== UserRole.admin) throw forbidden();

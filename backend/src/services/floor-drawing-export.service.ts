@@ -183,12 +183,41 @@ export async function exportFloorDrawingPdf(
     const cx = x0 + m.x * imgW;
     const cy = y0 + m.y * imgH;
     const color = markerColor(m.seal.status, m.seal.reviewStatus);
+    const hasOffset =
+      (m.labelOffsetX != null && m.labelOffsetX !== 0) ||
+      (m.labelOffsetY != null && m.labelOffsetY !== 0);
+
+    if (!hasOffset) {
+      const r = 6;
+      doc.circle(cx, cy, r).fill(color);
+      doc
+        .fillColor("#FFFFFF")
+        .fontSize(6)
+        .text(m.seal.sealNumber, cx - r, cy - 3, {
+          width: r * 2,
+          align: "center",
+        });
+      doc.fillColor("#000000");
+      continue;
+    }
+
+    const lx = cx + (m.labelOffsetX ?? 0) * imgW;
+    const ly = cy + (m.labelOffsetY ?? 0) * imgH;
+    const dotR = 2;
+    doc
+      .moveTo(cx, cy)
+      .lineTo(lx, ly)
+      .strokeColor("#555555")
+      .lineWidth(0.5)
+      .stroke();
+    doc.circle(cx, cy, dotR).fill(color);
+
     const r = 6;
-    doc.circle(cx, cy, r).fill(color);
+    doc.circle(lx, ly, r).fill(color);
     doc
       .fillColor("#FFFFFF")
       .fontSize(6)
-      .text(m.seal.sealNumber, cx - r, cy - 3, {
+      .text(m.seal.sealNumber, lx - r, ly - 3, {
         width: r * 2,
         align: "center",
       });

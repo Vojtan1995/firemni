@@ -45,16 +45,18 @@ String _valueOr(dynamic value) {
 
 /// Uloží metadata fotek z API do Drift (server ID, status done).
 Future<void> cacheSealPhotosFromApiList(
-  AppDatabase db,
-  String sealId,
-  List<dynamic>? photos,
-) async {
+    AppDatabase db, String sealId, List<dynamic>? photos,
+    {required String? userId}) async {
+  if (userId == null) return;
   for (final p in (photos ?? [])) {
     final m = p as Map<String, dynamic>;
     final photoId = m['id'] as String;
     final filePath = m['filePath'] as String;
     final existing = await (db.select(db.localPhotos)
-          ..where((row) => row.id.equals(photoId)))
+          ..where((row) => Expression.and([
+                row.id.equals(photoId),
+                row.userId.equals(userId),
+              ])))
         .getSingleOrNull();
     final keepLocalPath = existing != null &&
         existing.localPath.isNotEmpty &&
@@ -63,6 +65,7 @@ Future<void> cacheSealPhotosFromApiList(
     await db.into(db.localPhotos).insertOnConflictUpdate(
           LocalPhotosCompanion.insert(
             id: photoId,
+            userId: Value(userId),
             sealId: sealId,
             localPath: keepLocalPath ? existing.localPath : '',
             serverPath: Value(filePath),
@@ -80,7 +83,10 @@ Future<void> cacheSealPhotosFromApiList(
 
 /// Uloží detail ucpávky z API do Drift (sloupce + jsonPayload + metadata fotek).
 Future<void> cacheSealDetailFromApi(
-    AppDatabase db, Map<String, dynamic> seal) async {
+  AppDatabase db,
+  Map<String, dynamic> seal, {
+  required String? userId,
+}) async {
   final id = seal['id'] as String;
   final existing = await (db.select(db.localSeals)
         ..where((s) => s.id.equals(id)))
@@ -109,7 +115,12 @@ Future<void> cacheSealDetailFromApi(
         ),
       );
 
-  await cacheSealPhotosFromApiList(db, id, seal['photos'] as List?);
+  await cacheSealPhotosFromApiList(
+    db,
+    id,
+    seal['photos'] as List?,
+    userId: userId,
+  );
 
   if (seal['marker'] != null) {
     final marker = seal['marker'] as Map<String, dynamic>;
@@ -270,14 +281,24 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
     final db = ref.read(databaseProvider);
     final dio = ref.read(dioProvider);
+    final hadLocal = await _loadFromDrift(db, showMissingHint: false);
+    if (!hadLocal && mounted) {
+      setState(() => _loading = true);
+    }
 
     try {
       final res = await dio.get('/api/seals/${widget.sealId}');
       final seal = Map<String, dynamic>.from(res.data as Map);
-      await cacheSealDetailFromApi(db, seal);
-      final localPhotos = await (db.select(db.localPhotos)
-            ..where((p) => p.sealId.equals(widget.sealId)))
-          .get();
+      final userId = ref.read(currentUserIdProvider);
+      await cacheSealDetailFromApi(db, seal, userId: userId);
+      final localPhotos = userId == null
+          ? <LocalPhoto>[]
+          : await (db.select(db.localPhotos)
+                ..where((p) => Expression.and([
+                      p.sealId.equals(widget.sealId),
+                      p.userId.equals(userId),
+                    ])))
+              .get();
       seal['photos'] = mergePhotosForDisplay(
         seal['photos'] as List?,
         localPhotos,
@@ -291,19 +312,31 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       await _persistSealContext(seal);
       await _loadHistory();
     } on DioException catch (_) {
-      await _loadFromDrift(db);
+      if (!hadLocal) {
+        await _loadFromDrift(db);
+      } else if (mounted) {
+        setState(() => _dataSource = SealDetailDataSource.offline);
+      }
     } catch (_) {
-      await _loadFromDrift(db);
+      if (!hadLocal) {
+        await _loadFromDrift(db);
+      } else if (mounted) {
+        setState(() => _dataSource = SealDetailDataSource.offline);
+      }
     }
   }
 
-  Future<void> _loadFromDrift(AppDatabase db) async {
+  Future<bool> _loadFromDrift(
+    AppDatabase db, {
+    bool showMissingHint = true,
+  }) async {
     final row = await (db.select(db.localSeals)
           ..where((s) => s.id.equals(widget.sealId)))
         .getSingleOrNull();
 
     if (row == null) {
-      if (!mounted) return;
+      if (!showMissingHint) return false;
+      if (!mounted) return false;
       setState(() {
         _seal = null;
         _dataSource = SealDetailDataSource.offline;
@@ -311,16 +344,22 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             'Server nedostupný a detail této ucpávky není v lokální cache. Nejprve otevřete ucpávku při připojení k síti.';
         _loading = false;
       });
-      return;
+      return false;
     }
 
-    final photos = await (db.select(db.localPhotos)
-          ..where((p) => p.sealId.equals(widget.sealId)))
-        .get();
+    final userId = ref.read(currentUserIdProvider);
+    final photos = userId == null
+        ? <LocalPhoto>[]
+        : await (db.select(db.localPhotos)
+              ..where((p) => Expression.and([
+                    p.sealId.equals(widget.sealId),
+                    p.userId.equals(userId),
+                  ])))
+            .get();
     final seal = sealDetailFromLocal(row, photos);
     final hasDetail = row.jsonPayload != null && row.jsonPayload!.isNotEmpty;
 
-    if (!mounted) return;
+    if (!mounted) return true;
     setState(() {
       _seal = seal;
       _dataSource = SealDetailDataSource.offline;
@@ -332,6 +371,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     if (seal != null) {
       await _persistSealContext(seal);
     }
+    return true;
   }
 
   Future<void> _changeStatus(String status) async {
@@ -512,10 +552,20 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
 
       final photoId = const Uuid().v4();
       final online = _dataSource == SealDetailDataSource.online;
+      final userId = ref.read(currentUserIdProvider);
+      if (userId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Nejste pĹ™ihlĂˇĹˇenĂ­')),
+          );
+        }
+        return;
+      }
 
       await db.into(db.localPhotos).insert(
             LocalPhotosCompanion.insert(
               id: photoId,
+              userId: Value(userId),
               sealId: widget.sealId,
               localPath: persistedPath,
               status: const Value('pending'),
@@ -644,7 +694,15 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
         data: {'reason': reason},
       );
       final db = ref.read(databaseProvider);
-      await (db.delete(db.localPhotos)..where((p) => p.id.equals(photoId))).go();
+      final userId = ref.read(currentUserIdProvider);
+      await (db.delete(db.localPhotos)
+            ..where((p) => Expression.and([
+                  p.id.equals(photoId),
+                  userId == null
+                      ? p.userId.equals('__no_authenticated_user__')
+                      : p.userId.equals(userId),
+                ])))
+          .go();
       _photoBytesCache.remove(photoId);
       if (!mounted) return;
       await _load();
@@ -740,9 +798,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
     final photoId = m['id'] as String?;
     // Smazat lze jen fotku, která je už na serveru (má id a není to lokální
     // pending/failed upload — ten se řeší přes Zkusit znovu).
-    final deletable = canDelete &&
-        photoId != null &&
-        (status == null || status == 'done');
+    final deletable =
+        canDelete && photoId != null && (status == null || status == 'done');
     return GestureDetector(
       onTap: () => _openPhotoGallery(index, allPhotos),
       onLongPress: deletable ? () => _deletePhoto(photoId) : null,
@@ -827,10 +884,8 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
             child: Text(
               'Fotky: ${parts.join(', ')}. Ucpávka je uložená, fotky se '
               'odešlou při synchronizaci.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: color),
+              style:
+                  Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
             ),
           ),
         ],
@@ -1267,8 +1322,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
               children: [
                 for (var i = 0; i < photos.length; i++)
                   _photoThumb(photos[i], i, photos,
-                      canDelete:
-                          AppPermissions.has(auth.role, 'photo.delete')),
+                      canDelete: AppPermissions.has(auth.role, 'photo.delete')),
               ],
             ),
           ..._failedPhotoRows(photos),

@@ -87,6 +87,7 @@ class LocalOutbox extends Table {
 
 class LocalPhotos extends Table {
   TextColumn get id => text()();
+  TextColumn get userId => text().nullable()();
   TextColumn get sealId => text()();
   TextColumn get localPath => text()();
   TextColumn get serverPath => text().nullable()();
@@ -121,6 +122,7 @@ class LocalFloorDrawings extends Table {
   TextColumn get mimeType => text()();
   IntColumn get width => integer()();
   IntColumn get height => integer()();
+
   /// missing | downloading | downloaded | error
   TextColumn get downloadStatus =>
       text().withDefault(const Constant('downloading'))();
@@ -138,6 +140,8 @@ class LocalSealMarkers extends Table {
   TextColumn get sealNumber => text()();
   RealColumn get x => real()();
   RealColumn get y => real()();
+  RealColumn get labelOffsetX => real().nullable()();
+  RealColumn get labelOffsetY => real().nullable()();
   DateTimeColumn get updatedAt => dateTime()();
   @override
   Set<Column> get primaryKey => {sealId};
@@ -162,7 +166,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting() : super(NativeDatabase.memory());
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -214,8 +218,48 @@ class AppDatabase extends _$AppDatabase {
           if (from < 10) {
             await migrator.addColumn(localSeals, localSeals.trade);
           }
+          if (from < 11) {
+            await migrator.addColumn(localPhotos, localPhotos.userId);
+          }
+          if (from < 12) {
+            await _createPerformanceIndexes();
+          }
+          if (from < 13) {
+            await migrator.addColumn(
+                localSealMarkers, localSealMarkers.labelOffsetX);
+            await migrator.addColumn(
+                localSealMarkers, localSealMarkers.labelOffsetY);
+          }
+        },
+        beforeOpen: (_) async {
+          await _createPerformanceIndexes();
         },
       );
+
+  Future<void> _createPerformanceIndexes() async {
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_seals_floor_deleted_updated_idx '
+      'ON local_seals(floor_id, deleted_at, updated_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_seals_job_idx ON local_seals(job_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_photos_user_seal_status_idx '
+      'ON local_photos(user_id, seal_id, status)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_outbox_user_status_retry_idx '
+      'ON local_outbox(user_id, status, next_retry_at)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_floors_job_idx ON local_floors(job_id)',
+    );
+    await customStatement(
+      'CREATE INDEX IF NOT EXISTS local_my_job_assignments_user_activity_idx '
+      'ON local_my_job_assignments(user_id, last_activity_at)',
+    );
+  }
 }
 
 LazyDatabase _openConnection() {

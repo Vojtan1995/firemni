@@ -137,8 +137,8 @@ async function assertWorksheetAccess(
   const ws = await prisma.workSheet.findUnique({
     where: { id: worksheetId },
     include: {
-      workers: { select: { userId: true } },
-      job: { select: { status: true } },
+      workers: { include: { user: { select: { displayName: true } } } },
+      job: { select: { status: true, projectNumber: true, name: true } },
     },
   });
   if (!ws) throw notFound("Soupis nenalezen");
@@ -376,7 +376,15 @@ export async function createWorksheet(
     },
   });
 
-  await logActivity(userId, "worksheet_create", "worksheet", worksheet.id);
+  await logActivity(userId, "worksheet_create", "worksheet", worksheet.id, {
+    audience: worksheet.audience,
+    jobId: data.jobId,
+    projectNumber: worksheet.job.projectNumber,
+    jobName: worksheet.job.name,
+    workers: worksheet.workers.map((w) => w.user.displayName).filter(Boolean),
+    periodFrom: data.periodFrom ?? null,
+    periodTo: data.periodTo ?? null,
+  });
   return worksheet;
 }
 
@@ -502,7 +510,15 @@ export async function deleteWorksheet(
     throw badRequest("Smazat lze jen rozpracovaný soupis");
   }
   await prisma.workSheet.delete({ where: { id } });
-  await logActivity(userId, "worksheet_delete", "worksheet", id);
+  await logActivity(userId, "worksheet_delete", "worksheet", id, {
+    audience: ws.audience,
+    jobId: ws.jobId,
+    projectNumber: ws.job.projectNumber,
+    jobName: ws.job.name,
+    workers: ws.workers.map((w) => w.user.displayName).filter(Boolean),
+    periodFrom: ws.periodFrom?.toISOString() ?? null,
+    periodTo: ws.periodTo?.toISOString() ?? null,
+  });
   return { id };
 }
 
@@ -658,6 +674,13 @@ export async function addWorksheetItems(
 
   await logActivity(userId, "worksheet_add_items", "worksheet", worksheetId, {
     count: created.length,
+    audience: ws.audience,
+    jobId: ws.jobId,
+    projectNumber: ws.job.projectNumber,
+    jobName: ws.job.name,
+    workers: ws.workers.map((w) => w.user.displayName).filter(Boolean),
+    periodFrom: ws.periodFrom?.toISOString() ?? null,
+    periodTo: ws.periodTo?.toISOString() ?? null,
   });
   return created;
 }
@@ -722,6 +745,14 @@ export async function changeWorksheetStatus(
     from: ws.status,
     to: nextStatus,
     comment: comment ?? null,
+    audience: updated.audience,
+    jobId: updated.jobId,
+    projectNumber: updated.job.projectNumber,
+    jobName: updated.job.name,
+    workers: updated.workers.map((w) => w.user.displayName).filter(Boolean),
+    itemCount: updated.items.length,
+    periodFrom: updated.periodFrom?.toISOString() ?? null,
+    periodTo: updated.periodTo?.toISOString() ?? null,
   });
 
   await logChange(

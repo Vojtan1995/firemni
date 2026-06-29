@@ -84,4 +84,59 @@ void main() {
     expect(await countDueSyncItems(db, now, userId: 'user-a'), 1);
     expect(await countDueSyncItems(db, now, userId: 'user-b'), 1);
   });
+
+  test('countDueSyncItems ignores other users and legacy photos (T6)',
+      () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+    final now = DateTime(2026, 6, 1);
+
+    await db.into(db.localSeals).insert(
+          LocalSealsCompanion.insert(
+            id: 'seal-1',
+            jobId: 'job-1',
+            floorId: 'floor-1',
+            sealNumber: '1',
+            system: 'S',
+            construction: 'C',
+            location: 'L',
+            fireRating: 'EI',
+            isSynced: const Value(true),
+            updatedAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-a',
+            userId: const Value('user-a'),
+            sealId: 'seal-1',
+            localPath: 'a.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-b',
+            userId: const Value('user-b'),
+            sealId: 'seal-1',
+            localPath: 'b.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-legacy',
+            sealId: 'seal-1',
+            localPath: 'legacy.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+
+    expect(await countDueSyncItems(db, now, userId: 'user-a'), 1);
+    expect(await countDueSyncItems(db, now, userId: 'user-b'), 1);
+    expect(await countDueSyncItems(db, now), 0);
+  });
 }

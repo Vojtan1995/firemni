@@ -46,6 +46,39 @@ Offset sealMarkerTopLeft({
   );
 }
 
+const double kSealPointDotBaseSize = 7;
+
+/// Malá tečka označující přesnou pozici ucpávky, když je číselný štítek
+/// odtažen do volného místa (viz [SealMarkerWidget] jako štítek).
+class SealPointDot extends StatelessWidget {
+  const SealPointDot({
+    super.key,
+    required this.status,
+    this.scale = 1,
+  });
+
+  final String status;
+  final double scale;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = markerColorForSeal(status: status);
+    final size = (kSealPointDotBaseSize * scale).clamp(3.0, 10.0);
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: color,
+        border: Border.all(color: Colors.white, width: size * 0.15),
+        boxShadow: const [
+          BoxShadow(color: Colors.black45, blurRadius: 1.5),
+        ],
+      ),
+    );
+  }
+}
+
 class SealMarkerWidget extends StatelessWidget {
   const SealMarkerWidget({
     super.key,

@@ -172,7 +172,10 @@ router.post("/", requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
     const job = await prisma.job.create({
       data: { ...body, createdById: req.user!.id },
     });
-    await logActivity(req.user!.id, "create", "job", job.id);
+    await logActivity(req.user!.id, "create", "job", job.id, {
+      projectNumber: job.projectNumber,
+      jobName: job.name,
+    });
     res.status(201).json(job);
   } catch (e) {
     next(e);
@@ -201,12 +204,15 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const job = await prisma.job.update({
         where: { id },
         data: jobStatusPatch(JobStatus.archived),
       });
-      await logActivity(req.user!.id, "archive", "job", job.id);
+      await logActivity(req.user!.id, "archive", "job", job.id, {
+        projectNumber: current.projectNumber,
+        jobName: current.name,
+      });
       res.json(job);
     } catch (e) {
       next(e);
@@ -220,12 +226,15 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const job = await prisma.job.update({
         where: { id },
         data: jobStatusPatch(JobStatus.completed),
       });
-      await logActivity(req.user!.id, "complete", "job", job.id);
+      await logActivity(req.user!.id, "complete", "job", job.id, {
+        projectNumber: current.projectNumber,
+        jobName: current.name,
+      });
       res.json(job);
     } catch (e) {
       next(e);
@@ -239,12 +248,15 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const job = await prisma.job.update({
         where: { id },
         data: jobStatusPatch(JobStatus.active),
       });
-      await logActivity(req.user!.id, "unarchive", "job", job.id);
+      await logActivity(req.user!.id, "unarchive", "job", job.id, {
+        projectNumber: current.projectNumber,
+        jobName: current.name,
+      });
       res.json(job);
     } catch (e) {
       next(e);
@@ -258,12 +270,15 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const job = await prisma.job.update({
         where: { id },
         data: jobStatusPatch(JobStatus.active),
       });
-      await logActivity(req.user!.id, "activate", "job", job.id);
+      await logActivity(req.user!.id, "activate", "job", job.id, {
+        projectNumber: current.projectNumber,
+        jobName: current.name,
+      });
       res.json(job);
     } catch (e) {
       next(e);
@@ -363,7 +378,7 @@ router.patch(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const body = updateJobSchema.parse(req.body);
       if (Object.keys(body).length === 0)
         throw badRequest("Žádná pole k úpravě");
@@ -376,7 +391,12 @@ router.patch(
           ...(body.note !== undefined ? { note: body.note } : {}),
         },
       });
-      await logActivity(req.user!.id, "update", "job", job.id);
+      await logActivity(req.user!.id, "update", "job", job.id, {
+        projectNumber: job.projectNumber,
+        jobName: job.name,
+        previousProjectNumber: current.projectNumber,
+        previousJobName: current.name,
+      });
       res.json(job);
     } catch (e) {
       next(e);
@@ -390,7 +410,7 @@ router.delete(
   async (req, res, next) => {
     try {
       const id = paramId(req.params.id);
-      await getActiveJob(id);
+      const current = await getActiveJob(id);
       const { deleteReason } = deleteReasonSchema.parse(req.body ?? {});
 
       const activeSeals = await prisma.seal.count({
@@ -408,7 +428,10 @@ router.delete(
           deleteReason: deleteReason ?? null,
         },
       });
-      await logActivity(req.user!.id, "soft_delete", "job", job.id);
+      await logActivity(req.user!.id, "soft_delete", "job", job.id, {
+        projectNumber: current.projectNumber,
+        jobName: current.name,
+      });
       res.json({ ok: true, id: job.id });
     } catch (e) {
       next(e);

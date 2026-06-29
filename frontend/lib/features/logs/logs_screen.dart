@@ -52,7 +52,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         const _LogSection(
           label: 'Ucpávky',
           endpoint: '/api/logs/history',
-          queryParameters: {'entityType': 'seal'},
+          queryParameters: {
+            'entityType': 'seal',
+            'excludeCategory': 'Fotky a výkresy',
+          },
         ),
       if (auth.canViewLogs)
         const _LogSection(
@@ -62,20 +65,29 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         ),
       if (auth.canViewLogs)
         const _LogSection(
-          label: 'Zakázky',
+          label: 'Stavby a patra',
           endpoint: '/api/logs/history',
-          queryParameters: {'entityType': 'job'},
+          queryParameters: {
+            'entityTypes': 'job,job_floor',
+            'excludeCategory': 'Fotky a výkresy',
+          },
         ),
       if (auth.canViewLogs)
         const _LogSection(
-          label: 'Výkresy',
+          label: 'Fotky/výkresy',
           endpoint: '/api/logs/history',
-          queryParameters: {'entityType': 'job_floor'},
+          queryParameters: {'category': 'Fotky a výkresy'},
         ),
       if (auth.canViewLogs)
         const _LogSection(
           label: 'Uživatelé/práva',
           endpoint: '/api/logs/user-activity',
+        ),
+      if (auth.isAdmin)
+        const _LogSection(
+          label: 'Zálohy',
+          endpoint: '/api/logs/backups',
+          isSystem: true,
         ),
       if (auth.isAdmin)
         const _LogSection(
@@ -339,9 +351,11 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
     final time = ts != null ? DateFormat('HH:mm').format(ts) : '';
     final detail = item['detail'] as String?;
     final kind = item['kind'] as String?;
+    final title = item['title'] as String? ?? '';
+    final backupFailed = kind == 'backup' && title.toLowerCase().contains('selhalo');
     final color = switch (kind) {
       'error' => AppColors.error,
-      'backup' => AppColors.success,
+      'backup' => backupFailed ? AppColors.error : AppColors.success,
       _ => AppColors.textMuted,
     };
     return AppCard(
@@ -356,7 +370,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         backgroundColor: color.withValues(alpha: 0.12),
         color: color,
       ),
-      title: item['title'] as String? ?? '',
+      title: title,
       subtitle:
           [detail, time].where((e) => e != null && e.isNotEmpty).join(' · '),
     );

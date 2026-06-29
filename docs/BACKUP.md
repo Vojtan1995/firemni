@@ -1,94 +1,98 @@
-# Zálohy databáze (UNIFAST Ucpávky)
+# Zálohy a obnova (UNIFAST Ucpávky)
 
-## Primární cesta: GitHub Actions → R2 (off-site)
+## Produkční DR cesta
 
-Denní automatická záloha běží **mimo aplikaci** přes GitHub Actions
-([`.github/workflows/backup.yml`](../.github/workflows/backup.yml)) a ukládá
-komprimovaný dump na Cloudflare R2. Je nezávislá na běhu Railway služby — proto je
-to hlavní disaster-recovery cesta.
+Produkční obnova stojí na GitHub Actions a izolovaném Cloudflare R2 backup bucketu. Backend nedrží backup R2 credentials; workflow po doběhu jen reportuje stav do aplikace přes `POST /api/internal/backup-runs` a `BACKUP_REPORT_TOKEN`.
 
-Co workflow dělá:
-1. `pg_dump "$PROD_DATABASE_URL" | gzip` → `ucpavky_<timestamp>.sql.gz`
-2. `gunzip -t` ověří integritu gzipu (poškozený dump = červené workflow)
-3. upload na `s3://<bucket>/backups/` (R2, S3-kompatibilní)
-4. promazání záloh starších než 30 dní
-5. při jakémkoli selhání → **Telegram alert** (viz [MONITORING.md](MONITORING.md))
+### Databáze
 
-Plán: `cron: '0 2 * * *'` (2:00 UTC = 4:00 Prague letní čas). Lze i ručně přes
-*Actions → DB Backup → Run workflow* (`workflow_dispatch`).
+Workflow [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) běží denně v `02:00 UTC` a dělá:
 
-### Potřebné GitHub secrets
+1. `pg_dump -Fc --no-owner --no-acl` do `ucpavky_<timestamp>.dump`.
+2. `pg_restore --list` jako lokální kontrolu formátu.
+3. Šifrování přes `age` do `ucpavky_<timestamp>.dump.age`.
+4. `sha256sum` pro šifrovaný soubor.
+5. Manifest `ucpavky_<timestamp>.manifest.json`.
+6. Export šifrovaného GDPR privacy-erasure ledgeru.
+7. Upload do `s3://$BACKUP_S3_BUCKET/backups/ucpavky_<timestamp>/`.
+8. Stažení uploadnutých artefaktů zpět z R2 a ověření checksumu/manifestu.
+9. Retence: maže snapshoty starší než 30 dní, ale vždy ponechá minimálně posledních 7 snapshotů.
+10. Telegram alert při selhání a best-effort zápis `BackupRun(type=db)`.
 
-Settings → Secrets and variables → Actions:
+### Fotky a výkresy
+
+Workflow [`.github/workflows/object-backup.yml`](../.github/workflows/object-backup.yml) denně kopíruje aplikační R2 bucket do backup bucketu pod `objects/<timestamp>/data/`, vytváří `object-manifest.sha256` a kontroluje:
+
+- DB reference na `seal_photos` a `floor_drawings` nesmí chybět v bucketu.
+- V bucketu nesmí být objekty bez DB záznamu.
+- Počet objektů nesmí náhle spadnout o více než 20 %.
+- Obsah existujících objektových klíčů se nesmí měnit.
+
+Výsledek se zapisuje jako `BackupRun(type=object)`.
+
+### Restore test
+
+Workflow [`.github/workflows/dr-restore-test.yml`](../.github/workflows/dr-restore-test.yml) běží týdně v neděli v `05:00 UTC`:
+
+- stáhne nejnovější `.dump.age`,
+- ověří checksum,
+- dešifruje pomocí `BACKUP_AGE_IDENTITY`,
+- obnoví dump do scratch PostgreSQL,
+- ověří klíčové počty a FK integritu,
+- reaplikuje privacy-erasure ledger,
+- zapíše `BackupRun(type=restore_test)`.
+
+## Secrets
+
+Povinné pro DB/object backup:
 
 | Secret | Popis |
-|--------|-------|
-| `PROD_DATABASE_URL` | Connection string produkční DB (z Railway) |
-| `BACKUP_S3_BUCKET` | Název R2 bucketu pro zálohy (**samostatný**, ne foto-bucket) |
-| `BACKUP_S3_ENDPOINT` | `https://<account-id>.r2.cloudflarestorage.com` |
-| `BACKUP_S3_ACCESS_KEY_ID` | R2 S3 API key ID (read/write na bucket) |
-| `BACKUP_S3_SECRET_ACCESS_KEY` | R2 S3 API secret |
-| `TELEGRAM_BOT_TOKEN` | Bot token pro alert při selhání (volitelné) |
-| `TELEGRAM_CHAT_ID` | Cílový chat pro alert (volitelné) |
+| --- | --- |
+| `PROD_DATABASE_URL` | Produkční PostgreSQL connection string |
+| `BACKUP_S3_BUCKET` | Izolovaný R2 bucket pro zálohy |
+| `BACKUP_S3_ENDPOINT` | R2 S3 endpoint |
+| `BACKUP_S3_ACCESS_KEY_ID` | R2 key pro backup bucket |
+| `BACKUP_S3_SECRET_ACCESS_KEY` | R2 secret pro backup bucket |
+| `BACKUP_AGE_RECIPIENT` | Veřejný age recipient pro šifrování |
+| `APP_STORAGE_BUCKET` / `APP_STORAGE_ENDPOINT` | Zdrojový bucket fotek/výkresů |
+| `APP_STORAGE_READ_ACCESS_KEY_ID` / `APP_STORAGE_READ_SECRET_ACCESS_KEY` | Read-only přístup ke zdrojovému bucketu |
 
-> Pokud některý z `PROD_DATABASE_URL` / `BACKUP_S3_*` chybí, workflow **schválně
-> spadne** (`::error::`), ať není tichá zelená iluze běžících záloh.
+Povinné pro restore test v prostředí `dr-restore`:
 
-Doporučeno: na R2 bucketu nastavit **lifecycle rule** na auto-mazání objektů
-> 35 dní jako pojistku k prune kroku.
+| Secret | Popis |
+| --- | --- |
+| `BACKUP_AGE_IDENTITY` | Privátní age identity pro dešifrování |
 
-## Obnova z R2 (disaster recovery)
+Volitelné, ale doporučené:
+
+| Secret | Popis |
+| --- | --- |
+| `BACKUP_REPORT_URL` | URL produkčního backendu pro zápis `BackupRun` |
+| `BACKUP_REPORT_TOKEN` | Token shodný s backend env `BACKUP_REPORT_TOKEN` |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Alerty při selhání workflow |
+
+## Admin přehled
+
+- `GET /api/admin/backup-status` vrací poslední DB zálohu, objektovou zálohu a restore test.
+- `GET /api/logs/backups` vrací admin log sekci “Zálohy”.
+- `BackupRun` je produkční zdroj pravdy pro stav off-site záloh.
+- `BackupLog` je legacy/ad-hoc evidence lokálních dumpů.
+
+## Lokální backup v aplikaci
+
+`POST /api/admin/backup` a `BACKUP_ENABLED` používají `backend/src/services/backup.service.ts`, který ukládá `.dump` na lokální disk. To není produkční DR cesta. V produkci je lokální backup zakázaný, pokud není explicitně nastaveno `ALLOW_LOCAL_BACKUP_IN_PRODUCTION=true`.
+
+## Ruční obnova DB
 
 ```bash
-# 1) stáhnout poslední dump
-aws s3 cp "s3://$BACKUP_S3_BUCKET/backups/ucpavky_<timestamp>.sql.gz" . \
+aws s3 cp "s3://$BACKUP_S3_BUCKET/backups/ucpavky_<timestamp>/ucpavky_<timestamp>.dump.age" . \
+  --endpoint-url "$BACKUP_S3_ENDPOINT"
+aws s3 cp "s3://$BACKUP_S3_BUCKET/backups/ucpavky_<timestamp>/ucpavky_<timestamp>.dump.age.sha256" . \
   --endpoint-url "$BACKUP_S3_ENDPOINT"
 
-# 2) ověřit integritu a rozbalit
-gunzip -t ucpavky_<timestamp>.sql.gz
-gunzip ucpavky_<timestamp>.sql.gz
-
-# 3) naimportovat (plain SQL dump → psql)
-psql "$TARGET_DATABASE_URL" < ucpavky_<timestamp>.sql
+sha256sum -c ucpavky_<timestamp>.dump.age.sha256
+age -d -i age-key.txt -o ucpavky_<timestamp>.dump ucpavky_<timestamp>.dump.age
+pg_restore --clean --if-exists --no-owner --no-acl -d "$TARGET_DATABASE_URL" ucpavky_<timestamp>.dump
 ```
 
-Před obnovou do produkce vždy nejdřív zálohuj aktuální stav a otestuj obnovu do
-scratch databáze (počty řádků v klíčových tabulkách).
-
-## Doplňková cesta: in-process scheduler (NE pro DR)
-
-`backend/src/services/backup.service.ts` umí `pg_dump -Fc` přímo z běžící appky,
-ale ukládá na **lokální/ephemeral disk** (na Railway se ztratí při redeployi).
-Slouží jen pro lokální/ad-hoc zálohy a evidenci v `BackupLog` — **ne** jako
-off-site DR. Pro produkci spoléhej na GitHub Actions výše.
-
-Konfigurace (env):
-
-| Proměnná | Výchozí | Popis |
-|----------|---------|--------|
-| `BACKUP_ENABLED` | `false` | Zapne periodický scheduler v `index.ts` |
-| `BACKUP_DIR` | `./backups` | Adresář pro `.dump` soubory |
-| `BACKUP_RETENTION_COUNT` | `7` | Počet úspěšných záloh k uchování |
-| `BACKUP_INTERVAL_HOURS` | `24` | Interval automatické zálohy |
-
-## Retence logů (GDPR)
-
-Nezávislý scheduler (`startLogRetentionScheduler` v `index.ts`) maže staré
-technické logy kvůli data minimization. Běží **i bez zapnutých záloh**.
-Mazány jsou `LoginLog` (IP, user agent), `ErrorLog` a zpracované `SyncMutation`.
-Audit (`ActivityLog` / `ChangeLog`) se **nemaže** — je to trvalá historie.
-
-| Proměnná | Výchozí | Popis |
-|----------|---------|--------|
-| `LOG_RETENTION_ENABLED` | `true` v produkci, jinak `false` | Zapne scheduler retence |
-| `LOG_RETENTION_DAYS` | `90` | Po kolika dnech mazat logy |
-| `LOG_RETENTION_INTERVAL_HOURS` | `24` | Interval kontroly |
-
-API (admin, oprávnění `admin.backup`):
-- `GET /api/admin/backups` — seznam logů záloh
-- `POST /api/admin/backup` — ruční spuštění zálohy
-
-Obnova `.dump` (custom formát):
-```bash
-pg_restore -d "$DATABASE_URL" --clean --if-exists ./backups/ucpavky_YYYYMMDD_HHMMSS.dump
-```
+Před obnovou produkce vždy zastavit zápisy/backend, pořídit snapshot aktuálního stavu a nejdřív obnovu ověřit ve scratch databázi.

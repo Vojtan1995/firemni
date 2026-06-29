@@ -53,14 +53,14 @@ Vytvoření:
 
 | Alert | Kde hledat | Akce |
 |-------|-----------|------|
-| 🔴 Záloha selhala | GitHub → Actions → DB Backup → log runu | Zkontrolovat `pg_dump`/upload krok; ověřit `PROD_DATABASE_URL` a `BACKUP_S3_*` secrets; spustit ručně přes *Run workflow* |
+| 🔴 DB záloha selhala | GitHub → Actions → Encrypted DB Backup → log runu; aplikace → Logy → Zálohy | Zkontrolovat `pg_dump`/šifrování/upload/verify krok; ověřit `PROD_DATABASE_URL`, `BACKUP_AGE_RECIPIENT` a `BACKUP_S3_*`; spustit ručně přes *Run workflow* |
+| 🔴 Objektová záloha selhala | GitHub → Actions → R2 Object Backup; aplikace → Logy → Zálohy | Zkontrolovat DB reference proti R2 objektům, mass-deletion guard a credentials zdrojového/backup bucketu |
+| 🔴 Restore test selhal | GitHub → Actions → Weekly DR Restore Test; aplikace → Logy → Zálohy | Prověřit poslední `.dump.age`, `BACKUP_AGE_IDENTITY`, `pg_restore` a privacy ledger |
 | Uptime „Down" | Railway → Deployments / Logs, případně `/ready` v prohlížeči | Zjistit, zda je dole DB nebo R2; restart služby; eskalovat |
 | Sentry nové issue | Sentry dashboard (stack trace, request, user) | Triáž závažnosti; opravit / vytvořit issue |
 
 ### Disaster recovery (rychlá reference)
 
-Obnova z poslední zálohy v R2 je popsaná v [BACKUP.md](BACKUP.md#obnova-z-r2-disaster-recovery).
-Doporučeno 1× za čtvrtletí provést **test obnovy** do scratch databáze a sem
-poznamenat naměřený čas obnovy:
+Obnova z poslední zálohy v R2 je popsaná v [BACKUP.md](BACKUP.md). Týdenní restore test běží automaticky přes `dr-restore-test.yml` a zapisuje výsledek do `BackupRun`.
 
-- Poslední test obnovy: _(doplnit datum a dobu trvání)_
+- Poslední doložený živý restore test: 2026-06-28, přibližně 70 s do dokončení restore kroku.

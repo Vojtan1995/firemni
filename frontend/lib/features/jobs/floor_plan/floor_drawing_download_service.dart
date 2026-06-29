@@ -137,7 +137,7 @@ Future<bool> upsertFloorDrawingMetadata(
           downloadStatus: Value(
             hasFile
                 ? FloorDrawingDownloadStatus.downloaded.toDb()
-                : FloorDrawingDownloadStatus.downloading.toDb(),
+                : FloorDrawingDownloadStatus.missing.toDb(),
           ),
           updatedAt: DateTime.tryParse(meta['updatedAt'] as String? ?? '') ??
               DateTime.now(),

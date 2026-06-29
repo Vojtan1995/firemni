@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { config } from '../config.js';
 import { prisma } from '../lib/prisma.js';
 import { logger } from '../lib/logger.js';
+import { AppError } from '../lib/errors.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -74,6 +75,14 @@ export async function pruneOldLogs() {
 }
 
 export async function runBackup(triggeredBy?: string) {
+  if (config.nodeEnv === 'production' && !config.backup.allowLocalInProduction) {
+    throw new AppError(
+      400,
+      'LOCAL_BACKUP_DISABLED',
+      'Lokální aplikační záloha je v produkci vypnutá. Produkční DR zálohy běží přes GitHub Actions a R2.',
+    );
+  }
+
   await ensureBackupDir();
   const fileName = `ucpavky_${timestampSlug()}.dump`;
   const filePath = path.resolve(config.backup.dir, fileName);
@@ -138,6 +147,10 @@ let backupTimer: NodeJS.Timeout | null = null;
 
 export function startBackupScheduler() {
   if (!config.backup.enabled || config.nodeEnv === 'test') return;
+  if (config.nodeEnv === 'production' && !config.backup.allowLocalInProduction) {
+    logger.warn('Local backup scheduler skipped in production; use GitHub Actions/R2 backups');
+    return;
+  }
   const intervalMs = Math.max(1, config.backup.intervalHours) * 60 * 60 * 1000;
   if (backupTimer) clearInterval(backupTimer);
   backupTimer = setInterval(() => {

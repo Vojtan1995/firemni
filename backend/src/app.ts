@@ -27,6 +27,7 @@ import adminRoutes from './routes/admin.routes.js';
 import appRoutes from './routes/app.routes.js';
 import clientErrorsRoutes from './routes/client-errors.routes.js';
 import privacyRoutes from './routes/privacy.routes.js';
+import internalRoutes from './routes/internal.routes.js';
 
 export function createApp() {
   const app = express();
@@ -89,6 +90,7 @@ export function createApp() {
   app.use('/api/jobs/:jobId/floors', floorsRoutes);
   app.use('/api/seals', sealsRoutes);
   app.use('/api/repairs', repairsRoutes);
+  app.use('/api/internal', internalRoutes);
   app.use('/api', photosRoutes);
   app.use('/api/sync', syncRoutes);
   app.use('/api/reports', reportsRoutes);

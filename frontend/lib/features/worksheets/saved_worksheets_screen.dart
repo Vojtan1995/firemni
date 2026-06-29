@@ -369,7 +369,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: ExpansionTile(
               leading: const Icon(Icons.folder_shared_outlined),
-              title: Text('Soupisy pro zákazníky (${customer.length})',
+              title: Text('Pro zákazníka (${customer.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
               subtitle: const Text('Skryté pro pracovníky'),
               childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -378,18 +378,28 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
                   .toList(),
             ),
           ),
-        for (final g in groups)
+        if (groups.isNotEmpty)
           Card(
             margin: const EdgeInsets.only(bottom: AppSpacing.sm),
             child: ExpansionTile(
-              leading: const CircleAvatar(child: Icon(Icons.person_outline)),
-              title: Text(g.name,
+              leading: const Icon(Icons.engineering_outlined),
+              title: Text('Pro pracovníky (${active.length})',
                   style: const TextStyle(fontWeight: FontWeight.w600)),
-              subtitle: Text(g.summaryLabel),
-              initiallyExpanded: groups.length == 1,
               childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
-              children: g.worksheets
-                  .map((ws) => _worksheetCard(ws, canSelect: true))
+              children: groups
+                  .map(
+                    (g) => ExpansionTile(
+                      leading: const CircleAvatar(child: Icon(Icons.person_outline)),
+                      title: Text(g.name,
+                          style: const TextStyle(fontWeight: FontWeight.w600)),
+                      subtitle: Text(g.summaryLabel),
+                      initiallyExpanded: groups.length == 1,
+                      childrenPadding: const EdgeInsets.only(bottom: AppSpacing.sm),
+                      children: g.worksheets
+                          .map((ws) => _worksheetCard(ws, canSelect: true))
+                          .toList(),
+                    ),
+                  )
                   .toList(),
             ),
           ),
@@ -418,7 +428,7 @@ class _SavedWorksheetsScreenState extends ConsumerState<SavedWorksheetsScreen> {
       appBar: AppBar(
         title: Text(auth.isWorker
             ? 'Moje uložené soupisy'
-            : 'Soupisy podle pracovníků'),
+            : 'Uložené soupisy'),
         actions: [
           if (!auth.isWorker)
             IconButton(

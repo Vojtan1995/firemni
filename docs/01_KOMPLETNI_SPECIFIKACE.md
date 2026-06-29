@@ -1,7 +1,7 @@
 
 # Kompletní projektová dokumentace - aplikace pro evidenci požárních ucpávek
 
-> **Poslední aktualizace:** 2026-06-06 – role `vedeni`/`ucetni`, modul soupisů práce, ceník, lokální Android test.
+> **Poslední aktualizace:** 2026-06-29 – aktuální role `worker`/`vedeni`/`admin`, admin MFA, Android release hardening a per-user lokální fotky.
 
 ## 1. Shrnutí projektu
 Cílem je vytvořit interní firemní aplikaci pro evidenci požárních ucpávek a prostupů. Aplikace bude používaná přibližně 15 pracovníky v terénu a 4 lidmi z vedení nebo účetního oddělení. Má běžet primárně na Androidu a Windows.
@@ -12,7 +12,7 @@ Nejdůležitější požadavek není počet funkcí, ale rychlé zadávání v t
 - Data se nikdy nesmí ztratit.
 - Všechno se nejdříve ukládá lokálně a teprve potom synchronizuje.
 - Worker může editovat pouze rozpracované ucpávky.
-- Vedení a účetní kontrolují data, fotky a statusy.
+- Vedení kontroluje data, fotky a statusy včetně fakturačního workflow.
 - Admin je nouzový superuživatel.
 - Žádné tvrdé mazání dat v první verzi.
 - Všechny důležité akce se logují.
@@ -25,12 +25,11 @@ Implementované role v systému (`UserRole`):
 |---|---|---|---|
 | Pracovník | `worker` | Pracovník v terénu | ucpávky (vlastní), fotky, sync, vlastní soupisy, export vlastních dat |
 | Vedení | `vedeni` | Stavby, kontrola, management | CRUD stavby/patra, kontrola statusů ucpávek i soupisů, export, správa uživatelů (kromě admin) |
-| Administrativa | `ucetni` | Účetní oddělení | prohlížení dat, fakturační statusy soupisů, export soupisů a reportů |
 | Admin | `admin` | Nouzový superuživatel | vše + koš/obnova, plná správa uživatelů včetně admin účtů |
 
-Poznámka: v dokumentaci se dříve používal souhrnný termín „Management“ – v kódu je rozdělen na `vedeni` a `ucetni` s odlišnými oprávněními (viz `backend/src/lib/permissions.ts` a `frontend/lib/core/permissions.dart`).
+Poznámka: role `ucetni` byla odstraněna; její fakturační oprávnění převzala role `vedeni`.
 
-Testovací účty (seed): `worker1`, `worker2`, `vedeni`, `ucetni`, `admin` – PIN `123456` (6 číslic; validace přijímá 6–8 číslic).
+Testovací účty (seed): `worker1`, `worker2`, `vedeni`, `admin`. Běžné role používají PIN; admin po zapnutí produkčního MFA používá silné heslo a TOTP.
 
 ## 4. Workflow workerů
 1. Přihlášení jménem a PINem.
@@ -179,7 +178,7 @@ Obrazovka **Soupis prací / Export** (`/reports`) – agregovaný export podle f
 - `GET /api/reports/export/pdf` – PDF
 - `GET /api/reports/export/csv` – CSV (volitelné sloupce)
 
-Worker vidí export **jen svých** záznamů (server-side scope). Vedení, administrativa a admin vidí vše.
+Worker vidí export **jen svých** záznamů (server-side scope). Vedení a admin vidí vše.
 
 ### 13.2 Soupisy práce (worksheet workflow) – implementováno 2026-06
 Modul **Soupisy práce** (`/worksheets`) – formální soupis s workflow stavy, zamraženými položkami a auditem. Každý soupis patří jedné zakázce a obsahuje snapshot položek (`worksheet_items`).
@@ -205,8 +204,7 @@ invoiced → ready_for_invoice
 
 **Práva ke změně stavu:**
 - **worker** – pouze `draft → submitted`; po odevzdání zakázáno, dokud vedení nevrátí do `draft`
-- **administrativa (`ucetni`)** – jen fakturační: `reviewed ↔ ready_for_invoice ↔ invoiced`
-- **vedení / admin** – libovolný platný přechod včetně návratu zpět
+- **vedení / admin** – libovolný platný přechod včetně návratu zpět a fakturačních stavů
 
 **Audit:** každá změna stavu → záznam v `change_log` (kdo, kdy, starý/nový stav, volitelný komentář) + `activity_log`.
 
@@ -223,6 +221,8 @@ invoiced → ready_for_invoice
 - `GET /api/worksheets/:id/export/csv` – CSV daného soupisu
 
 **Práva k detailu a exportu:** stejná pravidla jako u `GET /api/worksheets/:id` – worker jen vlastní, ostatní role dle `worksheet.view` (403 na backendu, ne jen skrytí tlačítek).
+
+**Uložené soupisy (Flutter):** vedení/admin vidí kořenové složky **Pro pracovníky**, **Pro zákazníka** a případně **Archiv**. Teprve uvnitř složky Pro pracovníky jsou jednotliví pracovníci; zákaznické soupisy nejsou zanořené pod pracovníkem.
 
 ### 13.3 Ceník – implementováno
 Správa ceníku vedením/adminem, prohlížení všemi relevantními rolemi. Ceny se ukládají jako snapshot u položek soupisu a u záznamů ucpávek (`unitPrice`, `totalPrice`).
@@ -264,6 +264,8 @@ Logy:
 - admin log
 
 Auditní logy ukládat do databáze, technické chyby i do serverových logů.
+
+Auditní obrazovka seskupuje hodnotné sekce: Ucpávky, Soupisy, Stavby a patra, Fotky/výkresy, Uživatelé/práva, Zálohy a Systém/sync. Mutace ukládají do metadata konkrétní kontext: číslo/název stavby, název patra, typ soupisu, pracovníky, počty položek a informace o výkresu/fotce.
 
 Logovat:
 - kdo provedl akci
@@ -392,7 +394,7 @@ MVP V1 – stav implementace (2026-06):
 | Oblast | Stav |
 |---|---|
 | login jméno + PIN | hotovo |
-| role worker / vedeni / ucetni / admin | hotovo |
+| role worker / vedeni / admin | hotovo |
 | stavby přes 8místné číslo | hotovo |
 | patra, správa staveb | hotovo |
 | seznam ucpávek, formulář, materiály, presety rozměrů | hotovo |
@@ -470,7 +472,7 @@ Povinně otestovat:
 **Soupisy práce (2026-06):**
 - worker rozklikne a stáhne **jen vlastní** soupis; cizí → 403
 - vedení/admin rozklikne, stáhne a změní stav libovolného soupisu včetně zpětného přechodu
-- administrativa mění jen fakturační stavy; ostatní → 403
+- vedení/admin mění i fakturační stavy; worker mimo svůj scope → 403
 - worker nemůže měnit stav po odevzdání (kromě nového odevzdání po vrácení do `draft`)
 - každá změna stavu vytvoří záznam v historii (kdo, kdy, from→to, komentář)
 - backend testy: `backend/__tests__/worksheets.integration.test.js`

@@ -1,4 +1,4 @@
-# FRONTEND_STATUS.md – stav Flutter integrace (2026-05-27)
+# FRONTEND_STATUS.md – stav Flutter integrace (2026-06-29)
 
 Stabilizační audit po Admin restore UI. Backend musí běžet na `http://localhost:3000`.
 
@@ -16,7 +16,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | T9 export filters UI | hotovo | pracovník, patro, období |
 | T10 export save path picker | hotovo | `file_picker` save dialog |
 | T12 duplicate UX / precheck | hotovo | lokální kontrola + oprava čísla v sync |
-| T6 outbox per user | hotovo | `local_outbox.user_id`, filtrování sync UI |
+| T6 outbox/photos per user | hotovo | `local_outbox.user_id`, `local_photos.user_id`, filtrování sync UI a pending fotek |
 | T11 seal edit screen | hotovo | `/seal/:id/edit`, outbox `update` |
 | PHOTO-01 photo persist/sync | hotovo | `seal_photo_storage.dart`, server ID map, SyncScreen unsent list |
 | SYNC-01 sync integrity | hotovo | list cache flags, merge dedupe, seal ID remap, status push, queue counts |
@@ -46,7 +46,7 @@ Stabilizační audit po Admin restore UI. Backend musí běžet na `http://local
 | Drift SQLite init | OK | tabulky + insert do `local_jobs`, `local_outbox` |
 | Sync outbox init | OK | fronta `pending` mutací v SQLite |
 | Login (API) | OK | `worker1/1234` → token + role `worker` |
-| Reports CSV/PDF export (FE-04, FE-05) | OK | vedeni/ucetni: Dio bytes → `file_picker` save dialog (bytes on Android/iOS); filtry; `soupis_praci_YYYY-MM-DD.{csv,pdf}` |
+| Reports CSV/PDF export (FE-04, FE-05) | OK | vedeni/admin: Dio bytes → `file_picker` save dialog (bytes on Android/iOS); filtry; `soupis_praci_YYYY-MM-DD.{csv,pdf}` |
 | Zakázky / patra (API + offline) | OK | patra: API + Drift cache (FE-02); stavba přes číslo |
 | Seznam ucpávek (API + offline) | OK | API first, cache do Drift; při výpadku čtení z `local_seals` (FE-01) |
 | Detail ucpávky (API + offline) | OK | cache `jsonPayload` + fotky; Drift fallback + banner/chip (offline detail) |

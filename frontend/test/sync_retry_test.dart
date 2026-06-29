@@ -13,7 +13,8 @@ void main() {
     expect(syncRetryDelayForCount(10), const Duration(minutes: 5));
   });
 
-  test('pushResultGapIndices marks tail when server returns fewer results (T3)', () {
+  test('pushResultGapIndices marks tail when server returns fewer results (T3)',
+      () {
     expect(pushResultGapIndices(5, 5), isEmpty);
     expect(pushResultGapIndices(5, 3), [3, 4]);
     expect(pushResultGapIndices(1, 0), [0]);
@@ -189,6 +190,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'photo-1',
+            userId: const Value('user-1'),
             sealId: 'seal-1',
             localPath: 'local.webp',
             status: const Value('failed'),
@@ -209,6 +211,7 @@ void main() {
     expect(row.lastError, isNull);
     expect(row.nextRetryAt, isNull);
     expect(row.serverPath, 'server-photo.webp');
+    expect(row.userId, 'user-1');
   });
 
   test('markPhotoSyncSuccess replaces local id with server photo id', () async {
@@ -218,6 +221,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'local-photo-id',
+            userId: const Value('user-1'),
             sealId: 'seal-1',
             localPath: '/data/seal_photos/local.webp',
             status: const Value('pending'),
@@ -243,9 +247,11 @@ void main() {
     expect(newRow.status, 'done');
     expect(newRow.serverPath, 'server.webp');
     expect(newRow.localPath, '/data/seal_photos/local.webp');
+    expect(newRow.userId, 'user-1');
   });
 
-  test('countDueSyncItems excludes failed rows before nextRetryAt (T4)', () async {
+  test('countDueSyncItems excludes failed rows before nextRetryAt (T4)',
+      () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
     final now = DateTime(2026, 5, 27, 10, 0);
@@ -289,6 +295,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'photo-pending',
+            userId: const Value('user-1'),
             sealId: 'seal-1',
             localPath: 'local.webp',
             status: const Value('pending'),
@@ -298,6 +305,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'photo-failed',
+            userId: const Value('user-1'),
             sealId: 'seal-1',
             localPath: 'local2.webp',
             status: const Value('failed'),
@@ -307,6 +315,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'photo-done',
+            userId: const Value('user-1'),
             sealId: 'seal-1',
             localPath: 'local3.webp',
             status: const Value('done'),
@@ -314,10 +323,33 @@ void main() {
           ),
         );
 
-    expect(await countUnsentPhotos(db), 2);
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-other-user',
+            userId: const Value('user-2'),
+            sealId: 'seal-1',
+            localPath: 'local4.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+    await db.into(db.localPhotos).insert(
+          LocalPhotosCompanion.insert(
+            id: 'photo-legacy',
+            sealId: 'seal-1',
+            localPath: 'legacy.webp',
+            status: const Value('pending'),
+            createdAt: now,
+          ),
+        );
+
+    expect(await countUnsentPhotos(db, userId: 'user-1'), 2);
+    expect(await countUnsentPhotos(db, userId: 'user-2'), 1);
+    expect(await countUnsentPhotos(db), 0);
   });
 
-  test('countDueSyncItems skips photos blocked by unsynced seal (T5)', () async {
+  test('countDueSyncItems skips photos blocked by unsynced seal (T5)',
+      () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
     final now = DateTime(2026, 5, 27, 10, 0);
@@ -339,6 +371,7 @@ void main() {
     await db.into(db.localPhotos).insert(
           LocalPhotosCompanion.insert(
             id: 'photo-1',
+            userId: const Value('user-1'),
             sealId: 'seal-local',
             localPath: 'local.webp',
             status: const Value('pending'),
@@ -346,11 +379,14 @@ void main() {
           ),
         );
 
-    expect(await countDueSyncItems(db, now), 0);
-    expect(isPhotoUploadBlockedBySeal(
-      await (db.select(db.localSeals)..where((s) => s.id.equals('seal-local')))
-          .getSingle(),
-    ), isTrue);
+    expect(await countDueSyncItems(db, now, userId: 'user-1'), 0);
+    expect(
+        isPhotoUploadBlockedBySeal(
+          await (db.select(db.localSeals)
+                ..where((s) => s.id.equals('seal-local')))
+              .getSingle(),
+        ),
+        isTrue);
   });
 
   test('hasDueSyncWork ignores failed outbox before nextRetryAt', () async {

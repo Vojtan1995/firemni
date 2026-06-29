@@ -56,6 +56,26 @@ Offset normalizedMarkerToPixel(Offset normalized, Size canvasSize) {
   );
 }
 
+/// Pixel center of a (possibly label-offset) seal label on the canvas.
+Offset labelCenterPixel({
+  required double x,
+  required double y,
+  double? offsetX,
+  double? offsetY,
+  required Size canvasSize,
+}) {
+  return Offset(
+    (x + (offsetX ?? 0)) * canvasSize.width,
+    (y + (offsetY ?? 0)) * canvasSize.height,
+  );
+}
+
+/// Converts a drag delta in canvas pixels to a normalized offset delta.
+Offset dragDeltaToNormalizedOffset(Offset deltaPx, Size canvasSize) {
+  if (canvasSize.width <= 0 || canvasSize.height <= 0) return Offset.zero;
+  return Offset(deltaPx.dx / canvasSize.width, deltaPx.dy / canvasSize.height);
+}
+
 /// Matrix to center the viewer on a normalized marker position.
 Matrix4 focusTransformForMarker({
   required double x,

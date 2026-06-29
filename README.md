@@ -130,7 +130,8 @@ cd frontend && flutter test     # offline unit testy
 | Vyhledávání | `GET /api/search?q=...` |
 | Ceník | `GET /api/price-list`, `POST /api/price-list/publish` |
 | Logy | `GET /api/activity`, `GET /api/changes` |
-| Admin | `GET /api/seals/trash`, `GET|POST /api/admin/backups` |
+| Admin | `GET /api/seals/trash`, `GET /api/admin/backup-status`, `GET|POST /api/admin/backups` |
+| Interní provoz | `POST /api/internal/backup-runs` (GitHub Actions report DB/object/restore běhů) |
 | App update | `GET /api/app/release?platform=android` |
 
 Podrobné schéma DB: [docs/DATABASE.md](docs/DATABASE.md). Sync protokol: [docs/SYNC.md](docs/SYNC.md).

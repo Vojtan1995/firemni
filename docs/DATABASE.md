@@ -8,7 +8,7 @@ PostgreSQL 16. ORM: Prisma 6. Migrace: `npx prisma migrate deploy`.
 
 | Enum | Hodnoty |
 |------|---------|
-| `UserRole` | `worker`, `vedeni`, `ucetni`, `admin` |
+| `UserRole` | `worker`, `vedeni`, `admin` |
 | `SealStatus` | `draft`, `checked`, `invoiced` |
 | `WorkSheetStatus` | `draft`, `submitted`, `reviewed`, `ready_for_invoice`, `invoiced` |
 | `JobStatus` | `active`, `completed`, `archived` |
@@ -21,9 +21,12 @@ PostgreSQL 16. ORM: Prisma 6. Migrace: `npx prisma migrate deploy`.
 
 | Tabulka | Popis |
 |---------|-------|
-| `users` | Přihlašovací údaje, role (`UserRole`), `pinHash` (bcrypt), `isActive`, `mustChangePin` |
-| `user_sessions` | JWT sessions – `token` (hash), `expiresAt`, `userId` |
+| `users` | Přihlašovací údaje, role (`UserRole`), `pinHash`/admin `passwordHash` (bcrypt), `isActive`, `mustChangePin` |
+| `user_sessions` | JWT sessions – `token` (hash), `expiresAt`, `userId`, `mfaVerifiedAt`, `authMethod` |
 | `login_log` | Záznamy pokusů o přihlášení: IP, user agent, `success` flag |
+| `user_mfa_credentials` | Admin TOTP credential, encrypted secret, enablement timestamps |
+| `mfa_recovery_codes` | Hashované MFA recovery kódy a stav použití |
+| `auth_challenges` | Krátkodobé MFA/login challenge tokeny |
 
 ### Stavby a patra
 
@@ -41,7 +44,7 @@ PostgreSQL 16. ORM: Prisma 6. Migrace: `npx prisma migrate deploy`.
 | `seals` | Ucpávka: `sealNumber`, `status` (`SealStatus`), `version` (pro sync), FK → floor/job/user, soft delete |
 | `seal_entries` | Položky ucpávky: `entryType`, dimension, quantity, insulation, FK → seal |
 | `seal_entry_materials` | Materiály na položku: M:N (entryId × material string) |
-| `seal_photos` | Metadata fotek: path, mime, size, FK → seal. **Mazání je zakázáno** (403) – zachování audit trail |
+| `seal_photos` | Metadata fotek: path, mime, size, FK → seal. Mazání je soft-delete pro vedení/admin; soubor zůstává kvůli auditní stopě |
 | `seal_markers` | Pozice ucpávky na plánu patra: `x`, `y` (normalizované 0–1), FK → seal + floor_drawing |
 
 ### Sync a audit
@@ -79,7 +82,8 @@ PostgreSQL 16. ORM: Prisma 6. Migrace: `npx prisma migrate deploy`.
 
 | Tabulka | Popis |
 |---------|-------|
-| `backup_log` | Záznamy záloh DB: `triggeredAt`, `triggeredById`, `filePath`, `status` |
+| `backup_logs` | Legacy/ad-hoc lokální `.dump` záznamy z běžící aplikace; v produkci nejsou DR zdroj pravdy |
+| `backup_runs` | Produkční evidence GitHub Actions běhů: DB záloha, objektová záloha a restore test (`type`, `status`, `githubRunUrl`, R2 prefix/manifest, velikost, chyba) |
 
 ---
 
@@ -99,7 +103,7 @@ Zabraňuje duplicitním číslům ucpávek na stejném patře. Server vrátí `4
 |----------|-------------|
 | Žádný hard delete | Soft delete: `deletedAt`, `deletedById`, `deleteReason` |
 | Worker edituje pouze draft | API vrátí `403` pokud `status != 'draft'` a role je `worker` |
-| Fotky nelze smazat | `DELETE /api/photos/:id` vrací `403` (audit trail) |
+| Mazání fotek je auditované | `DELETE /api/photos/:id` je povolené pro vedení/admin, vyžaduje důvod a provádí soft-delete |
 | Sync idempotence | `sync_mutations.mutationId` je UNIQUE – opakovaný push je bez efektu |
 | Verzování ucpávek | `seals.version` se inkrementuje při každém update, `baseVersion` v push požadavku detekuje konflikt |
 | Session hash | `user_sessions.token` je uložen jako hash (ne plaintext JWT) |

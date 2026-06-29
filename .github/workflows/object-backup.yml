@@ -129,6 +129,33 @@ jobs:
             echo "Bytes: ${OBJECT_BYTES}"
             echo "Snapshot: ${prefix}"
           } >> "$GITHUB_STEP_SUMMARY"
+          echo "OBJECT_BACKUP_PREFIX=$prefix" >> "$GITHUB_ENV"
+
+      - name: Report object backup success
+        if: success()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || { echo "Object backup report skipped: missing BACKUP_REPORT_URL or BACKUP_REPORT_TOKEN" >> "$GITHUB_STEP_SUMMARY"; exit 0; }
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"object\",\"status\":\"success\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"r2Prefix\":\"${OBJECT_BACKUP_PREFIX}\",\"manifestKey\":\"${OBJECT_BACKUP_PREFIX}/object-manifest.sha256\",\"bytes\":\"${OBJECT_BYTES}\",\"objectCount\":${OBJECT_COUNT},\"finishedAt\":\"$(date -u +%FT%TZ)\"}" \
+            >/dev/null
+
+      - name: Report object backup failure
+        if: failure()
+        env:
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+        run: |
+          [ -n "$REPORT_URL" ] && [ -n "$REPORT_TOKEN" ] || exit 0
+          curl -fsS -X POST "${REPORT_URL%/}/api/internal/backup-runs" \
+            -H "Authorization: Bearer ${REPORT_TOKEN}" \
+            -H "Content-Type: application/json" \
+            --data "{\"type\":\"object\",\"status\":\"failed\",\"githubRunUrl\":\"${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}\",\"r2Prefix\":\"${OBJECT_BACKUP_PREFIX:-}\",\"errorMessage\":\"GitHub Actions object backup failed\",\"finishedAt\":\"$(date -u +%FT%TZ)\"}" \
+            >/dev/null || true
 
       - name: Alert on object backup failure
         if: failure()

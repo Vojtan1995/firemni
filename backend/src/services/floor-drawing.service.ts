@@ -174,6 +174,8 @@ export async function getFloorDrawingBundle(
         floorId: m.floorId,
         x: m.x,
         y: m.y,
+        labelOffsetX: m.labelOffsetX,
+        labelOffsetY: m.labelOffsetY,
         sealNumber: m.seal.sealNumber,
         status: m.seal.status,
         reviewStatus: m.seal.reviewStatus,
@@ -229,6 +231,10 @@ export async function uploadFloorDrawing(
   }
   const floor = await assertFloorReadable(floorId, role, userId);
   await assertJobWritable(floor.jobId, role, userId);
+  const job = await prisma.job.findUnique({
+    where: { id: floor.jobId },
+    select: { projectNumber: true, name: true },
+  });
   if (file.size > maxDrawingBytes) {
     throw badRequest(`Výkres nesmí být větší než ${maxDrawingBytes} B`);
   }
@@ -336,6 +342,12 @@ export async function uploadFloorDrawing(
   await logActivity(userId, "floor_drawing_upload", "job_floor", floorId, {
     drawingId: drawing.id,
     replaced: existing != null,
+    fileName: file.originalname,
+    fileType: mimeType,
+    floorName: floor.name,
+    jobId: floor.jobId,
+    projectNumber: job?.projectNumber,
+    jobName: job?.name,
   });
 
   return drawing;
@@ -348,6 +360,8 @@ export async function upsertSealMarker(
   y: number,
   userId: string,
   role: UserRole,
+  labelOffsetX?: number | null,
+  labelOffsetY?: number | null,
 ) {
   const nx = clamp01(x);
   const ny = clamp01(y);
@@ -374,12 +388,16 @@ export async function upsertSealMarker(
         floorId,
         x: nx,
         y: ny,
+        labelOffsetX: labelOffsetX ?? null,
+        labelOffsetY: labelOffsetY ?? null,
         createdById: userId,
       },
       update: {
         floorId,
         x: nx,
         y: ny,
+        ...(labelOffsetX !== undefined ? { labelOffsetX } : {}),
+        ...(labelOffsetY !== undefined ? { labelOffsetY } : {}),
       },
     });
     await tx.seal.update({
@@ -446,6 +464,10 @@ export async function deleteFloorDrawing(
   }
   const floor = await assertFloorReadable(floorId, role, userId);
   await assertJobWritable(floor.jobId, role, userId);
+  const job = await prisma.job.findUnique({
+    where: { id: floor.jobId },
+    select: { projectNumber: true, name: true },
+  });
 
   const drawing = await prisma.floorDrawing.findUnique({ where: { floorId } });
   if (!drawing) throw notFound("Výkres patra nenalezen");
@@ -471,6 +493,12 @@ export async function deleteFloorDrawing(
   });
   await logActivity(userId, "floor_drawing_delete", "job_floor", floorId, {
     drawingId: drawing.id,
+    fileName: drawing.filePath,
+    fileType: drawing.mimeType,
+    floorName: floor.name,
+    jobId: floor.jobId,
+    projectNumber: job?.projectNumber,
+    jobName: job?.name,
   });
 
   return { ok: true };

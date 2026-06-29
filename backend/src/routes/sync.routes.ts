@@ -241,6 +241,8 @@ const markerPayloadSchema = z.object({
   floorId: z.string().uuid(),
   x: z.number().min(0).max(1),
   y: z.number().min(0).max(1),
+  labelOffsetX: z.number().nullable().optional(),
+  labelOffsetY: z.number().nullable().optional(),
 });
 
 const markerDeletePayloadSchema = z.object({
@@ -265,6 +267,8 @@ async function processMutation(
         body.y,
         userId,
         userRole,
+        body.labelOffsetX,
+        body.labelOffsetY,
       );
       return { entityId: marker.sealId };
     }
@@ -533,6 +537,16 @@ router.get('/pull', async (req, res, next) => {
   try {
     const since = req.query.since ? new Date(String(req.query.since)) : new Date(0);
     const jobId = req.query.jobId as string | undefined;
+    const scope =
+      req.query.scope === 'global' || req.query.scope === 'job'
+        ? req.query.scope
+        : 'all';
+    const includeAssets = req.query.includeAssets === 'none' ? 'none' : 'metadata';
+    if (scope === 'job' && !jobId) {
+      throw conflict('Pro sync scope=job je povinnĂ© jobId');
+    }
+    const pullJobDetail = scope !== 'global';
+    const pullAssets = pullJobDetail && includeAssets !== 'none';
     const role = req.user!.role;
     const userId = req.user!.id;
 
@@ -611,25 +625,31 @@ router.get('/pull', async (req, res, next) => {
         orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
-      prisma.seal.findMany({
-        where: sealWhere,
-        include: {
-          entries: { where: { deletedAt: null }, include: { materials: true } },
-          photos: true,
-        },
-        orderBy: { updatedAt: 'asc' },
-        take: SYNC_PULL_BATCH_LIMIT,
-      }),
-      prisma.floorDrawing.findMany({
-        where: drawingWhere,
-        orderBy: { updatedAt: 'asc' },
-        take: SYNC_PULL_BATCH_LIMIT,
-      }),
-      prisma.sealMarker.findMany({
-        where: markerWhere,
-        orderBy: { updatedAt: 'asc' },
-        take: SYNC_PULL_BATCH_LIMIT,
-      }),
+      pullJobDetail
+        ? prisma.seal.findMany({
+            where: sealWhere,
+            include: {
+              entries: { where: { deletedAt: null }, include: { materials: true } },
+              photos: true,
+            },
+            orderBy: { updatedAt: 'asc' },
+            take: SYNC_PULL_BATCH_LIMIT,
+          })
+        : Promise.resolve([]),
+      pullAssets
+        ? prisma.floorDrawing.findMany({
+            where: drawingWhere,
+            orderBy: { updatedAt: 'asc' },
+            take: SYNC_PULL_BATCH_LIMIT,
+          })
+        : Promise.resolve([]),
+      pullJobDetail
+        ? prisma.sealMarker.findMany({
+            where: markerWhere,
+            orderBy: { updatedAt: 'asc' },
+            take: SYNC_PULL_BATCH_LIMIT,
+          })
+        : Promise.resolve([]),
     ]);
 
     const deletedJobWhere = {
@@ -676,12 +696,14 @@ router.get('/pull', async (req, res, next) => {
         orderBy: { updatedAt: 'asc' },
         take: SYNC_PULL_BATCH_LIMIT,
       }),
-      prisma.seal.findMany({
-        where: deletedSealWhere,
-        select: { id: true, jobId: true, floorId: true, deletedAt: true, updatedAt: true },
-        orderBy: { updatedAt: 'asc' },
-        take: SYNC_PULL_BATCH_LIMIT,
-      }),
+      pullJobDetail
+        ? prisma.seal.findMany({
+            where: deletedSealWhere,
+            select: { id: true, jobId: true, floorId: true, deletedAt: true, updatedAt: true },
+            orderBy: { updatedAt: 'asc' },
+            take: SYNC_PULL_BATCH_LIMIT,
+          })
+        : Promise.resolve([]),
       prisma.job.findMany({
         where: archivedJobWhere,
         select: { id: true, updatedAt: true, status: true, isArchived: true },

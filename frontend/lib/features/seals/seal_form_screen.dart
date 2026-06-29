@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
-import 'package:drift/drift.dart' show Value;
+import 'package:drift/drift.dart' show Expression, Value;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -137,15 +137,22 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       final res =
           await ref.read(dioProvider).get('/api/seals/${widget.sealId}');
       seal = (res.data as Map).cast<String, dynamic>();
-      await cacheSealDetailFromApi(db, seal);
+      final userId = ref.read(currentUserIdProvider);
+      await cacheSealDetailFromApi(db, seal, userId: userId);
     } catch (_) {
       final row = await (db.select(db.localSeals)
             ..where((s) => s.id.equals(widget.sealId!)))
           .getSingleOrNull();
       if (row != null) {
-        final photos = await (db.select(db.localPhotos)
-              ..where((p) => p.sealId.equals(widget.sealId!)))
-            .get();
+        final userId = ref.read(currentUserIdProvider);
+        final photos = userId == null
+            ? <LocalPhoto>[]
+            : await (db.select(db.localPhotos)
+                  ..where((p) => Expression.and([
+                        p.sealId.equals(widget.sealId!),
+                        p.userId.equals(userId),
+                      ])))
+                .get();
         seal = sealDetailFromLocal(row, photos);
       }
     }
@@ -174,7 +181,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     _system = seal['system'] as String?;
     _construction = seal['construction'] as String?;
     final loadedLocation = seal['location'] as String?;
-    if (loadedLocation != null && loadedLocation.startsWith(shaftLocationPrefix)) {
+    if (loadedLocation != null &&
+        loadedLocation.startsWith(shaftLocationPrefix)) {
       _location = 'Šachta';
       _shaftPart = loadedLocation.substring(shaftLocationPrefix.length);
     } else {
@@ -695,7 +703,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     if (effectiveLocation != (_origLocation ?? '')) changed.add('location');
     if (_fireRating != _origFireRating) changed.add('fireRating');
     if (_noteCtrl.text != _origNote) changed.add('note');
-    if (_internalNoteCtrl.text != _origInternalNote) changed.add('internalNote');
+    if (_internalNoteCtrl.text != _origInternalNote)
+      changed.add('internalNote');
     if (jsonEncode(entriesPayload) != _origEntriesSig) changed.add('entries');
     return changed;
   }
@@ -707,6 +716,7 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     bool markerPlacementPending = false,
   }) async {
     final sealId = const Uuid().v4();
+    final userId = ref.read(currentUserIdProvider);
     final role = ref.read(authServiceProvider).role;
     final payload = {
       'id': sealId,
@@ -787,12 +797,15 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
       }
 
       for (final path in _photoPaths) {
-        await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
-              id: const Uuid().v4(),
-              sealId: sealId,
-              localPath: path,
-              createdAt: DateTime.now(),
-            ));
+        if (userId != null) {
+          await db.into(db.localPhotos).insert(LocalPhotosCompanion.insert(
+                id: const Uuid().v4(),
+                userId: Value(userId),
+                sealId: sealId,
+                localPath: path,
+                createdAt: DateTime.now(),
+              ));
+        }
       }
     });
 
@@ -969,7 +982,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
     await ref.read(syncServiceProvider).syncAll();
 
     if (!mounted) return;
-    final unsent = await countUnsentPhotos(db);
+    final userId = ref.read(currentUserIdProvider);
+    final unsent = await countUnsentPhotos(db, userId: userId);
     final message = unsent == 0
         ? 'Ucpávka uložena, fotky nahrány na server.'
         : 'Ucpávka uložena, ale $unsent fotek se nepodařilo nahrát. Synchronizujte znovu.';
@@ -1053,7 +1067,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                           fontWeight: FontWeight.w700,
                           color: Theme.of(context).colorScheme.primary,
                           decoration: TextDecoration.underline,
-                          decorationColor: Theme.of(context).colorScheme.primary,
+                          decorationColor:
+                              Theme.of(context).colorScheme.primary,
                         ),
                   ),
                   subtitle: Text(_floorName!),
@@ -1100,7 +1115,8 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                 MultiChipSelector(
                   label: 'Materiály',
                   options: systemMaterials[_system] ?? ['Jiný'],
-                  selected: _entries.isNotEmpty ? _entries.first.materials : const [],
+                  selected:
+                      _entries.isNotEmpty ? _entries.first.materials : const [],
                   allowCustom: true,
                   emphasize: true,
                   onChanged: (v) {
@@ -1128,7 +1144,10 @@ class _SealFormScreenState extends ConsumerState<SealFormScreen> {
                   decoration: BoxDecoration(
                     borderRadius: AppRadius.mdAll,
                     border: Border.all(
-                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
+                      color: Theme.of(context)
+                          .colorScheme
+                          .primary
+                          .withValues(alpha: 0.5),
                       width: 1.5,
                     ),
                   ),

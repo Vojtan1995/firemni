@@ -187,7 +187,7 @@ class _SoupisyScreenState extends ConsumerState<SoupisyScreen> {
           AppSecondaryButton(
             label: auth.isWorker
                 ? 'Zobrazit uložené soupisy'
-                : 'Soupisy podle pracovníků',
+                : 'Uložené soupisy',
             icon: auth.isWorker
                 ? Icons.folder_open_outlined
                 : Icons.people_outline,

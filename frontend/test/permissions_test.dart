@@ -38,4 +38,51 @@ void main() {
     expect(AppPermissions.canAccessTrash('admin'), isTrue);
     expect(AppPermissions.has('admin', 'photo.delete'), isTrue);
   });
+
+  test('frontend matrix mirrors backend permission roles', () {
+    const expected = <String, List<String>>{
+      'seal.create': ['worker', 'vedeni', 'admin'],
+      'seal.edit': ['worker', 'vedeni', 'admin'],
+      'seal.status': ['vedeni', 'admin'],
+      'seal.delete': ['vedeni', 'admin'],
+      'seal.restore': ['admin'],
+      'seal.history': ['vedeni', 'admin'],
+      'seal.override_locked': ['vedeni', 'admin'],
+      'photo.upload': ['worker', 'vedeni', 'admin'],
+      'photo.delete': ['vedeni', 'admin'],
+      'job.manage': ['vedeni', 'admin'],
+      'floor.manage': ['vedeni', 'admin'],
+      'floor.drawing.manage': ['vedeni', 'admin'],
+      'user.manage': ['vedeni', 'admin'],
+      'reports.view': ['worker', 'vedeni', 'admin'],
+      'reports.export': ['worker', 'vedeni', 'admin'],
+      'priceList.view': ['worker', 'vedeni', 'admin'],
+      'priceList.manage': ['vedeni', 'admin'],
+      'logs.view': ['vedeni', 'admin'],
+      'admin.trash': ['admin'],
+      'admin.backup': ['admin'],
+      'worksheet.create': ['worker', 'vedeni', 'admin'],
+      'worksheet.view': ['worker', 'vedeni', 'admin'],
+      'worksheet.delete': ['worker', 'vedeni', 'admin'],
+      'worksheet.submit': ['worker', 'vedeni', 'admin'],
+      'worksheet.review': ['vedeni', 'admin'],
+      'worksheet.invoice': ['vedeni', 'admin'],
+      'worksheet.archive': ['vedeni', 'admin'],
+      'stats.view': ['worker', 'vedeni', 'admin'],
+      'repair.create': ['worker', 'vedeni', 'admin'],
+      'repair.view': ['worker', 'vedeni', 'admin'],
+      'repair.export': ['vedeni', 'admin'],
+    };
+    const roles = ['worker', 'vedeni', 'admin'];
+
+    for (final entry in expected.entries) {
+      for (final role in roles) {
+        expect(
+          AppPermissions.has(role, entry.key),
+          entry.value.contains(role),
+          reason: '$role / ${entry.key}',
+        );
+      }
+    }
+  });
 }

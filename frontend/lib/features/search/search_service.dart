@@ -99,36 +99,103 @@ Future<List<SearchHit>> searchLocal(
     if (allowedJobIds.isEmpty) return [];
   }
 
-  final seals = await (db.select(db.localSeals)
-        ..where((s) => s.deletedAt.isNull())
-        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)]))
-      .get();
-
-  final jobs = await db.select(db.localJobs).get();
-  final jobById = {for (final j in jobs) j.id: j};
-  final floors = await db.select(db.localFloors).get();
-  final floorById = {for (final f in floors) f.id: f};
-
   final hits = <SearchHit>[];
+  final likeTerm = '%$term%';
+  final matchingJobs = term.length >= 2
+      ? await (db.select(db.localJobs)
+            ..where((j) {
+              var expr = j.deletedAt.isNull() &
+                  (j.name.like(likeTerm) | j.projectNumber.like(likeTerm));
+              if (allowedJobIds != null) {
+                expr = expr & j.id.isIn(allowedJobIds.toList());
+              }
+              return expr;
+            })
+            ..limit(limit))
+          .get()
+      : <LocalJob>[];
+
+  final matchingFloors = term.length >= 2
+      ? await (db.select(db.localFloors)
+            ..where((f) {
+              var expr = f.deletedAt.isNull() & f.name.like(likeTerm);
+              if (allowedJobIds != null) {
+                expr = expr & f.jobId.isIn(allowedJobIds.toList());
+              }
+              return expr;
+            })
+            ..limit(limit * 2))
+          .get()
+      : <LocalFloor>[];
 
   if (term.length >= 2) {
-    for (final job in jobs) {
-      if (job.deletedAt != null) continue;
-      if (allowedJobIds != null && !allowedJobIds.contains(job.id)) continue;
-      if (_containsTerm(job.name, term) ||
-          _containsTerm(job.projectNumber, term)) {
-        hits.add(SearchHit(
-          type: 'job',
-          id: job.id,
-          jobName: job.name,
-          projectNumber: job.projectNumber,
-          subtitle: job.projectNumber,
-        ));
-      }
+    for (final job in matchingJobs) {
+      hits.add(SearchHit(
+        type: 'job',
+        id: job.id,
+        jobName: job.name,
+        projectNumber: job.projectNumber,
+        subtitle: job.projectNumber,
+      ));
     }
   }
 
-  final photos = await db.select(db.localPhotos).get();
+  final matchingJobIds = matchingJobs.map((j) => j.id).toSet();
+  final matchingFloorIds = matchingFloors.map((f) => f.id).toSet();
+  final seals = await (db.select(db.localSeals)
+        ..where((s) {
+          var expr = s.deletedAt.isNull();
+          if (allowedJobIds != null) {
+            expr = expr & s.jobId.isIn(allowedJobIds.toList());
+          }
+          if (term.length >= 2) {
+            expr = expr &
+                (s.sealNumber.like(likeTerm) |
+                    s.system.like(likeTerm) |
+                    s.construction.like(likeTerm) |
+                    s.location.like(likeTerm) |
+                    s.fireRating.like(likeTerm) |
+                    s.internalNote.like(likeTerm) |
+                    (isWorker
+                        ? const Constant(false)
+                        : s.note.like(likeTerm)) |
+                    (matchingJobIds.isEmpty
+                        ? const Constant(false)
+                        : s.jobId.isIn(matchingJobIds.toList())) |
+                    (matchingFloorIds.isEmpty
+                        ? const Constant(false)
+                        : s.floorId.isIn(matchingFloorIds.toList())));
+          }
+          return expr;
+        })
+        ..orderBy([(s) => OrderingTerm.desc(s.updatedAt)])
+        ..limit(limit * 4))
+      .get();
+
+  final sealJobIds = seals.map((s) => s.jobId).toSet();
+  final sealFloorIds = seals.map((s) => s.floorId).toSet();
+  final jobs = sealJobIds.isEmpty
+      ? matchingJobs
+      : await (db.select(db.localJobs)
+            ..where((j) => j.id.isIn({...sealJobIds, ...matchingJobIds}.toList())))
+          .get();
+  final jobById = {for (final j in jobs) j.id: j};
+  final floors = sealFloorIds.isEmpty
+      ? matchingFloors
+      : await (db.select(db.localFloors)
+            ..where((f) =>
+                f.id.isIn({...sealFloorIds, ...matchingFloorIds}.toList())))
+          .get();
+  final floorById = {for (final f in floors) f.id: f};
+
+  final photos = userId == null || seals.isEmpty
+      ? <LocalPhoto>[]
+      : await (db.select(db.localPhotos)
+            ..where((p) => Expression.and([
+                  p.userId.equals(userId),
+                  p.sealId.isIn(seals.map((s) => s.id).toList()),
+                ])))
+          .get();
   final photoCounts = <String, int>{};
   for (final photo in photos) {
     photoCounts[photo.sealId] = (photoCounts[photo.sealId] ?? 0) + 1;

@@ -90,10 +90,17 @@ router.post('/', requireRole(...MANAGEMENT_ROLES), async (req, res, next) => {
   try {
     const jobId = paramId((req.params as { jobId: string }).jobId);
     const body = createFloorSchema.parse(req.body);
+    const job = await prisma.job.findFirst({ where: { id: jobId, deletedAt: null } });
+    if (!job) throw notFound('Stavba nenalezena');
     const floor = await prisma.jobFloor.create({
       data: { jobId, name: body.name, sortOrder: body.sortOrder ?? 0 },
     });
-    await logActivity(req.user!.id, 'create', 'job_floor', floor.id, { jobId });
+    await logActivity(req.user!.id, 'create', 'job_floor', floor.id, {
+      jobId,
+      projectNumber: job.projectNumber,
+      jobName: job.name,
+      floorName: floor.name,
+    });
     res.status(201).json(floor);
   } catch (e) {
     next(e);
@@ -114,16 +121,17 @@ async function getActiveFloor(jobId: string, floorId: string) {
   if (!job) throw notFound('Stavba nenalezena');
   const floor = await prisma.jobFloor.findFirst({
     where: { id: floorId, jobId, deletedAt: null },
+    include: { job: { select: { projectNumber: true, name: true } } },
   });
   if (!floor) throw notFound('Patro nenalezeno');
-  return floor;
+  return { ...floor, job };
 }
 
 router.get('/:floorId/next-seal-number', async (req, res, next) => {
   try {
     const jobId = paramId((req.params as { jobId: string; floorId: string }).jobId);
     const floorId = paramId((req.params as { jobId: string; floorId: string }).floorId);
-    await getActiveFloor(jobId, floorId);
+    const current = await getActiveFloor(jobId, floorId);
     await assertJobReadable(jobId, req.user!.role, req.user!.id);
     const nextNumber = await suggestNextSealNumber(floorId);
     res.json({ nextSealNumber: nextNumber });
@@ -239,6 +247,8 @@ router.put('/:floorId/markers/:sealId', async (req, res, next) => {
       .object({
         x: z.number().min(0).max(1),
         y: z.number().min(0).max(1),
+        labelOffsetX: z.number().nullable().optional(),
+        labelOffsetY: z.number().nullable().optional(),
       })
       .parse(req.body);
     const marker = await upsertSealMarker(
@@ -248,6 +258,8 @@ router.put('/:floorId/markers/:sealId', async (req, res, next) => {
       body.y,
       req.user!.id,
       req.user!.role,
+      body.labelOffsetX,
+      body.labelOffsetY,
     );
     res.json(marker);
   } catch (e) {
@@ -269,7 +281,7 @@ router.patch('/:floorId', requireRole(...MANAGEMENT_ROLES), async (req, res, nex
   try {
     const jobId = paramId((req.params as { jobId: string }).jobId);
     const floorId = paramId(req.params.floorId);
-    await getActiveFloor(jobId, floorId);
+    const current = await getActiveFloor(jobId, floorId);
     const body = updateFloorSchema.parse(req.body);
     if (Object.keys(body).length === 0) throw badRequest('Žádná pole k úpravě');
 
@@ -277,7 +289,13 @@ router.patch('/:floorId', requireRole(...MANAGEMENT_ROLES), async (req, res, nex
       where: { id: floorId },
       data: body,
     });
-    await logActivity(req.user!.id, 'update', 'job_floor', floor.id, { jobId });
+    await logActivity(req.user!.id, 'update', 'job_floor', floor.id, {
+      jobId,
+      projectNumber: current.job.projectNumber,
+      jobName: current.job.name,
+      floorName: floor.name,
+      previousFloorName: current.name,
+    });
     res.json(floor);
   } catch (e) {
     next(e);
@@ -288,7 +306,7 @@ router.delete('/:floorId', requireRole(...MANAGEMENT_ROLES), async (req, res, ne
   try {
     const jobId = paramId((req.params as { jobId: string }).jobId);
     const floorId = paramId(req.params.floorId);
-    await getActiveFloor(jobId, floorId);
+    const current = await getActiveFloor(jobId, floorId);
     const { deleteReason } = deleteReasonSchema.parse(req.body ?? {});
 
     const activeSeals = await prisma.seal.count({
@@ -306,7 +324,12 @@ router.delete('/:floorId', requireRole(...MANAGEMENT_ROLES), async (req, res, ne
         deleteReason: deleteReason ?? null,
       },
     });
-    await logActivity(req.user!.id, 'soft_delete', 'job_floor', floor.id, { jobId });
+    await logActivity(req.user!.id, 'soft_delete', 'job_floor', floor.id, {
+      jobId,
+      projectNumber: current.job.projectNumber,
+      jobName: current.job.name,
+      floorName: current.name,
+    });
     res.json({ ok: true, id: floor.id });
   } catch (e) {
     next(e);

@@ -35,7 +35,7 @@ Aplikace je na poměry interního firemního nástroje nadprůměrně zabezpeče
 | Error handling | Centrální middleware, 500 neprozrazuje stack, Zod chyby → 400 s detaily; logování pino + ErrorLog + volitelný Sentry | `backend/src/middleware/error.middleware.ts`, `backend/src/index.ts` |
 | Seed | V produkci vyžaduje `SEED_DEMO_PIN`, jinak spadne | `backend/prisma/seed.ts:7-13` |
 | Testy + CI | 40 testovacích souborů vč. integračních (RBAC, autorizace, fotky, pricing, sync) běžících proti reálnému PostgreSQL v GitHub Actions; Flutter analyze + unit + runtime testy | `backend/__tests__/`, `.github/workflows/ci.yml` |
-| Zálohy | Denní `pg_dump` → R2/S3 přes GitHub Actions s 30denní retencí | `.github/workflows/backup.yml` |
+| Zálohy | Denní šifrovaný `pg_dump -Fc` → R2, denní objektová záloha fotek/výkresů, týdenní restore test a admin evidence `BackupRun` | `.github/workflows/backup.yml`, `.github/workflows/object-backup.yml`, `.github/workflows/dr-restore-test.yml` |
 | Frontend | Token ve `flutter_secure_storage`; release build **vynucuje** `--dart-define=API_BASE_URL` (nespustí se proti localhostu omylem) | `frontend/lib/core/config.dart`, `frontend/lib/features/auth/auth_provider.dart` |
 | Dokumentace | Nadstandardní: RUNNING, KNOWN_ISSUES, RELEASE_CHECKLIST, DEPLOY_RAILWAY, docs/* | kořen repa |
 

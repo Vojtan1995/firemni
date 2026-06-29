@@ -76,6 +76,15 @@ jobs:
           set -euo pipefail
           grep -q 'android:allowBackup="false"' frontend/android/app/src/main/AndroidManifest.xml
           grep -q 'cleartextTrafficPermitted="false"' frontend/android/app/src/main/res/xml/network_security_config.xml
+          grep -q 'android:usesCleartextTraffic="false"' frontend/android/app/src/main/AndroidManifest.xml
+          if grep -q 'android:networkSecurityConfig' frontend/android/app/src/main/AndroidManifest.xml; then
+            echo "::error::Production Android manifest must not reference a debug cleartext network config"
+            exit 1
+          fi
+          if grep -q 'cleartextTrafficPermitted="true"' frontend/android/app/src/main/res/xml/network_security_config.xml; then
+            echo "::error::Production Android network config must not allow cleartext exceptions"
+            exit 1
+          fi
 
           # Skenujeme jen verzované soubory (git ls-files) – node_modules je
           # gitignored, takže odpadnou falešné nálezy z README knihoven (dotenv).

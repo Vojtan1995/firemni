@@ -45,7 +45,7 @@ Související: [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [RUNNING.md](RUNNING.md),
 > - ◑ **Sync na pozadí (Doze)** — stále řešeno ručním syncem; WorkManager je budoucí task.
 > - ☐ **Nepodepsaný Windows exe** — zbývá (SmartScreen „Spustit přesto"), nízká priorita.
 > - ☐ **Koš jen pro ucpávky** — patra/stavby bez obnovy, zbývá.
-> - ☐ **Provozní procesy** — test obnovy ze zálohy zatím neproběhl.
+> - ✅ **Provozní procesy** — živý restore test ze šifrované `.dump.age` zálohy proběhl 2026-06-28; nově se DB/object/restore běhy zapisují do `BackupRun`.
 >
 > Tabulka níže je původní (2026-05-28) a slouží jako kontext.
 
@@ -58,7 +58,7 @@ Související: [BETA_TEST_PLAN.md](BETA_TEST_PLAN.md), [RUNNING.md](RUNNING.md),
 | **Mobil na fyzickém zařízení**     | `localhost` na telefonu ≠ PC; nutná LAN IP nebo VPN                             | `--dart-define=API_BASE_URL=https://api.firma.cz`      |
 | **Sync timer na pozadí (Android)** | Doze může zpomalit automatický sync                                             | Workmanager / foreground service (nový task)           |
 | **Koš jen pro ucpávky**            | Patra/stavby bez list API                                                       | Backend + UI rozšíření                                 |
-| **Chybí produkční provoz**         | Zálohy DB, logy, RBAC správa uživatelů v UI                                     | DevOps + admin nástroje                                |
+| **Produkční provoz**               | DB/object zálohy, restore testy a admin logy záloh jsou pokryté; průběžně hlídat alerty | DevOps + admin nástroje                                |
 
 
 ---

@@ -18,6 +18,7 @@ Komunikační kanál: DOPLNIT.
 1. Zastavit zápisy nebo backend.
 2. Pořídit forenzní snapshot současného stavu, pokud je dostupný.
 3. Vybrat nejnovější backup s platným manifestem a checksumem.
+   - Stav posledních produkčních běhů ověřit také v aplikaci: Logy → Zálohy (`BackupRun` pro DB, objekty a restore test).
 4. Ověřit dostupnost `age` identity z firemního trezoru.
 5. Dešifrovat `.dump.age`; privátní klíč nikdy nelogovat.
 6. Obnovit přes `pg_restore --clean --if-exists --no-owner --no-acl`.

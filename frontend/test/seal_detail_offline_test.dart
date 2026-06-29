@@ -7,7 +7,8 @@ import 'package:ucpavky/features/seals/seal_detail_screen.dart';
 
 /// Offline detail ucpávky: jsonPayload, prostupy, fotky, zachování outboxu.
 void main() {
-  test('sealDetailFromLocal restores entries and materials from jsonPayload', () async {
+  test('sealDetailFromLocal restores entries and materials from jsonPayload',
+      () async {
     final db = AppDatabase.forTesting();
     addTearDown(db.close);
 
@@ -54,7 +55,9 @@ void main() {
           ),
         );
 
-    final row = await (db.select(db.localSeals)..where((s) => s.id.equals('seal-1'))).getSingle();
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals('seal-1')))
+        .getSingle();
     final seal = sealDetailFromLocal(row, []);
 
     expect(seal, isNotNull);
@@ -89,8 +92,9 @@ void main() {
           ),
         );
 
-    final row =
-        await (db.select(db.localSeals)..where((s) => s.id.equals('seal-notes'))).getSingle();
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals('seal-notes')))
+        .getSingle();
     final seal = sealDetailFromLocal(row, [])!;
 
     expect(seal['note'], 'public from column');
@@ -113,39 +117,82 @@ void main() {
           ),
         );
 
-    await cacheSealDetailFromApi(db, {
-      'id': 'seal-1',
-      'jobId': 'job-1',
-      'floorId': 'floor-1',
-      'sealNumber': '99',
-      'system': 'S',
-      'construction': 'C',
-      'location': 'L',
-      'fireRating': 'EI',
-      'status': 'draft',
-      'version': 1,
-      'updatedAt': DateTime.now().toIso8601String(),
-      'entries': [
+    await cacheSealDetailFromApi(
+        db,
         {
-          'entryType': 'Kabel',
-          'dimension': '10',
-          'quantity': 1,
-          'insulation': 'X',
-          'materials': [
-            {'material': 'Pěna'},
+          'id': 'seal-1',
+          'jobId': 'job-1',
+          'floorId': 'floor-1',
+          'sealNumber': '99',
+          'system': 'S',
+          'construction': 'C',
+          'location': 'L',
+          'fireRating': 'EI',
+          'status': 'draft',
+          'version': 1,
+          'updatedAt': DateTime.now().toIso8601String(),
+          'entries': [
+            {
+              'entryType': 'Kabel',
+              'dimension': '10',
+              'quantity': 1,
+              'insulation': 'X',
+              'materials': [
+                {'material': 'Pěna'},
+              ],
+            },
           ],
+          'photos': [],
         },
-      ],
-      'photos': [],
-    });
+        userId: 'user-1');
 
     final outbox = await db.select(db.localOutbox).get();
     expect(outbox.length, 1);
     expect(outbox.first.status, 'pending');
 
-    final row = await (db.select(db.localSeals)..where((s) => s.id.equals('seal-1'))).getSingle();
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals('seal-1')))
+        .getSingle();
     expect(row.jsonPayload, isNotNull);
     expect(jsonDecode(row.jsonPayload!)['entries'], isA<List>());
+  });
+
+  test('cacheSealDetailFromApi stores photo metadata for current user',
+      () async {
+    final db = AppDatabase.forTesting();
+    addTearDown(db.close);
+    final now = DateTime(2026, 6, 29);
+
+    await cacheSealDetailFromApi(
+        db,
+        {
+          'id': 'seal-photo-cache',
+          'jobId': 'job-1',
+          'floorId': 'floor-1',
+          'sealNumber': '100',
+          'system': 'S',
+          'construction': 'C',
+          'location': 'L',
+          'fireRating': 'EI',
+          'status': 'draft',
+          'version': 1,
+          'updatedAt': now.toIso8601String(),
+          'entries': [],
+          'photos': [
+            {
+              'id': 'photo-1',
+              'filePath': 'server/photo.webp',
+              'createdAt': now.toIso8601String(),
+            },
+          ],
+        },
+        userId: 'user-1');
+
+    final photo = await (db.select(db.localPhotos)
+          ..where((p) => p.id.equals('photo-1')))
+        .getSingle();
+    expect(photo.userId, 'user-1');
+    expect(photo.status, 'done');
   });
 
   test('sealDetailFromLocal includes pending local photo metadata', () async {
@@ -177,8 +224,12 @@ void main() {
           ),
         );
 
-    final row = await (db.select(db.localSeals)..where((s) => s.id.equals('seal-1'))).getSingle();
-    final photos = await (db.select(db.localPhotos)..where((p) => p.sealId.equals('seal-1'))).get();
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals('seal-1')))
+        .getSingle();
+    final photos = await (db.select(db.localPhotos)
+          ..where((p) => p.sealId.equals('seal-1')))
+        .get();
     final seal = sealDetailFromLocal(row, photos)!;
 
     final photoList = seal['photos'] as List;
@@ -217,8 +268,12 @@ void main() {
           ),
         );
 
-    final row = await (db.select(db.localSeals)..where((s) => s.id.equals('seal-1'))).getSingle();
-    final photos = await (db.select(db.localPhotos)..where((p) => p.sealId.equals('seal-1'))).get();
+    final row = await (db.select(db.localSeals)
+          ..where((s) => s.id.equals('seal-1')))
+        .getSingle();
+    final photos = await (db.select(db.localPhotos)
+          ..where((p) => p.sealId.equals('seal-1')))
+        .get();
     final seal = sealDetailFromLocal(row, photos)!;
 
     final photoList = seal['photos'] as List;

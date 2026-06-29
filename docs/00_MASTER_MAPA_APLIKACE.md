@@ -26,7 +26,7 @@ Pořadí zdrojů pravdy:
 5. provozní konfigurace a živé endpointy,
 6. dokumentace.
 
-Dokumentace je pomocný zdroj, nikoli definitivní důkaz. Například `docs/DATABASE.md` stále uvádí odstraněnou roli `ucetni`, zatímco aktuální schéma a testy mají jen `worker`, `vedeni`, `admin`.
+Dokumentace je pomocný zdroj, nikoli definitivní důkaz. Backendové schéma a testy jsou autorita; aktuální aplikační role jsou `worker`, `vedeni`, `admin`.
 
 ## 2. Manažerské shrnutí
 
@@ -88,7 +88,7 @@ Hranice důvěry a odpovědnosti:
 
 ### 4.2 Hierarchie
 
-- `worker` není podmnožinou všech práv vedení; například může odevzdat pracovní soupis, zatímco `vedeni` podle aktuální matice `worksheet.submit` nemá.
+- `worker` není podmnožinou všech práv vedení; objektové scopy a workflow se vynucují nad rámec role.
 - `vedeni` nesmí vytvářet, upravovat ani zobrazovat admin účty.
 - `admin` je v UI označen jako nouzový účet; běžnou správu má dělat vedení.
 - Worker je navíc omezen účastí na konkrétní stavbě.
@@ -123,7 +123,7 @@ Hranice důvěry a odpovědnosti:
 | `/logs` | — | ✓ s anonymizací admina | ✓ | Provozní a auditní logy |
 | `/trash` | — | — | ✓ | Smazané ucpávky a obnova |
 | Opravy ucpávek | ❌ | ❌ | ❌ | Backend existuje, frontendová obrazovka a route chybí |
-| Zálohy/storage verify | ❌ | ❌ | ❌ | Admin API existuje, samostatné UI chybí |
+| Zálohy/storage verify | ❌ | ❌ | ❌ | Admin vidí stav DB/object/restore záloh v log sekci Zálohy; storage verify zůstává admin API |
 
 Další pravidla:
 
@@ -148,7 +148,8 @@ Další pravidla:
 - ✅ Per-IP login limit 30 pokusů / 15 minut.
 - ✅ Per-account lockout po 10 neúspěšných pokusech / 15 minut.
 - ✅ Admin/vedení může resetovat PIN podřízeného účtu.
-- ❌ MFA, biometrie, SSO, OIDC, passkeys a recovery kódy.
+- ✅ Admin MFA: TOTP, recovery kódy, step-up pro citlivé operace a startup gate při `ADMIN_MFA_REQUIRED=true`.
+- ❌ Biometrie, SSO, OIDC a passkeys.
 - ❌ Uživatel nemá seznam svých aktivních session ani tlačítko „odhlásit všechna zařízení“.
 
 ### 6.2 Stavby a patra
@@ -183,7 +184,7 @@ Další pravidla:
 - ✅ Historie a field-level change log.
 - ✅ Worker editací kontrolované ucpávky vrátí záznam do draftu.
 - ✅ Fakturovaná ucpávka je pro workera zamčená.
-- 🟡 `photo.delete` je záměrně zakázáno všem rolím; je nutné potvrdit, že to odpovídá firemní politice oprav chybných fotografií.
+- ✅ `photo.delete` je soft-delete pro vedení/admin, vyžaduje důvod a zachovává auditní stopu.
 
 ### 6.4 Fotky
 
@@ -319,9 +320,9 @@ Backendová matice obsahuje 31 pojmenovaných oprávnění:
 | `seal.delete` | — | ✓ | ✓ | Soft delete |
 | `seal.restore` | — | — | ✓ | Konflikt čísla může obnovu blokovat |
 | `seal.history` | — | ✓ | ✓ | Auditní historie |
-| `seal.override_locked` | — | ✓ | ✓ | Backend; frontendová matice položku nemá |
+| `seal.override_locked` | — | ✓ | ✓ | Backend i frontend permission mirror |
 | `photo.upload` | ✓ | ✓ | ✓ | Přístup k ucpávce |
-| `photo.delete` | — | — | — | Záměrně nikdo |
+| `photo.delete` | — | ✓ | ✓ | Soft-delete + povinný důvod |
 | `job.manage` | — | ✓ | ✓ | Stavby a účastníci |
 | `floor.manage` | — | ✓ | ✓ | Patra |
 | `floor.drawing.manage` | — | ✓ | ✓ | Výkresy |
@@ -336,10 +337,10 @@ Backendová matice obsahuje 31 pojmenovaných oprávnění:
 | `worksheet.create` | ✓ | ✓ | ✓ | Worker jen vlastní worker soupis |
 | `worksheet.view` | ✓ | ✓ | ✓ | Worker jen vlastní/účast |
 | `worksheet.delete` | ✓ | ✓ | ✓ | Pouze draft |
-| `worksheet.submit` | ✓ | — | ✓ | Vedení nemá |
+| `worksheet.submit` | ✓ | ✓ | ✓ | Worker scope řeší backend |
 | `worksheet.review` | — | ✓ | ✓ | — |
 | `worksheet.invoice` | — | ✓ | ✓ | — |
-| `worksheet.archive` | — | ✓ | ✓ | Frontendová matice položku nemá |
+| `worksheet.archive` | — | ✓ | ✓ | Backend i frontend permission mirror |
 | `stats.view` | ✓ | ✓ | ✓ | Worker jen vlastní data |
 | `repair.create` | ✓ | ✓ | ✓ | Frontend chybí |
 | `repair.view` | ✓ | ✓ | ✓ | Worker scope; frontend chybí |
@@ -347,10 +348,9 @@ Backendová matice obsahuje 31 pojmenovaných oprávnění:
 
 Neshody, které musí zůstat viditelné:
 
-- Frontendová matice je neúplná proti backendu: chybí `seal.override_locked`, `worksheet.archive`, `repair.*` a `admin.backup`.
-- Backend je autorita, takže tato neshoda sama o sobě nevytváří zvýšení práv, ale může skrýt nebo nekonzistentně zobrazovat funkce.
-- `worksheet.submit` nemá vedení.
-- `photo.delete` nemá nikdo.
+- Frontendová permission matice je synchronní s backendovým seznamem oprávnění.
+- Backend je nadále autorita pro objektové scopy a workflow pravidla.
+- `repair.*` a `admin.backup` jsou v permission mirroru, ale nemají plnohodnotné samostatné frontendové obrazovky.
 
 ## 8. Data, jejich citlivost a životní cyklus
 
@@ -418,14 +418,14 @@ Neshody, které musí zůstat viditelné:
 - ✅ Audit důležitých operací a změn.
 - ✅ Bez stack trace v odpovědi 500.
 - ✅ Token v `flutter_secure_storage`.
-- ✅ Produkční Android blokuje obecný cleartext; povolené jsou jen explicitní lokální dev adresy.
+- ✅ Produkční Android release nemá cleartext výjimky; lokální HTTP je povolené jen v debug/profile manifestech.
 - ✅ Podepsaný Android release.
 - ✅ GitHub secrets pro podpis a infrastrukturu.
 - ✅ S3 storage je ověřitelný write/read probe.
 
 ### 9.2 Chybějící nebo neověřené vrstvy
 
-- ❌ MFA/SSO a silnější autentizace pro admina.
+- ✅ Admin MFA/TOTP a silnější admin heslo; ❌ SSO/passkeys.
 - ❌ Šifrování lokální SQLite a lokálních fotografií aplikačním klíčem.
 - ❌ Remote wipe, device binding, MDM enforcement a detekce root/jailbreak.
 - ❌ Certificate pinning; není povinné, ale je to možná další vrstva pro řízená zařízení.
@@ -474,10 +474,10 @@ Neshody, které musí zůstat viditelné:
 - ✅ Mazání záloh starších 30 dní.
 - ✅ Telegram alert při neúspěchu, pokud jsou secrets.
 - ✅ Dokumentovaný restore postup.
-- ❌ Prakticky doložený restore test s datem, dobou a výsledkem.
+- ✅ Prakticky doložený restore test s datem, dobou a výsledkem (2026-06-28; průběžně `dr-restore-test.yml`).
 - ❌ Definovaný a schválený RPO/RTO.
 - ⚪ Návrhové RPO je maximálně přibližně 24 hodin jen tehdy, pokud denní backup skutečně pravidelně prochází.
-- ⚪ RTO nelze určit bez restore testu.
+- ✅ RTO ověřeno restore testem; cíl zůstává nejvýše 4 h.
 - ❌ Point-in-time recovery není doloženo.
 - ❌ Nezávislá druhá storage/region kopie není doložena.
 
@@ -579,9 +579,9 @@ Nenalezená napojení:
 
 Další platformní body:
 
-- Produkční base network config blokuje obecný HTTP cleartext.
-- Cleartext je v main configu povolen jen pro explicitní lokální dev adresy.
-- Debug/profile build dovoluje cleartext obecně; nesmí být distribuován jako produkce.
+- Produkční release manifest nastavuje `android:usesCleartextTraffic="false"` a neodkazuje na debug network config.
+- Main network config neobsahuje žádné `cleartextTrafficPermitted="true"` výjimky.
+- Debug/profile build dovoluje cleartext přes vlastní manifest a network config; nesmí být distribuován jako produkce.
 - Android release je podepsán vlastním keystore.
 - Windows aplikace/installer nemá doložený code-signing certifikát.
 - Aplikace nemá MDM policy, remote wipe ani vynucený screen lock.
@@ -703,7 +703,7 @@ Aktuálně je definováno 106 route handlerů plus `/health` a `/ready`. Skupiny
 - Worksheets: seznam, create/generate, bulk status, detail, items/populate, delete, status, export.
 - Stats: overview.
 - Search: globální hledání.
-- Admin: seznam/spuštění záloh, storage verify.
+- Admin: stav produkčních DB/object/restore záloh, legacy ad-hoc lokální backupy, storage verify.
 - Client errors: odeslání chyby přihlášeným klientem.
 
 API dokumentační mezery:
@@ -757,7 +757,7 @@ API dokumentační mezery:
 - ❌ Penetrační test a DAST.
 - ❌ Test na fyzickém Androidu jako povinný release gate.
 - ❌ Windows installer end-to-end install/upgrade/uninstall test.
-- ❌ Obnova reálné produkční zálohy.
+- ✅ Obnova reálné produkční zálohy ověřena přes `dr-restore-test.yml`.
 - ❌ Chaos test DB/R2/network outage.
 - ❌ Accessibility test.
 - ❌ Test lokalizace, velkého písma a screen readeru.
@@ -817,8 +817,8 @@ API dokumentační mezery:
 
 ### Priorita P0 – před tvrzením o plné shodě nebo vyšší kritičnosti
 
-- ❌ Není test obnovy zálohy.
-- ❌ Není MFA pro admina.
+- ✅ Test obnovy zálohy běží týdně přes `dr-restore-test.yml`.
+- 🟡 Admin MFA je implementované (TOTP + recovery + step-up); není phishing-resistant.
 - ❌ Lokální SQLite a fotografie nejsou aplikačně šifrované.
 - ❌ Chybí formální GDPR dokumentace a smluvní mapa zpracovatelů.
 - ❌ Chybí model produktových certifikátů/ETA/DoP/CE a kvalifikací montážníků.
@@ -828,8 +828,8 @@ API dokumentační mezery:
 
 - 🟡 Backend oprav nemá frontend.
 - 🟡 Admin backup/storage API nemá frontend.
-- 🟡 Frontend a backend permission matice nejsou úplně synchronní.
-- 🟡 Dokumentace obsahuje odstraněnou roli `ucetni` a staré počty testů.
+- ✅ Frontend a backend permission matice jsou synchronní.
+- 🟡 Některé historické dokumenty a prezentace mohou stále obsahovat starší formulace; autoritou je tato master mapa a testy.
 - 🟡 Android background sync není garantovaný.
 - 🟡 Windows installer není podepsaný.
 - 🟡 Chybí globální/shared rate limiter.
@@ -871,7 +871,7 @@ API dokumentační mezery:
 - [x] Ceník a price snapshot.
 - [x] Fotky a plány.
 - [ ] Frontend oprav.
-- [ ] Frontend záloh/storage.
+- [x] Frontend/admin log sekce pro stav záloh; storage verify zůstává API/admin operace.
 - [ ] Oborové certifikáty a kvalifikace.
 - [ ] Zákaznický/předávací portál, pokud je požadován.
 
@@ -881,9 +881,9 @@ API dokumentační mezery:
 - [x] Object-level scoping.
 - [x] Worker participant scope.
 - [x] Admin/vedení hierarchy.
-- [ ] Generovat frontendovou matici ze sdíleného kontraktu.
-- [ ] Potvrdit `photo.delete: nikdo`.
-- [ ] Potvrdit `worksheet.submit: bez vedeni`.
+- [x] Synchronizovat frontendovou matici s backendem.
+- [x] Potvrdit `photo.delete`: vedení/admin soft-delete s auditním důvodem.
+- [x] Potvrdit `worksheet.submit`: worker/vedení/admin podle backendové matice.
 - [ ] Přidat pravidelnou access review uživatelů a adminů.
 
 ### Bezpečnost
@@ -895,7 +895,7 @@ API dokumentační mezery:
 - [x] Vstupní validace.
 - [x] Bezpečné uploady.
 - [x] Audit logy.
-- [ ] MFA admin.
+- [x] MFA admin.
 - [ ] Šifrování lokálních dat.
 - [ ] Threat model.
 - [ ] Penetrační test.
@@ -924,7 +924,7 @@ API dokumentační mezery:
 - [x] CI.
 - [x] Release pipeline.
 - [x] Denní backup workflow.
-- [ ] Doložený restore test.
+- [x] Doložený restore test.
 - [ ] RPO/RTO.
 - [ ] SLA/SLO.
 - [ ] Staging.

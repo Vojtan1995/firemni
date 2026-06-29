@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' hide Column;
@@ -17,6 +18,7 @@ import '../jobs/job_context_bar.dart';
 import '../jobs/work_context_service.dart';
 import '../reports/export_service.dart';
 import '../sync/sync_conflict.dart';
+import '../sync/sync_service.dart';
 import 'seal_bulk_actions.dart';
 import 'seal_constants.dart';
 import 'seal_list_filters.dart';
@@ -75,28 +77,35 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     final db = ref.read(databaseProvider);
     final dio = ref.read(dioProvider);
 
+    await _loadFromDrift(db, showOfflineHint: false);
+
     try {
       final apiFilters = sealFiltersToApi(_activeFilters);
+      final queryParameters = <String, dynamic>{'includeMeta': '1'};
+      if (apiFilters.isNotEmpty) {
+        queryParameters['filters'] = apiFilters.join(',');
+      }
       final res = await dio.get(
         '/api/seals/floors/${widget.floorId}/seals',
-        queryParameters:
-            apiFilters.isEmpty ? null : {'filters': apiFilters.join(',')},
+        queryParameters: queryParameters,
       );
-      final apiList = (res.data as List).cast<Map<String, dynamic>>();
-      try {
-        final floors = await dio.get('/api/jobs/${widget.jobId}/floors');
-        final floorList = (floors.data as List).cast<Map<String, dynamic>>();
-        _floorName = floorList.cast<Map<String, dynamic>?>().firstWhere(
-            (f) => f?['id'] == widget.floorId,
-            orElse: () => null)?['name'] as String?;
-      } catch (_) {}
+      final data = res.data;
+      final apiList = data is Map
+          ? (data['items'] as List? ?? []).cast<Map<String, dynamic>>()
+          : (data as List).cast<Map<String, dynamic>>();
+      final apiFloorName = data is Map ? data['floorName'] as String? : null;
+      final apiHasDrawing = data is Map ? data['hasDrawing'] as bool? : null;
+      _floorName = apiFloorName ?? _floorName;
       await _cacheSealsFromApi(db, apiList);
       final merged = await _mergeWithUnsyncedLocal(db, apiList);
       await _enrichWithLocalSyncFlags(db, merged);
       final conflictIds = await _loadConflictSealIds(db, merged);
       await _persistFloorContext();
+      if (widget.jobId.isNotEmpty) {
+        unawaited(ref.read(syncServiceProvider).pullJobChanges(widget.jobId));
+      }
       await _enrichWithMarkerPlacement(db, merged);
-      final hasDrawing = await _loadDrawingAvailability(dio, db);
+      final hasDrawing = apiHasDrawing ?? await _loadDrawingAvailability(dio, db);
       if (!mounted) return;
       setState(() {
         _seals = _applyActiveFilters(merged);
@@ -106,25 +115,43 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
         _loading = false;
       });
     } on DioException catch (_) {
-      await _loadFromDrift(db);
+      await _markOfflineRefreshFailed();
     } catch (_) {
-      await _loadFromDrift(db);
+      await _markOfflineRefreshFailed();
     }
+  }
+
+  Future<void> _markOfflineRefreshFailed() async {
+    if (!mounted) return;
+    setState(() {
+      _dataSource = SealListDataSource.offline;
+      _offlineHint = _seals.isEmpty
+          ? 'Server nedostupnĂ˝ a v cache nejsou ĹľĂˇdnĂ© ucpĂˇvky pro toto patro.'
+          : 'Zobrazena poslednĂ­ uloĹľenĂˇ data z zaĹ™Ă­zenĂ­.';
+      _loading = false;
+    });
   }
 
   Future<void> _cacheSealsFromApi(
       AppDatabase db, List<Map<String, dynamic>> apiList) async {
     final userId = ref.read(currentUserIdProvider);
-    for (final m in apiList) {
+    final ids = apiList.map((m) => m['id'] as String).toList();
+    final existingRows = ids.isEmpty
+        ? <LocalSeal>[]
+        : await (db.select(db.localSeals)..where((s) => s.id.isIn(ids))).get();
+    final existingById = {for (final row in existingRows) row.id: row};
+    final activeOutboxSealIds = await loadSealIdsWithActiveSyncOutbox(
+      db,
+      userId: userId,
+    );
+
+    await db.transaction(() async {
+      for (final m in apiList) {
       final id = m['id'] as String;
-      final existing = await (db.select(db.localSeals)
-            ..where((s) => s.id.equals(id)))
-          .getSingleOrNull();
-      final syncFlags = await sealListCacheSyncFlags(
-        db,
-        sealId: id,
+      final existing = existingById[id];
+      final syncFlags = pullSealSyncFlags(
         existing: existing,
-        userId: userId,
+        hasActiveOutbox: activeOutboxSealIds.contains(id),
       );
 
       final reviewStatus = m['reviewStatus'] as String?;
@@ -166,7 +193,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
                   DateTime.now(),
             ),
           );
-    }
+      }
+    });
   }
 
   Future<List<Map<String, dynamic>>> _mergeWithUnsyncedLocal(
@@ -222,10 +250,14 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
   ) async {
     final ids = seals.map((s) => s['id'] as String).toList();
     if (ids.isEmpty) return;
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
     final unsentPhotos = await (db.select(db.localPhotos)
-          ..where((p) =>
-              p.sealId.isIn(ids) &
-              (p.status.equals('pending') | p.status.equals('failed'))))
+          ..where((p) => Expression.and([
+                p.sealId.isIn(ids),
+                p.userId.equals(userId),
+                p.status.isIn(['pending', 'failed']),
+              ])))
         .get();
     final pendingBySeal = <String, int>{};
     final failedBySeal = <String, int>{};
@@ -248,8 +280,13 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     List<String> sealIds,
   ) async {
     if (sealIds.isEmpty) return {};
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return {};
     final photos = await (db.select(db.localPhotos)
-          ..where((p) => p.sealId.isIn(sealIds)))
+          ..where((p) => Expression.and([
+                p.sealId.isIn(sealIds),
+                p.userId.equals(userId),
+              ])))
         .get();
     final counts = <String, int>{};
     for (final p in photos) {
@@ -258,7 +295,10 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     return counts;
   }
 
-  Future<void> _loadFromDrift(AppDatabase db) async {
+  Future<void> _loadFromDrift(
+    AppDatabase db, {
+    bool showOfflineHint = true,
+  }) async {
     final rows = await (db.select(db.localSeals)
           ..where(
               (s) => s.floorId.equals(widget.floorId) & s.deletedAt.isNull())
@@ -291,7 +331,7 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       _conflictSealIds = conflictIds;
       _hasDrawing = drawingRow != null;
       _dataSource = SealListDataSource.offline;
-      _offlineHint = rows.isEmpty
+      _offlineHint = showOfflineHint && rows.isEmpty
           ? 'Server nedostupný a v cache nejsou žádné ucpávky pro toto patro.'
           : null;
       _loading = false;
@@ -698,7 +738,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
       floatingActionButton: auth.isWorker || auth.isVedeni || auth.isAdmin
           ? FloatingActionButton.extended(
               onPressed: () => context
-                  .push('/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}')
+                  .push(
+                      '/seal/new?jobId=${widget.jobId}&floorId=${widget.floorId}')
                   .then((_) => _load()),
               icon: const Icon(Icons.add, size: 20),
               label: const Text('Nová'),

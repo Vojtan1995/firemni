@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll } from '@jest/globals';
 import request from 'supertest';
 import { createApp } from '../dist/app.js';
+import { config } from '../dist/config.js';
+import { prisma } from '../dist/lib/prisma.js';
 
 describe('Admin backup API', () => {
   const app = createApp();
@@ -14,6 +16,7 @@ describe('Admin backup API', () => {
   }
 
   beforeAll(async () => {
+    config.backup.reportToken = 'test-backup-token';
     adminToken = await login('admin');
     workerToken = await login('worker1');
   });
@@ -31,6 +34,44 @@ describe('Admin backup API', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('internal backup report endpoint requires token and records a run', async () => {
+    const denied = await request(app)
+      .post('/api/internal/backup-runs')
+      .send({ type: 'db', status: 'success' });
+    expect(denied.status).toBe(403);
+
+    const res = await request(app)
+      .post('/api/internal/backup-runs')
+      .set('Authorization', 'Bearer test-backup-token')
+      .send({
+        type: 'db',
+        status: 'success',
+        githubRunUrl: 'https://github.com/example/repo/actions/runs/1',
+        r2Prefix: 'backups/ucpavky_20260629_020000',
+        manifestKey: 'backups/ucpavky_20260629_020000/ucpavky_20260629_020000.manifest.json',
+        bytes: '2048',
+        finishedAt: new Date().toISOString(),
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.type).toBe('db');
+    expect(res.body.status).toBe('success');
+    expect(res.body.bytes).toBe('2048');
+
+    const status = await request(app)
+      .get('/api/admin/backup-status')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(status.status).toBe(200);
+    expect(status.body.status.database.status).toBe('success');
+
+    const logs = await request(app)
+      .get('/api/logs/backups')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(logs.status).toBe(200);
+    expect(logs.body.some((row) => row.title.includes('DB'))).toBe(true);
+
+    await prisma.backupRun.delete({ where: { id: res.body.id } });
   });
 
   it('admin can trigger backup (success or logged failure)', async () => {
