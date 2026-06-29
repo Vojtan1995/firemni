@@ -4,18 +4,17 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:pdfrx/pdfrx.dart';
 
-import 'floor_drawing_upload.dart' show labelCenterPixel, dragDeltaToNormalizedOffset;
 import 'seal_marker_widget.dart';
 
 const double kFloorPlanMinScale = 0.5;
-const double kFloorPlanMaxScale = 24.0;
+const double kFloorPlanMaxScale = 40.0;
 
 /// Maximální delší strana vyrenderované PDF bitmapy v px. Strop chrání RAM na
 /// mobilu i rychlost — i při velkém zoomu se nikdy nerenderuje extrémně velký
-/// obraz. Běžný zoom (buckety do 4×) zůstává ostrý, jen extrémní max-zoom je
+/// obraz. Běžný zoom (buckety do 8×) zůstává ostrý, jen extrémní max-zoom je
 /// o něco méně ostrý výměnou za výrazně rychlejší načtení/render.
-const double kPdfMaxRenderDim = 4000.0;
-const List<double> kPdfRenderScaleBuckets = [1, 1.5, 2, 3, 4];
+const double kPdfMaxRenderDim = 6000.0;
+const List<double> kPdfRenderScaleBuckets = [1, 1.5, 2, 3, 4, 6, 8];
 
 double floorPlanPdfRenderBucket(double viewerScale) {
   if (!viewerScale.isFinite || viewerScale <= 1) return 1;
@@ -49,7 +48,7 @@ Size floorPlanPdfRenderSize({
 /// (InteractiveViewer jen transformuje hotovou bitmapu), proto stačí jedno
 /// pevné rozlišení — dost ostré i pro přiblížení, ale bez dekódování celého
 /// velkého zdrojového souboru (až 50 MB) v plné velikosti.
-const double kRasterZoomHeadroom = 4.0;
+const double kRasterZoomHeadroom = 6.0;
 
 Size floorPlanRasterCacheSize({
   required double width,
@@ -90,8 +89,6 @@ class FloorPlanViewer extends StatefulWidget {
     this.onTapPlan,
     this.onMarkerTap,
     this.highlightSealId,
-    this.labelEditMode = false,
-    this.onLabelOffsetChanged,
   });
 
   final Uint8List bytes;
@@ -109,15 +106,6 @@ class FloorPlanViewer extends StatefulWidget {
   final void Function(Map<String, dynamic> marker)? onMarkerTap;
   final String? highlightSealId;
 
-  /// Když true, štítky se zobrazují s číselným popiskem odtažitelným od
-  /// přesné pozice ucpávky (tečka + odkazová čára) a pan výkresu je vypnutý,
-  /// aby tažení štítku nesoupeřilo s gesty InteractiveViewer.
-  final bool labelEditMode;
-
-  /// Voláno po dokončení tažení štítku s výsledným normalizovaným offsetem.
-  final void Function(String sealId, double offsetX, double offsetY)?
-      onLabelOffsetChanged;
-
   bool get isPdf => mimeType.toLowerCase().contains('pdf');
 
   @override
@@ -126,10 +114,6 @@ class FloorPlanViewer extends StatefulWidget {
 
 class _FloorPlanViewerState extends State<FloorPlanViewer> {
   late PdfDocumentRef _pdfDocumentRef;
-
-  /// Živý náhled tažení štítku, dokud worker neuvolní prst — přepisuje
-  /// uložený labelOffset jen pro vykreslení, ne pro data ve [widget.markers].
-  final Map<String, Offset> _dragOverrides = {};
 
   @override
   void initState() {
@@ -154,43 +138,6 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
         }
       });
     }
-    if (_dragOverrides.isNotEmpty) {
-      final bySealId = {
-        for (final m in widget.markers) m['sealId'] as String: m,
-      };
-      _dragOverrides.removeWhere((sealId, override) {
-        final m = bySealId[sealId];
-        if (m == null) return true;
-        final ox = (m['labelOffsetX'] as num?)?.toDouble() ?? 0;
-        final oy = (m['labelOffsetY'] as num?)?.toDouble() ?? 0;
-        return (ox - override.dx).abs() < 0.0001 &&
-            (oy - override.dy).abs() < 0.0001;
-      });
-    }
-  }
-
-  void _onLabelPanStart(String sealId, double baseOffsetX, double baseOffsetY) {
-    setState(() {
-      _dragOverrides[sealId] = Offset(baseOffsetX, baseOffsetY);
-    });
-  }
-
-  void _onLabelPanUpdate(String sealId, Offset deltaPx, Size canvasSize) {
-    final deltaNorm = dragDeltaToNormalizedOffset(deltaPx, canvasSize);
-    setState(() {
-      final current = _dragOverrides[sealId] ?? Offset.zero;
-      _dragOverrides[sealId] = Offset(
-        (current.dx + deltaNorm.dx).clamp(-1.0, 1.0),
-        (current.dy + deltaNorm.dy).clamp(-1.0, 1.0),
-      );
-    });
-  }
-
-  void _onLabelPanEnd(String sealId) {
-    final offset = _dragOverrides[sealId];
-    if (offset != null) {
-      widget.onLabelOffsetChanged?.call(sealId, offset.dx, offset.dy);
-    }
   }
 
   @override
@@ -199,9 +146,7 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
       transformationController: widget.transformationController,
       minScale: kFloorPlanMinScale,
       maxScale: kFloorPlanMaxScale,
-      // V režimu úpravy popisků je pan vypnutý, aby tažení štítku
-      // nesoupeřilo s gestem posunu výkresu.
-      panEnabled: !widget.labelEditMode,
+      panEnabled: true,
       scaleEnabled: true,
       child: Center(
         child: LayoutBuilder(
@@ -267,122 +212,36 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
                       valueListenable: widget.viewerScale,
                       builder: (context, viewerScale, _) {
                         final markerScale = markerScaleForViewer(viewerScale);
-                        final lines = <_LeaderLine>[];
-                        final children = <Widget>[];
-
-                        for (final m in widget.markers) {
-                          final x = (m['x'] as num).toDouble();
-                          final y = (m['y'] as num).toDouble();
-                          final sealId = m['sealId'] as String;
-                          final pending = m['pending'] == true;
-                          final highlighted =
-                              pending || widget.highlightSealId == sealId;
-                          final status = m['status'] as String? ?? 'draft';
-
-                          final override = _dragOverrides[sealId];
-                          final baseOffsetX =
-                              (m['labelOffsetX'] as num?)?.toDouble() ?? 0;
-                          final baseOffsetY =
-                              (m['labelOffsetY'] as num?)?.toDouble() ?? 0;
-                          final offsetX = override?.dx ?? baseOffsetX;
-                          final offsetY = override?.dy ?? baseOffsetY;
-                          final hasOffset = offsetX != 0 || offsetY != 0;
-
-                          final pointPixel = Offset(
-                            x * canvasSize.width,
-                            y * canvasSize.height,
-                          );
-                          final labelPixel = labelCenterPixel(
-                            x: x,
-                            y: y,
-                            offsetX: offsetX,
-                            offsetY: offsetY,
-                            canvasSize: canvasSize,
-                          );
-
-                          if (hasOffset) {
-                            lines.add(_LeaderLine(pointPixel, labelPixel));
-                            final dotSize =
-                                (kSealPointDotBaseSize * markerScale)
-                                    .clamp(3.0, 10.0);
-                            Widget dot = SealPointDot(
-                              status: status,
-                              scale: markerScale,
-                            );
-                            if (widget.onMarkerTap != null && !pending) {
-                              dot = GestureDetector(
-                                onTap: () => widget.onMarkerTap!(m),
-                                child: dot,
-                              );
-                            }
-                            children.add(Positioned(
-                              left: pointPixel.dx - dotSize / 2,
-                              top: pointPixel.dy - dotSize / 2,
-                              child: dot,
-                            ));
-                          }
-
-                          final labelDims = sealMarkerDimensions(
-                            markerScale,
-                            highlighted: highlighted,
-                          );
-                          final labelTopLeft = hasOffset
-                              ? Offset(
-                                  labelPixel.dx - labelDims.size / 2,
-                                  labelPixel.dy - labelDims.size / 2,
-                                )
-                              : sealMarkerTopLeft(
-                                  x: x,
-                                  y: y,
-                                  canvasSize: canvasSize,
-                                  scale: markerScale,
-                                  highlighted: highlighted,
-                                );
-
-                          Widget label = SealMarkerWidget(
-                            sealNumber: m['sealNumber'] as String? ?? '',
-                            status: status,
-                            scale: markerScale,
-                            highlighted: highlighted,
-                            onTap: widget.onMarkerTap != null && !pending
-                                ? () => widget.onMarkerTap!(m)
-                                : null,
-                          );
-
-                          if (widget.labelEditMode && !pending) {
-                            label = GestureDetector(
-                              onPanStart: (_) => _onLabelPanStart(
-                                sealId,
-                                baseOffsetX,
-                                baseOffsetY,
-                              ),
-                              onPanUpdate: (d) => _onLabelPanUpdate(
-                                sealId,
-                                d.delta,
-                                canvasSize,
-                              ),
-                              onPanEnd: (_) => _onLabelPanEnd(sealId),
-                              child: label,
-                            );
-                          }
-
-                          children.add(Positioned(
-                            left: labelTopLeft.dx,
-                            top: labelTopLeft.dy,
-                            child: label,
-                          ));
-                        }
-
                         return Stack(
                           clipBehavior: Clip.none,
-                          children: [
-                            CustomPaint(
-                              size: canvasSize,
-                              painter:
-                                  _LeaderLinePainter(lines, markerScale),
-                            ),
-                            ...children,
-                          ],
+                          children: widget.markers.map((m) {
+                            final x = (m['x'] as num).toDouble();
+                            final y = (m['y'] as num).toDouble();
+                            final sealId = m['sealId'] as String;
+                            final pending = m['pending'] == true;
+                            final highlighted =
+                                pending || widget.highlightSealId == sealId;
+                            final topLeft = sealMarkerTopLeft(
+                              x: x,
+                              y: y,
+                              canvasSize: canvasSize,
+                              scale: markerScale,
+                              highlighted: highlighted,
+                            );
+                            return Positioned(
+                              left: topLeft.dx,
+                              top: topLeft.dy,
+                              child: SealMarkerWidget(
+                                sealNumber: m['sealNumber'] as String? ?? '',
+                                status: m['status'] as String? ?? 'draft',
+                                scale: markerScale,
+                                highlighted: highlighted,
+                                onTap: widget.onMarkerTap != null && !pending
+                                    ? () => widget.onMarkerTap!(m)
+                                    : null,
+                              ),
+                            );
+                          }).toList(),
                         );
                       },
                     ),
@@ -394,37 +253,6 @@ class _FloorPlanViewerState extends State<FloorPlanViewer> {
         ),
       ),
     );
-  }
-}
-
-class _LeaderLine {
-  const _LeaderLine(this.from, this.to);
-  final Offset from;
-  final Offset to;
-}
-
-/// Tenké odkazové čáry mezi přesnou pozicí ucpávky a odtaženým štítkem.
-class _LeaderLinePainter extends CustomPainter {
-  const _LeaderLinePainter(this.lines, this.scale);
-
-  final List<_LeaderLine> lines;
-  final double scale;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (lines.isEmpty) return;
-    final paint = Paint()
-      ..color = const Color(0xFF555555)
-      ..strokeWidth = (1.0 * scale).clamp(0.4, 1.5)
-      ..style = PaintingStyle.stroke;
-    for (final line in lines) {
-      canvas.drawLine(line.from, line.to, paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LeaderLinePainter oldDelegate) {
-    return !identical(oldDelegate.lines, lines) || oldDelegate.scale != scale;
   }
 }
 

@@ -1,10 +1,29 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'marker_colors.dart';
 
 const double kSealMarkerBaseSize = 18;
 
-double markerScaleForViewer(double viewerScale) =>
-    (1 / viewerScale).clamp(0.08, 2.0);
+/// Cílová velikost značky NA OBRAZOVCE (logické px), nezávislá na zoomu
+/// výkresu. Klesá s přiblížením, aby se na stěnu vešlo i 5+ ucpávek těsně
+/// vedle sebe — čím větší zoom, tím menší značka.
+double _onScreenMarkerSize(double viewerScale) {
+  final v = viewerScale.isFinite && viewerScale > 0 ? viewerScale : 1.0;
+  final raw = 16.0 / math.pow(v, 0.35);
+  return raw.clamp(6.0, 16.0);
+}
+
+/// Vrací škálu pro [sealMarkerDimensions] tak, aby výsledná velikost na
+/// obrazovce (po vynásobení transformací [InteractiveViewer]ru, tedy
+/// `velikost * viewerScale`) odpovídala [_onScreenMarkerSize]. Bez horního ani
+/// dolního px-clampu na logické velikosti — ten dřív způsoboval nafouknutí
+/// značek při velkém zoomu.
+double markerScaleForViewer(double viewerScale) {
+  final v = viewerScale.isFinite && viewerScale > 0 ? viewerScale : 1.0;
+  final onScreen = _onScreenMarkerSize(v);
+  return onScreen / (kSealMarkerBaseSize * v);
+}
 
 ({
   double size,
@@ -14,14 +33,15 @@ double markerScaleForViewer(double viewerScale) =>
   double shadowBlur,
   double padding,
 }) sealMarkerDimensions(double scale, {bool highlighted = false}) {
-  final size = (kSealMarkerBaseSize * scale).clamp(6.0, 26.0);
-  final fontSize = (7 * scale).clamp(4.5, 9.0);
-  final borderWidth = (1.5 * scale).clamp(0.5, 2.0);
-  final highlightBorderWidth = (3.0 * scale).clamp(1.0, 3.0);
-  final shadowBlur = highlighted
-      ? (8.0 * scale).clamp(1.0, 8.0)
-      : (2.0 * scale).clamp(0.5, 8.0);
-  final padding = (1.0 * scale).clamp(0.0, 2.0);
+  // Zvýrazněná (aktivní/čekající) značka je o trochu větší než ostatní při
+  // stejném zoomu, ať je dohledatelná, ale dál se zmenšuje se zoomem stejně
+  // jako ostatní (žádný absolutní px floor).
+  final size = kSealMarkerBaseSize * scale * (highlighted ? 1.3 : 1.0);
+  final fontSize = size * (7 / kSealMarkerBaseSize);
+  final borderWidth = size * (1.5 / kSealMarkerBaseSize);
+  final highlightBorderWidth = size * (3.0 / kSealMarkerBaseSize);
+  final shadowBlur = size * ((highlighted ? 8.0 : 2.0) / kSealMarkerBaseSize);
+  final padding = size * (1.0 / kSealMarkerBaseSize);
   return (
     size: size,
     fontSize: fontSize,
@@ -44,39 +64,6 @@ Offset sealMarkerTopLeft({
     x * canvasSize.width - dims.size / 2,
     y * canvasSize.height - dims.size / 2,
   );
-}
-
-const double kSealPointDotBaseSize = 7;
-
-/// Malá tečka označující přesnou pozici ucpávky, když je číselný štítek
-/// odtažen do volného místa (viz [SealMarkerWidget] jako štítek).
-class SealPointDot extends StatelessWidget {
-  const SealPointDot({
-    super.key,
-    required this.status,
-    this.scale = 1,
-  });
-
-  final String status;
-  final double scale;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = markerColorForSeal(status: status);
-    final size = (kSealPointDotBaseSize * scale).clamp(3.0, 10.0);
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        border: Border.all(color: Colors.white, width: size * 0.15),
-        boxShadow: const [
-          BoxShadow(color: Colors.black45, blurRadius: 1.5),
-        ],
-      ),
-    );
-  }
 }
 
 class SealMarkerWidget extends StatelessWidget {

@@ -556,7 +556,7 @@ class _SealDetailScreenState extends ConsumerState<SealDetailScreen> {
       if (userId == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Nejste pĹ™ihlĂˇĹˇenĂ­')),
+            const SnackBar(content: Text('Nejste přihlášení')),
           );
         }
         return;

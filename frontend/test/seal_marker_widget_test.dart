@@ -4,22 +4,37 @@ import 'package:ucpavky/features/jobs/floor_plan/seal_marker_widget.dart';
 
 void main() {
   test('markerScaleForViewer at 1x zoom', () {
-    expect(markerScaleForViewer(1.0), 1.0);
+    expect(markerScaleForViewer(1.0), closeTo(0.8889, 0.001));
   });
 
-  test('markerScaleForViewer at max 12x zoom', () {
-    expect(markerScaleForViewer(12.0), closeTo(0.083, 0.001));
+  test('markerScaleForViewer at 12x zoom', () {
+    expect(markerScaleForViewer(12.0), closeTo(0.0310, 0.001));
   });
 
-  test('markerScaleForViewer clamps at min zoom out', () {
-    expect(markerScaleForViewer(0.5), 2.0);
+  test('markerScaleForViewer clamps onscreen size at min zoom out', () {
+    expect(markerScaleForViewer(0.5), closeTo(1.7778, 0.001));
   });
 
-  test('sealMarkerDimensions at max zoom scale ~0.08', () {
+  test('on-screen marker size shrinks as zoom increases', () {
+    // velikost NA OBRAZOVCE = scale * kSealMarkerBaseSize * viewerScale
+    double onScreenSize(double viewerScale) =>
+        markerScaleForViewer(viewerScale) * kSealMarkerBaseSize * viewerScale;
+
+    final atLowZoom = onScreenSize(1.0);
+    final atMidZoom = onScreenSize(12.0);
+    final atMaxZoom = onScreenSize(40.0);
+
+    expect(atMidZoom, lessThan(atLowZoom));
+    expect(atMaxZoom, lessThan(atMidZoom));
+    // Při maximálním zoomu zůstává malá (ne nafouknutá) — dolní strop 6px.
+    expect(atMaxZoom, closeTo(6.0, 0.001));
+  });
+
+  test('sealMarkerDimensions scales proportionally without a px floor', () {
     final dims = sealMarkerDimensions(0.08);
-    expect(dims.size, 6.0);
-    expect(dims.borderWidth, 0.5);
-    expect(dims.shadowBlur, 0.5);
+    expect(dims.size, closeTo(1.44, 0.001));
+    expect(dims.borderWidth, closeTo(0.12, 0.001));
+    expect(dims.shadowBlur, closeTo(0.16, 0.001));
   });
 
   test('sealMarkerDimensions at 1x scale', () {
@@ -29,7 +44,13 @@ void main() {
     expect(dims.fontSize, 7.0);
   });
 
-  test('sealMarkerTopLeft centers marker using clamped dimensions', () {
+  test('highlighted marker is proportionally larger at the same scale', () {
+    final normal = sealMarkerDimensions(1.0);
+    final highlighted = sealMarkerDimensions(1.0, highlighted: true);
+    expect(highlighted.size, closeTo(normal.size * 1.3, 0.001));
+  });
+
+  test('sealMarkerTopLeft centers marker using current dimensions', () {
     final scale = markerScaleForViewer(12.0);
     final dims = sealMarkerDimensions(scale);
     final topLeft = sealMarkerTopLeft(

@@ -20,6 +20,39 @@ Future<bool> downloadFloorDrawingFile({
   required String floorId,
   required Map<String, dynamic> meta,
 }) async {
+  final incomingFilePath = meta['filePath'] as String? ?? '';
+
+  // Zbytečné stahování: filePath je per-upload neměnný (nový upload = nový
+  // filePath). Pokud už máme v cache identický soubor (shoda filePath +
+  // existující lokální soubor), nestahujeme znovu — i 50 MB výkres se jinak
+  // stahoval při každém otevření patra.
+  if (incomingFilePath.isNotEmpty) {
+    final existing = await (db.select(db.localFloorDrawings)
+          ..where((d) => d.floorId.equals(floorId)))
+        .getSingleOrNull();
+    final localPath = existing?.localPath;
+    if (existing != null &&
+        existing.filePath == incomingFilePath &&
+        localPath != null &&
+        localPath.isNotEmpty &&
+        File(localPath).existsSync()) {
+      if (existing.downloadStatus !=
+          FloorDrawingDownloadStatus.downloaded.toDb()) {
+        await (db.update(db.localFloorDrawings)
+              ..where((d) => d.floorId.equals(floorId)))
+            .write(LocalFloorDrawingsCompanion(
+          downloadStatus:
+              Value(FloorDrawingDownloadStatus.downloaded.toDb()),
+          lastError: const Value(null),
+          retryCount: const Value(0),
+          nextRetryAt: const Value(null),
+        ));
+      }
+      onFloorDrawingDownloaded?.call(floorId);
+      return true;
+    }
+  }
+
   await (db.update(db.localFloorDrawings)
         ..where((d) => d.floorId.equals(floorId)))
       .write(LocalFloorDrawingsCompanion(
@@ -123,14 +156,20 @@ Future<bool> upsertFloorDrawingMetadata(
     );
   }
 
-  final hasFile =
-      localPath != null && localPath.isNotEmpty && File(localPath).existsSync();
+  // Zachovat dříve stažený lokální soubor, pokud volající nepředal nový a
+  // výkres se nezměnil — jinak by se localPath přepsal na null a soubor by se
+  // při každém načtení bundlu stahoval znovu.
+  final effectiveLocalPath =
+      localPath ?? (drawingChanged ? null : existing?.localPath);
+  final hasFile = effectiveLocalPath != null &&
+      effectiveLocalPath.isNotEmpty &&
+      File(effectiveLocalPath).existsSync();
   await db.into(db.localFloorDrawings).insertOnConflictUpdate(
         LocalFloorDrawingsCompanion.insert(
           floorId: floorId,
           jobId: jobId,
           filePath: incomingFilePath,
-          localPath: Value(localPath),
+          localPath: Value(effectiveLocalPath),
           mimeType: meta['mimeType'] as String? ?? 'image/webp',
           width: meta['width'] as int? ?? 1,
           height: meta['height'] as int? ?? 1,

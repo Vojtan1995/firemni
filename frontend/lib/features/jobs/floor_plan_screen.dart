@@ -143,7 +143,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
   String? _offlinePendingMessage;
   FloorPlanFilterState _filter = const FloorPlanFilterState();
   String? _highlightSealId;
-  bool _labelEditMode = false;
   int _total = 0;
   int _placed = 0;
   int _unplaced = 0;
@@ -347,19 +346,10 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
     } catch (_) {}
   }
 
+  // Statistiky umístění se počítají lokálně z už načtených _markers a
+  // _floorSeals — žádné extra síťové volání /placement-stats při každém
+  // otevření patra. Parametr offline ponecháváme kvůli volajícím.
   Future<void> _loadPlacementStats({bool offline = false}) async {
-    if (!offline) {
-      try {
-        final res = await ref.read(dioProvider).get(
-              '/api/jobs/${widget.jobId}/floors/${widget.floorId}/placement-stats',
-            );
-        final data = res.data as Map<String, dynamic>;
-        _total = data['total'] as int? ?? 0;
-        _placed = data['placed'] as int? ?? 0;
-        _unplaced = data['unplaced'] as int? ?? 0;
-        return;
-      } catch (_) {}
-    }
     final placedIds = _markers.map((m) => m['sealId'] as String).toSet();
     _total = _floorSeals.length;
     _placed = _floorSeals.where((s) => placedIds.contains(s['id'])).length;
@@ -421,8 +411,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
       );
     }
     for (final m in markers) {
-      final labelOffsetX = (m['labelOffsetX'] as num?)?.toDouble();
-      final labelOffsetY = (m['labelOffsetY'] as num?)?.toDouble();
       await db.into(db.localSealMarkers).insertOnConflictUpdate(
             LocalSealMarkersCompanion.insert(
               sealId: m['sealId'] as String,
@@ -430,8 +418,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
               sealNumber: m['sealNumber'] as String? ?? '',
               x: (m['x'] as num).toDouble(),
               y: (m['y'] as num).toDouble(),
-              labelOffsetX: Value(labelOffsetX),
-              labelOffsetY: Value(labelOffsetY),
               updatedAt: DateTime.tryParse(m['updatedAt'] as String? ?? '') ??
                   DateTime.now(),
             ),
@@ -475,8 +461,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
           'sealNumber': m.sealNumber,
           'x': m.x,
           'y': m.y,
-          'labelOffsetX': m.labelOffsetX,
-          'labelOffsetY': m.labelOffsetY,
           'status': seal?['status'] ?? 'draft',
           'reviewStatus': seal?['reviewStatus'],
         };
@@ -625,76 +609,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
               Text('Značka uložena lokálně — synchronizuje se po připojení'),
         ),
       );
-    }
-  }
-
-  /// Uloží offset odtaženého štítku (tečka zůstává na pozici ucpávky).
-  /// Aktualizuje stav rovnou (bez plného `_load()`) — tažení je časté gesto
-  /// a plný reload by zbytečně sekal.
-  Future<void> _saveLabelOffset(
-    String sealId,
-    double offsetX,
-    double offsetY,
-  ) async {
-    final db = ref.read(databaseProvider);
-    final markerRow = await (db.select(db.localSealMarkers)
-          ..where((m) => m.sealId.equals(sealId)))
-        .getSingleOrNull();
-    if (markerRow == null) return;
-
-    await db.into(db.localSealMarkers).insertOnConflictUpdate(
-          LocalSealMarkersCompanion.insert(
-            sealId: sealId,
-            floorId: widget.floorId,
-            sealNumber: markerRow.sealNumber,
-            x: markerRow.x,
-            y: markerRow.y,
-            labelOffsetX: Value(offsetX),
-            labelOffsetY: Value(offsetY),
-            updatedAt: DateTime.now(),
-          ),
-        );
-
-    if (mounted) {
-      setState(() {
-        final idx = _markers.indexWhere((m) => m['sealId'] == sealId);
-        if (idx >= 0) {
-          _markers[idx] = {
-            ..._markers[idx],
-            'labelOffsetX': offsetX,
-            'labelOffsetY': offsetY,
-          };
-        }
-      });
-    }
-
-    await ref.read(syncServiceProvider).enqueueMutation(
-      db: db,
-      entityType: 'seal_marker',
-      operation: 'update',
-      payload: {
-        'sealId': sealId,
-        'floorId': widget.floorId,
-        'x': markerRow.x,
-        'y': markerRow.y,
-        'labelOffsetX': offsetX,
-        'labelOffsetY': offsetY,
-      },
-    );
-
-    try {
-      await ref.read(dioProvider).put(
-        '/api/jobs/${widget.jobId}/floors/${widget.floorId}/markers/$sealId',
-        data: {
-          'x': markerRow.x,
-          'y': markerRow.y,
-          'labelOffsetX': offsetX,
-          'labelOffsetY': offsetY,
-        },
-      );
-      await ref.read(syncServiceProvider).syncAll();
-    } on DioException catch (_) {
-      // Offline — uloženo lokálně, doplní se přes sync engine.
     }
   }
 
@@ -1085,21 +999,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
         appBar: AppBar(
           title: Text(_isDraftMode ? 'Umístit značku' : 'Výkres patra'),
           actions: [
-            if (_imageBytes != null &&
-                !_isDraftMode &&
-                _placingSealId == null &&
-                _movingSealId == null)
-              IconButton(
-                icon: Icon(
-                  _labelEditMode ? Icons.label : Icons.label_outline,
-                  color: _labelEditMode ? AppColors.info : null,
-                ),
-                tooltip: _labelEditMode
-                    ? 'Ukončit úpravu popisků'
-                    : 'Upravit popisky (odtáhnout čísla od sebe)',
-                onPressed: () =>
-                    setState(() => _labelEditMode = !_labelEditMode),
-              ),
             if (_imageBytes != null) ...[
               IconButton(
                 icon: const Icon(Icons.search),
@@ -1197,16 +1096,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                                 : 'Klepněte na nové místo a uložte přesun tlačítkem dole',
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
-                    )
-                  else if (_labelEditMode)
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      color: AppColors.info.withValues(alpha: 0.15),
-                      child: Text(
-                        'Přetáhněte číslo do volného místa — u nahuštěných '
-                        'značek se ukáže odkazová čára k přesné pozici.',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
                     ),
                   if (_error != null)
                     Padding(
@@ -1261,8 +1150,6 @@ class _FloorPlanScreenState extends ConsumerState<FloorPlanScreen> {
                                 ? _onTapPlan
                                 : null,
                             onMarkerTap: _onMarkerTap,
-                            labelEditMode: _labelEditMode,
-                            onLabelOffsetChanged: _saveLabelOffset,
                           ),
                   ),
                 ],

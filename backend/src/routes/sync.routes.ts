@@ -543,7 +543,7 @@ router.get('/pull', async (req, res, next) => {
         : 'all';
     const includeAssets = req.query.includeAssets === 'none' ? 'none' : 'metadata';
     if (scope === 'job' && !jobId) {
-      throw conflict('Pro sync scope=job je povinnĂ© jobId');
+      throw conflict('Pro sync scope=job je povinné jobId');
     }
     const pullJobDetail = scope !== 'global';
     const pullAssets = pullJobDetail && includeAssets !== 'none';

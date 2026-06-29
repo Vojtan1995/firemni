@@ -126,8 +126,8 @@ class _SealListScreenState extends ConsumerState<SealListScreen> {
     setState(() {
       _dataSource = SealListDataSource.offline;
       _offlineHint = _seals.isEmpty
-          ? 'Server nedostupnĂ˝ a v cache nejsou ĹľĂˇdnĂ© ucpĂˇvky pro toto patro.'
-          : 'Zobrazena poslednĂ­ uloĹľenĂˇ data z zaĹ™Ă­zenĂ­.';
+          ? 'Server nedostupný a v cache nejsou žádné ucpávky pro toto patro.'
+          : 'Zobrazena poslední uložená data z zařízení.';
       _loading = false;
     });
   }
