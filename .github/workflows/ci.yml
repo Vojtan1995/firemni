@@ -128,6 +128,8 @@ jobs:
           PORT: "3000"
           CORS_ORIGIN: http://localhost:3000
           PUBLIC_UPLOADS: "false"
+          BACKUP_REPORT_TOKEN: ci-backup-report-token
+          BACKUP_HEALTH_TOKEN: ci-backup-health-token
           # CI běží backend s NODE_ENV=production proti lokálnímu úložišti (mkdir uploads);
           # produkční validace jinak vyžaduje STORAGE_DRIVER=s3. Tato pojistka to v CI povolí.
           ALLOW_LOCAL_STORAGE_IN_PRODUCTION: "true"
