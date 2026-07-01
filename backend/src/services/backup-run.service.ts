@@ -15,6 +15,18 @@ export const backupRunSchema = z.object({
 });
 
 export type BackupRunInput = z.infer<typeof backupRunSchema>;
+export type BackupRunType = BackupRunInput['type'];
+export type BackupHealthStatus = 'ok' | 'missing' | 'failed' | 'stale';
+
+const BACKUP_HEALTH_RULES: Array<{
+  type: BackupRunType;
+  label: string;
+  maxAgeHours: number;
+}> = [
+  { type: 'db', label: 'DB záloha', maxAgeHours: 30 },
+  { type: 'object', label: 'Záloha fotek/výkresů', maxAgeHours: 30 },
+  { type: 'restore_test', label: 'Restore test', maxAgeHours: 8 * 24 },
+];
 
 function bigIntOrNull(value: BackupRunInput['bytes']) {
   if (value === undefined || value === null) return null;
@@ -41,6 +53,32 @@ function serializeBackupRun(row: Awaited<ReturnType<typeof prisma.backupRun.find
     finishedAt: row.finishedAt,
     createdAt: row.createdAt,
   };
+}
+
+function runTimestamp(row: NonNullable<Awaited<ReturnType<typeof prisma.backupRun.findFirst>>>) {
+  return row.finishedAt ?? row.createdAt;
+}
+
+function ageHours(timestamp: Date, now: Date) {
+  return Math.max(0, (now.getTime() - timestamp.getTime()) / (60 * 60 * 1000));
+}
+
+function backupHealthMessage(
+  status: BackupHealthStatus,
+  label: string,
+  maxAgeHours: number,
+) {
+  switch (status) {
+    case 'ok':
+      return `${label} je v limitu`;
+    case 'failed':
+      return `${label} má poslední běh selhaný`;
+    case 'stale':
+      return `${label} je starší než ${maxAgeHours} hodin`;
+    case 'missing':
+    default:
+      return `${label} chybí`;
+  }
 }
 
 export async function recordBackupRun(input: BackupRunInput) {
@@ -81,5 +119,60 @@ export async function getBackupStatus() {
     database: serializeBackupRun(db),
     objects: serializeBackupRun(object),
     restoreTest: serializeBackupRun(restoreTest),
+  };
+}
+
+export async function getBackupHealth(now = new Date()) {
+  const checks = await Promise.all(
+    BACKUP_HEALTH_RULES.map(async (rule) => {
+      const [latestRun, latestSuccess] = await Promise.all([
+        prisma.backupRun.findFirst({
+          where: { type: rule.type },
+          orderBy: { createdAt: 'desc' },
+        }),
+        prisma.backupRun.findFirst({
+          where: { type: rule.type, status: 'success' },
+          orderBy: { createdAt: 'desc' },
+        }),
+      ]);
+
+      let status: BackupHealthStatus = 'ok';
+      const latestSuccessAgeHours = latestSuccess
+        ? ageHours(runTimestamp(latestSuccess), now)
+        : null;
+      if (latestRun?.status === 'failed') {
+        status = 'failed';
+      } else if (!latestSuccess) {
+        status = 'missing';
+      } else {
+        if (latestSuccessAgeHours !== null && latestSuccessAgeHours > rule.maxAgeHours) {
+          status = 'stale';
+        }
+      }
+
+      return {
+        type: rule.type,
+        label: rule.label,
+        ok: status === 'ok',
+        status,
+        maxAgeHours: rule.maxAgeHours,
+        latestSuccessAgeHours,
+        latestRun: serializeBackupRun(latestRun),
+        latestSuccess: serializeBackupRun(latestSuccess),
+        githubRunUrl: latestRun?.githubRunUrl ?? latestSuccess?.githubRunUrl ?? null,
+        r2Prefix: latestRun?.r2Prefix ?? latestSuccess?.r2Prefix ?? null,
+        manifestKey: latestRun?.manifestKey ?? latestSuccess?.manifestKey ?? null,
+        bytes: (latestRun?.bytes ?? latestSuccess?.bytes)?.toString() ?? null,
+        objectCount: latestRun?.objectCount ?? latestSuccess?.objectCount ?? null,
+        errorMessage: latestRun?.status === 'failed' ? latestRun.errorMessage : null,
+        message: backupHealthMessage(status, rule.label, rule.maxAgeHours),
+      };
+    }),
+  );
+
+  return {
+    ok: checks.every((check) => check.ok),
+    checkedAt: now.toISOString(),
+    checks,
   };
 }

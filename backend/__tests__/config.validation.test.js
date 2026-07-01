@@ -13,6 +13,8 @@ describe('validateConfig production storage', () => {
     process.env.JWT_SECRET = 'prod-secret-value-12345';
     process.env.PUBLIC_UPLOADS = 'false';
     process.env.CORS_ORIGIN = 'https://app.example.com';
+    process.env.BACKUP_REPORT_TOKEN = 'backup-report-token';
+    process.env.BACKUP_HEALTH_TOKEN = 'backup-health-token';
     delete process.env.ALLOW_LOCAL_STORAGE_IN_PRODUCTION;
     delete process.env.S3_BUCKET;
     delete process.env.S3_ACCESS_KEY_ID;
@@ -48,6 +50,32 @@ describe('validateConfig production storage', () => {
     process.env.S3_FORCE_PATH_STYLE = 'true';
 
     expect(() => validateConfig()).not.toThrow();
+  });
+
+  it('requires backup report token in production', () => {
+    setSafeProductionEnv();
+    process.env.STORAGE_DRIVER = 's3';
+    process.env.S3_BUCKET = 'bucket';
+    process.env.S3_ACCESS_KEY_ID = 'key';
+    process.env.S3_SECRET_ACCESS_KEY = 'secret';
+    process.env.S3_ENDPOINT = 'https://account.r2.cloudflarestorage.com';
+    process.env.S3_FORCE_PATH_STYLE = 'true';
+    delete process.env.BACKUP_REPORT_TOKEN;
+
+    expect(() => validateConfig()).toThrow(/BACKUP_REPORT_TOKEN/);
+  });
+
+  it('requires backup health token in production', () => {
+    setSafeProductionEnv();
+    process.env.STORAGE_DRIVER = 's3';
+    process.env.S3_BUCKET = 'bucket';
+    process.env.S3_ACCESS_KEY_ID = 'key';
+    process.env.S3_SECRET_ACCESS_KEY = 'secret';
+    process.env.S3_ENDPOINT = 'https://account.r2.cloudflarestorage.com';
+    process.env.S3_FORCE_PATH_STYLE = 'true';
+    delete process.env.BACKUP_HEALTH_TOKEN;
+
+    expect(() => validateConfig()).toThrow(/BACKUP_HEALTH_TOKEN/);
   });
 
   it('requires path-style access for Cloudflare R2 endpoints', () => {

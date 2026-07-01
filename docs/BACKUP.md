@@ -69,11 +69,13 @@ Volitelné, ale doporučené:
 | --- | --- |
 | `BACKUP_REPORT_URL` | URL produkčního backendu pro zápis `BackupRun` |
 | `BACKUP_REPORT_TOKEN` | Token shodný s backend env `BACKUP_REPORT_TOKEN` |
+| `BACKUP_HEALTH_TOKEN` | Token pro externí monitor `GET /api/internal/backup-health` |
 | `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | Alerty při selhání workflow |
 
 ## Admin přehled
 
 - `GET /api/admin/backup-status` vrací poslední DB zálohu, objektovou zálohu a restore test.
+- `GET /api/internal/backup-health` s bearer tokenem `BACKUP_HEALTH_TOKEN` vrací `200`, pokud jsou DB/object zálohy mladší než 30 hodin a restore test mladší než 8 dní; jinak vrací `503`.
 - `GET /api/logs/backups` vrací admin log sekci “Zálohy”.
 - `BackupRun` je produkční zdroj pravdy pro stav off-site záloh.
 - `BackupLog` je legacy/ad-hoc evidence lokálních dumpů.

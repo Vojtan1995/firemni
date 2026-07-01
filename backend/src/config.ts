@@ -48,6 +48,7 @@ export const config = {
     intervalHours: parseInt(process.env.BACKUP_INTERVAL_HOURS || '24', 10),
     allowLocalInProduction: parseBoolean(process.env.ALLOW_LOCAL_BACKUP_IN_PRODUCTION, false),
     reportToken: process.env.BACKUP_REPORT_TOKEN || '',
+    healthToken: process.env.BACKUP_HEALTH_TOKEN || '',
   },
   // Retence technických logů (přihlášení s IP, chyby, zpracované sync mutace)
   // kvůli GDPR (data minimization). Běží nezávisle na zálohách.
@@ -119,6 +120,12 @@ export function validateConfig() {
   const localBackupEnabled = parseBoolean(process.env.BACKUP_ENABLED, false);
   if (localBackupEnabled && !envBoolean('ALLOW_LOCAL_BACKUP_IN_PRODUCTION', false)) {
     throw new Error('BACKUP_ENABLED is not allowed in production; use GitHub Actions/R2 backups or set ALLOW_LOCAL_BACKUP_IN_PRODUCTION=true for an explicit emergency override');
+  }
+  if (!process.env.BACKUP_REPORT_TOKEN) {
+    throw new Error('BACKUP_REPORT_TOKEN must be set in production so backup workflows can report their status');
+  }
+  if (!process.env.BACKUP_HEALTH_TOKEN) {
+    throw new Error('BACKUP_HEALTH_TOKEN must be set in production so backup freshness can be monitored');
   }
 
   if (!['local', 's3'].includes(storageDriver)) {

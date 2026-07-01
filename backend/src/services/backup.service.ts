@@ -23,9 +23,20 @@ async function runPgDump(filePath: string) {
   if (!config.databaseUrl) {
     throw new Error('DATABASE_URL není nastavena');
   }
-  await execFileAsync('pg_dump', [config.databaseUrl, '-Fc', '-f', filePath], {
-    env: process.env,
-  });
+  try {
+    await execFileAsync('pg_dump', [config.databaseUrl, '-Fc', '-f', filePath], {
+      env: process.env,
+    });
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new AppError(
+        500,
+        'PG_DUMP_NOT_AVAILABLE',
+        'pg_dump neni dostupny v PATH. Lokalni diagnosticka zaloha vyzaduje PostgreSQL client tools.',
+      );
+    }
+    throw err;
+  }
 }
 
 export async function pruneOldBackups() {
@@ -109,6 +120,7 @@ export async function runBackup(triggeredBy?: string) {
     return log;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const code = err instanceof AppError ? err.code : 'BACKUP_FAILED';
     try {
       await fs.unlink(filePath);
     } catch (_) {}
@@ -117,7 +129,7 @@ export async function runBackup(triggeredBy?: string) {
         fileName,
         filePath,
         status: 'failed',
-        errorMessage: message,
+        errorMessage: `${code}: ${message}`,
         triggeredBy: triggeredBy ?? 'manual',
       },
     });

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: encrypted-db-backup
+  cancel-in-progress: false
+
 jobs:
   backup:
     runs-on: ubuntu-latest
@@ -23,9 +27,13 @@ jobs:
           ACCESS_KEY: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
           SECRET_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
           AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           set -euo pipefail
-          for name in DATABASE_URL BUCKET ENDPOINT ACCESS_KEY SECRET_KEY AGE_RECIPIENT; do
+          for name in DATABASE_URL BUCKET ENDPOINT ACCESS_KEY SECRET_KEY AGE_RECIPIENT REPORT_URL REPORT_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
             [ -n "${!name:-}" ] || { echo "::error::Missing $name"; exit 1; }
           done
           case "$DATABASE_URL" in

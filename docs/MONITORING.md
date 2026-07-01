@@ -10,6 +10,7 @@ jednoho **Telegram** chatu.
 |----------|---------------|---------|
 | `GET /health` | jen že proces žije | liveness |
 | `GET /ready` | DB + storage (R2) | readiness, externí uptime monitor, Railway healthcheck |
+| `GET /api/internal/backup-health` | čerstvost DB/object záloh a restore testu | externí monitor záloh; vyžaduje `BACKUP_HEALTH_TOKEN` |
 
 Implementace v [`backend/src/app.ts`](../backend/src/app.ts). `/ready` vrací non-200,
 když je nedostupná DB nebo R2 — proto je vhodný cíl monitoringu (pokryje i výpadek

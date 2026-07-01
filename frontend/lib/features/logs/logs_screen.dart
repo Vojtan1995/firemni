@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../core/api/api_client.dart';
 import '../../core/design_tokens.dart';
 import '../../widgets/widgets.dart';
 import '../auth/auth_provider.dart';
+import 'backup_status.dart';
 
 /// Definice jedné sekce (tabu) logů – nadpis, endpoint a zda jde o systémové záznamy.
 class _LogSection {
@@ -33,6 +35,7 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
   TabController? _tabs;
   late List<_LogSection> _sections;
   final Map<String, List<Map<String, dynamic>>> _data = {};
+  BackupStatusSummary? _backupStatus;
   bool _loading = true;
   int _sinceDays = 7;
 
@@ -124,6 +127,12 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         );
         _data[s.label] = (res.data as List).cast<Map<String, dynamic>>();
       }));
+      if (ref.read(authServiceProvider).isAdmin) {
+        final statusRes = await dio.get('/api/admin/backup-status');
+        _backupStatus = BackupStatusSummary.fromJson(
+          Map<String, dynamic>.from(statusRes.data as Map),
+        );
+      }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
@@ -277,7 +286,8 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
 
   Widget _sectionView(_LogSection section) {
     final items = _data[section.label] ?? const [];
-    if (items.isEmpty) {
+    final isBackupSection = section.endpoint == '/api/logs/backups';
+    if (items.isEmpty && !(isBackupSection && _backupStatus != null)) {
       return const EmptyState(message: 'Žádné záznamy', icon: Icons.history);
     }
 
@@ -286,7 +296,10 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
         onRefresh: _load,
         child: ListView(
           padding: const EdgeInsets.all(AppSpacing.lg),
-          children: _dayGroupedChildren(items, isSystem: true),
+          children: [
+            if (isBackupSection) ..._backupStatusChildren(),
+            if (items.isNotEmpty) ..._dayGroupedChildren(items, isSystem: true),
+          ],
         ),
       );
     }
@@ -373,6 +386,58 @@ class _LogsScreenState extends ConsumerState<LogsScreen>
       title: title,
       subtitle:
           [detail, time].where((e) => e != null && e.isNotEmpty).join(' · '),
+    );
+  }
+
+  List<Widget> _backupStatusChildren() {
+    final status = _backupStatus;
+    if (status == null) return const [];
+    return [
+      const SectionHeader(title: 'Aktuální stav', style: SectionHeaderStyle.h3),
+      ...status.checks.map(_backupCheckCard),
+      const SizedBox(height: AppSpacing.sm),
+      const SectionHeader(title: 'Historie', style: SectionHeaderStyle.h3),
+    ];
+  }
+
+  Widget _backupCheckCard(BackupHealthCheck check) {
+    final color = switch (check.status) {
+      'ok' => AppColors.success,
+      'stale' => AppColors.warning,
+      'failed' => AppColors.error,
+      _ => AppColors.textMuted,
+    };
+    final detail = [
+      check.message,
+      'stáří ${check.ageLabel}',
+      if (check.sizeLabel.isNotEmpty) check.sizeLabel,
+      if (check.objectCount != null) '${check.objectCount} objektů',
+      check.r2Prefix,
+      check.errorMessage,
+    ].where((e) => e != null && e.isNotEmpty).join(' Â· ');
+    final githubRunUrl = check.githubRunUrl;
+    return AppCard(
+      leading: AppIconBox(
+        icon: switch (check.status) {
+          'ok' => Icons.check_circle_outline,
+          'stale' => Icons.schedule,
+          'failed' => Icons.error_outline,
+          _ => Icons.help_outline,
+        },
+        backgroundColor: color.withValues(alpha: 0.12),
+        color: color,
+      ),
+      title: '${check.title}: ${check.statusLabel}',
+      subtitle: detail,
+      showChevron: githubRunUrl != null,
+      onTap: githubRunUrl == null
+          ? null
+          : () async {
+              await launchUrl(
+                Uri.parse(githubRunUrl),
+                mode: LaunchMode.externalApplication,
+              );
+            },
     );
   }
 }

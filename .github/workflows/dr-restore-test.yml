@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: weekly-dr-restore-test
+  cancel-in-progress: false
+
 jobs:
   restore:
     environment: dr-restore
@@ -29,6 +33,23 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate configuration
+        env:
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          BACKUP_S3_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
+          BACKUP_REPORT_URL: ${{ secrets.BACKUP_REPORT_URL }}
+          BACKUP_REPORT_TOKEN: ${{ secrets.BACKUP_REPORT_TOKEN }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          for name in BACKUP_S3_BUCKET BACKUP_S3_ENDPOINT BACKUP_S3_ACCESS_KEY_ID BACKUP_S3_SECRET_ACCESS_KEY BACKUP_AGE_IDENTITY BACKUP_REPORT_URL BACKUP_REPORT_TOKEN TELEGRAM_BOT_TOKEN TELEGRAM_CHAT_ID; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing $name"; exit 1; }
+          done
 
       - name: Install PostgreSQL 18 client, age and AWS CLI
         run: |
@@ -73,6 +94,29 @@ jobs:
             privacy-erasure-ledger.jsonl.age.sha256
           sha256sum -c backup.dump.age.sha256
           sha256sum -c privacy-erasure-ledger.jsonl.age.sha256
+
+      - name: Verify latest object snapshot
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+        run: |
+          set -euo pipefail
+          manifest_key="$(aws s3api list-objects-v2 --bucket "$BUCKET" --prefix objects/ \
+            --endpoint-url "$ENDPOINT" \
+            --query 'reverse(sort_by(Contents,&LastModified))[?ends_with(Key, `object-manifest.sha256`) && !contains(Key, `objects/latest/`)]|[0].Key' \
+            --output text)"
+          [ "$manifest_key" != "None" ] || { echo "::error::No object snapshot manifest found"; exit 1; }
+          object_prefix="${manifest_key%/object-manifest.sha256}"
+          mkdir -p object-snapshot
+          aws s3 cp "s3://${BUCKET}/${manifest_key}" object-manifest.sha256 \
+            --endpoint-url "$ENDPOINT"
+          aws s3 sync "s3://${BUCKET}/${object_prefix}/data/" object-snapshot/ \
+            --endpoint-url "$ENDPOINT" --no-progress
+          (cd object-snapshot && sha256sum -c ../object-manifest.sha256)
+          echo "Verified object snapshot: ${object_prefix}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Decrypt and restore database
         env:

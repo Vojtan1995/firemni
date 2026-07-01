@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import { authMiddleware, requireRecentAdminMfa } from '../middleware/auth.middleware.js';
 import { requirePermission } from '../lib/permissions.js';
 import { listBackupLogs, runBackup } from '../services/backup.service.js';
-import { getBackupStatus, listBackupRuns } from '../services/backup-run.service.js';
+import { getBackupHealth, getBackupStatus, listBackupRuns } from '../services/backup-run.service.js';
 import { verifyObjectStorageAccess } from '../services/storage.service.js';
 
 const router = Router();
@@ -21,9 +21,17 @@ router.get('/backups', async (_req, res, next) => {
 
 router.get('/backup-status', async (_req, res, next) => {
   try {
+    const [status, runs, health] = await Promise.all([
+      getBackupStatus(),
+      listBackupRuns(25),
+      getBackupHealth(),
+    ]);
     res.json({
-      status: await getBackupStatus(),
-      runs: await listBackupRuns(25),
+      ok: health.ok,
+      checkedAt: health.checkedAt,
+      checks: health.checks,
+      status,
+      runs,
     });
   } catch (e) {
     next(e);
